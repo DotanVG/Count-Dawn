@@ -1,30 +1,47 @@
 /**
  * Every texture / animation / audio key used by the game, in one place.
- *
- * The current textures are generated at runtime (see placeholderTextures.ts).
- * When real assets arrive, load them in PreloadScene under these same keys and
- * nothing else has to change. See docs/ASSET_INTEGRATION.md.
+ * Character art: CraftPix free packs (see README credits). Frames are 64x64.
  */
 export const TEXTURES = {
-  vampire: 'tex-vampire',
-  hunter: 'tex-hunter',
-  boss: 'tex-boss',
+  // Vampire (player) sheets — rows: 0=down(front), 1=up(back), 2=left, 3=right
+  vampireIdle: 'vampire-idle',
+  vampireWalk: 'vampire-walk',
+  vampireRun: 'vampire-run',
+  vampireAttack: 'vampire-attack',
+  vampireHurt: 'vampire-hurt',
+  vampireDeath: 'vampire-death',
+  // Hunter (sword male) sheets — rows: 0=down(front), 1=left, 2=right, 3=up(back)
+  hunterIdle: 'hunter-idle',
+  hunterWalk: 'hunter-walk',
+  hunterRun: 'hunter-run',
+  hunterHurt: 'hunter-hurt',
+  hunterDeath: 'hunter-death',
+  // Environment
+  tiles: 'castle-tiles',
+  fire: 'fire-animation',
+  objects: 'castle-objects',
+  // Still runtime-generated placeholders
   blood: 'tex-blood',
   coffin: 'tex-coffin',
 } as const;
 
-/** Animation keys, reserved for future spritesheets. Not used by placeholders. */
+export type Dir4 = 'down' | 'up' | 'left' | 'right';
+
+export type VampireAction = 'idle' | 'walk' | 'run' | 'attack' | 'hurt' | 'death';
+export type HunterAction = 'idle' | 'walk' | 'run' | 'hurt' | 'death';
+
+/** Directional animation key, e.g. animKey('vampire', 'walk', 'left'). */
+export function animKey(character: 'vampire' | 'hunter', action: string, dir: Dir4): string {
+  return `${character}-${action}-${dir}`;
+}
+
 export const ANIMS = {
-  vampireIdle: 'anim-vampire-idle',
-  vampireWalk: 'anim-vampire-walk',
-  vampireAttack: 'anim-vampire-attack',
-  hunterWalk: 'anim-hunter-walk',
-  bossWalk: 'anim-boss-walk',
+  torch: 'torch-flame',
 } as const;
 
 /**
- * Audio keys. No audio files ship with the prototype; AudioSystem plays a key
- * only if something was actually loaded under it, so these are safe no-ops.
+ * Audio keys. No audio files ship yet; AudioSystem plays a key only if
+ * something was actually loaded under it, so these are safe no-ops.
  */
 export const AUDIO = {
   playerAttack: 'sfx-player-attack',

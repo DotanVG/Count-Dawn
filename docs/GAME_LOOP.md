@@ -2,11 +2,11 @@
 
 ## Core loop
 
-1. The night starts: the vampire wakes next to his coffin, the sunrise countdown begins (120s, or 30s with `FAST_DEV_MODE`).
+1. From the menu (the castle hall itself), START makes the vampire fly in through the center window; the sunrise countdown begins (60s, or 25s with `FAST_DEV_MODE`).
 2. Human hunters spawn at random arena-edge positions every ~1.25s (max 18 alive) and walk straight at the player.
 3. The player kites and kills hunters with a mouse-aimed melee arc.
 4. Each dead hunter drops a blood pickup worth 10 blood; the Blood Meter targets 100.
-5. With 30 seconds remaining, the **Hunter Captain** spawns at the arena edge farthest from the player.
+5. With 25 seconds remaining, the **Hunter Captain** spawns at the arena edge farthest from the player.
 6. When the Blood Meter is full **and** the Captain is dead, the coffin activates (pulsing glow).
 7. Enter the active coffin before the timer reaches zero.
 
@@ -26,7 +26,7 @@ Either way the end screen shows the cause, blood collected, and time survived, w
 
 ## Boss timing
 
-`NIGHT.bossSpawnAtRemainingSeconds` in `src/data/balance.ts` (30s before sunrise; 20s in dev mode). The spawn request is emitted exactly once by `CountdownSystem`; `GameScene` guards against double-spawn.
+`NIGHT.bossSpawnAtRemainingSeconds` in `src/data/balance.ts` (25s before sunrise; 15s in dev mode). The spawn request is emitted exactly once by `CountdownSystem`; `GameScene` guards against double-spawn.
 
 ## Blood system
 

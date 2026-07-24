@@ -3,36 +3,11 @@ import { COLORS } from '../game/constants';
 import { TEXTURES } from './assetKeys';
 
 /**
- * Generates every placeholder texture at runtime with Phaser Graphics.
- * Delete the relevant generator call once a real asset is loaded under the
- * same key in PreloadScene (generation is skipped if the key already exists).
+ * Runtime-generated textures for the few props that have no pack art yet
+ * (blood droplet, coffin). Generation is skipped if a real asset already
+ * claimed the key in PreloadScene.
  */
 export function createPlaceholderTextures(scene: Phaser.Scene): void {
-  generate(scene, TEXTURES.vampire, 48, 48, (g) => {
-    // Dark purple rounded body with a lighter outline and a small "fang" notch.
-    g.fillStyle(COLORS.vampire, 1);
-    g.fillRoundedRect(4, 4, 40, 40, 12);
-    g.lineStyle(3, COLORS.vampireOutline, 1);
-    g.strokeRoundedRect(4, 4, 40, 40, 12);
-    g.fillStyle(0xffffff, 1);
-    g.fillTriangle(18, 30, 22, 30, 20, 38);
-    g.fillTriangle(26, 30, 30, 30, 28, 38);
-  });
-
-  generate(scene, TEXTURES.hunter, 32, 32, (g) => {
-    g.fillStyle(COLORS.hunter, 1);
-    g.fillRect(4, 4, 24, 24);
-    g.lineStyle(2, 0x6b6350, 1);
-    g.strokeRect(4, 4, 24, 24);
-  });
-
-  generate(scene, TEXTURES.boss, 72, 72, (g) => {
-    g.fillStyle(COLORS.boss, 1);
-    g.fillRect(6, 6, 60, 60);
-    g.lineStyle(5, COLORS.bossOutline, 1);
-    g.strokeRect(6, 6, 60, 60);
-  });
-
   generate(scene, TEXTURES.blood, 16, 16, (g) => {
     g.fillStyle(COLORS.blood, 1);
     g.fillCircle(8, 9, 6);

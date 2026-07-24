@@ -1,14 +1,14 @@
 import Phaser from 'phaser';
 import { PLAYER } from '../data/balance';
+import { DEPTHS } from '../game/constants';
 import { EVENTS, type GameEventEmitter } from '../game/events';
-import { TEXTURES } from '../utils/assetKeys';
+import { TEXTURES, animKey, type Dir4 } from '../utils/assetKeys';
+import { angleToDir4 } from '../utils/direction';
 
 /**
- * The vampire. Handles movement, facing, health, damage invulnerability and
- * the hurt flash. Attacking lives in CombatSystem.
- *
- * Asset note: swap TEXTURES.vampire for a spritesheet + anims without touching
- * movement/health logic — only the constructor's display setup changes.
+ * The vampire. Handles movement, directional animation, health, damage
+ * invulnerability and the hurt flash. Attack timing lives in CombatSystem;
+ * this class plays the matching animation via playAttackAnim().
  */
 export class Player extends Phaser.Physics.Arcade.Sprite {
   health: number = PLAYER.maxHealth;
@@ -16,6 +16,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   aimAngle = 0;
 
   private invulnUntil = 0;
+  private attackAnimUntil = 0;
+  private facing: Dir4 = 'down';
 
   constructor(
     scene: Phaser.Scene,
@@ -23,12 +25,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     y: number,
     private readonly emitter: GameEventEmitter,
   ) {
-    super(scene, x, y, TEXTURES.vampire);
+    super(scene, x, y, TEXTURES.vampireIdle, 0);
     scene.add.existing(this);
     scene.physics.add.existing(this);
-    this.setCircle(20, 4, 4);
+    this.setScale(2);
+    // Body in unscaled 64x64 texture space: a small circle around the torso/feet.
+    this.setCircle(11, 21, 26);
     this.setCollideWorldBounds(true);
-    this.setDepth(10);
+    this.setDepth(DEPTHS.player);
+    this.play(animKey('vampire', 'idle', 'down'));
   }
 
   get isAlive(): boolean {
@@ -42,12 +47,22 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   /** moveX/moveY is a normalized direction from InputController. */
   move(moveX: number, moveY: number): void {
     this.setVelocity(moveX * PLAYER.moveSpeed, moveY * PLAYER.moveSpeed);
+    this.updateAnimation(moveX !== 0 || moveY !== 0);
   }
 
   aimAt(worldX: number, worldY: number): void {
     this.aimAngle = Phaser.Math.Angle.Between(this.x, this.y, worldX, worldY);
-    // Placeholder facing: subtle lean toward the aim side.
-    this.setFlipX(Math.abs(Phaser.Math.Angle.Wrap(this.aimAngle)) > Math.PI / 2);
+    this.facing = angleToDir4(this.aimAngle);
+  }
+
+  /** Called by CombatSystem the moment an attack fires. */
+  playAttackAnim(): void {
+    this.attackAnimUntil = this.scene.time.now + PLAYER.attackCooldownMs;
+    this.play(animKey('vampire', 'attack', this.facing), true);
+  }
+
+  playDeathAnim(): void {
+    this.play(animKey('vampire', 'death', this.facing), true);
   }
 
   takeDamage(amount: number): void {
@@ -68,7 +83,19 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     if (!this.isAlive) {
       this.setVelocity(0, 0);
+      this.playDeathAnim();
       this.emitter.emit(EVENTS.PLAYER_DIED);
+    }
+  }
+
+  private updateAnimation(moving: boolean): void {
+    if (!this.isAlive) return;
+    if (this.scene.time.now < this.attackAnimUntil) return; // let the strike finish
+
+    const action = moving ? 'run' : 'idle';
+    const key = animKey('vampire', action, this.facing);
+    if (this.anims.currentAnim?.key !== key) {
+      this.play(key, true);
     }
   }
 }

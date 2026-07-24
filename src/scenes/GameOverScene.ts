@@ -55,10 +55,10 @@ export class GameOverScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
     restart.on('pointerover', () => restart.setBackgroundColor('#e8ddff'));
     restart.on('pointerout', () => restart.setBackgroundColor('#c9a7ff'));
-    restart.on('pointerdown', () => this.scene.start(SCENES.game));
+    restart.on('pointerdown', () => this.scene.start(SCENES.game, { autostart: true }));
 
-    this.input.keyboard?.on('keydown-R', () => this.scene.start(SCENES.game));
-    this.input.keyboard?.on('keydown-M', () => this.scene.start(SCENES.mainMenu));
+    this.input.keyboard?.on('keydown-R', () => this.scene.start(SCENES.game, { autostart: true }));
+    this.input.keyboard?.on('keydown-M', () => this.scene.start(SCENES.game));
 
     this.add
       .text(cx, GAME_HEIGHT * 0.78, 'M — back to menu', {

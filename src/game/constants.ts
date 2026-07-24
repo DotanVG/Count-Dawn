@@ -6,13 +6,29 @@ export const GAME_TAGLINE = 'Hunt the hunters. Fill your veins. Beat the sunrise
 export const GAME_WIDTH = 1280;
 export const GAME_HEIGHT = 720;
 
-/** Thickness of the castle wall boundary around the arena. */
-export const WALL_THICKNESS = 24;
+/** Dungeon tileset: 16px tiles rendered at 4x → 64px on screen. */
+export const TILE_SOURCE = 16;
+export const TILE_SCALE = 4;
+export const TILE = TILE_SOURCE * TILE_SCALE;
+
+/** Tile-grid size of the castle hall. */
+export const MAP_COLS = GAME_WIDTH / TILE; // 20
+export const MAP_ROWS = 12;
+
+/**
+ * Playable arena in world pixels. The north wall band (3 tile rows, with the
+ * sky windows) and the 1-tile side/bottom walls sit outside these bounds.
+ */
+export const ARENA = {
+  left: TILE,
+  right: GAME_WIDTH - TILE,
+  top: TILE * 3,
+  bottom: TILE * 10,
+} as const;
 
 export const SCENES = {
   boot: 'BootScene',
   preload: 'PreloadScene',
-  mainMenu: 'MainMenuScene',
   game: 'GameScene',
   pause: 'PauseScene',
   gameOver: 'GameOverScene',
@@ -21,18 +37,28 @@ export const SCENES = {
 
 export const COLORS = {
   nightSky: 0x0d0716,
-  arenaFloor: 0x1a1226,
-  wall: 0x2b1d3a,
-  vampire: 0x7a3df0,
-  vampireOutline: 0xc9a7ff,
-  hunter: 0xd8cdb4,
-  boss: 0x8a6b2f,
-  bossOutline: 0xffd76b,
   blood: 0xc41e2f,
   coffin: 0x241830,
   coffinOutline: 0x6b4d8f,
   coffinActive: 0xc9a7ff,
   attackArc: 0xff5f7a,
   dawn: 0xff9a3d,
-  uiText: 0xe8ddff,
+} as const;
+
+/** Render depths, back to front. */
+export const DEPTHS = {
+  sky: -10,
+  map: 0,
+  torch: 2,
+  coffinGlow: 3,
+  coffin: 4,
+  pickup: 5,
+  corpse: 6,
+  hunter: 8,
+  boss: 9,
+  player: 10,
+  attackFx: 12,
+  dawnOverlay: 50,
+  hud: 100,
+  menu: 200,
 } as const;

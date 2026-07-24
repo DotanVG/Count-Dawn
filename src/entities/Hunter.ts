@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { HUNTER } from '../data/balance';
-import { TEXTURES } from '../utils/assetKeys';
+import { DEPTHS } from '../game/constants';
+import { TEXTURES, animKey, type Dir4 } from '../utils/assetKeys';
+import { angleToDir4 } from '../utils/direction';
 
 export interface HunterStats {
   health: number;
@@ -16,21 +18,24 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   health: number;
   readonly contactDamage: number;
   protected readonly moveSpeed: number;
+  facing: Dir4 = 'down';
 
   constructor(
     scene: Phaser.Scene,
     x: number,
     y: number,
-    texture: string = TEXTURES.hunter,
     stats: HunterStats = HUNTER,
   ) {
-    super(scene, x, y, texture);
+    super(scene, x, y, TEXTURES.hunterWalk, 0);
     this.health = stats.health;
     this.contactDamage = stats.contactDamage;
     this.moveSpeed = stats.moveSpeed;
     scene.add.existing(this);
     scene.physics.add.existing(this);
-    this.setDepth(5);
+    this.setScale(2);
+    this.setCircle(10, 22, 28);
+    this.setDepth(DEPTHS.hunter);
+    this.play(animKey('hunter', 'walk', 'down'));
   }
 
   get isAlive(): boolean {
@@ -42,7 +47,12 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     if (!this.isAlive) return;
     const angle = Phaser.Math.Angle.Between(this.x, this.y, targetX, targetY);
     this.setVelocity(Math.cos(angle) * this.moveSpeed, Math.sin(angle) * this.moveSpeed);
-    this.setFlipX(Math.cos(angle) < 0);
+
+    const dir = angleToDir4(angle);
+    if (dir !== this.facing) {
+      this.facing = dir;
+      this.play(animKey('hunter', 'walk', dir), true);
+    }
   }
 
   /** Returns true if this hit killed the hunter. Caller handles drops/removal. */
@@ -57,8 +67,33 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
       if (!this.active) return;
       this.clearTint();
       this.setTintMode(Phaser.TintModes.MULTIPLY);
+      this.applyBaseTint();
     });
 
     return this.health <= 0;
+  }
+
+  /** Re-applied after hit flashes; the Captain overrides with his color. */
+  protected applyBaseTint(): void {
+    this.clearTint();
+  }
+
+  /**
+   * Spawns a non-colliding corpse playing the death animation, fading out.
+   * Called by the scene when this hunter dies, right before removal.
+   */
+  spawnCorpse(): void {
+    const corpse = this.scene.add
+      .sprite(this.x, this.y, TEXTURES.hunterDeath, 0)
+      .setScale(this.scaleX, this.scaleY)
+      .setDepth(DEPTHS.corpse);
+    corpse.play(animKey('hunter', 'death', this.facing));
+    this.scene.tweens.add({
+      targets: corpse,
+      alpha: 0,
+      delay: 700,
+      duration: 900,
+      onComplete: () => corpse.destroy(),
+    });
   }
 }

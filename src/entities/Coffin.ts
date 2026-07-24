@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { COLORS } from '../game/constants';
+import { COLORS, DEPTHS } from '../game/constants';
 import { TEXTURES } from '../utils/assetKeys';
 
 /**
@@ -17,9 +17,12 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
     super(scene, x, y, TEXTURES.coffin);
     scene.add.existing(this);
     scene.physics.add.existing(this, true);
-    this.setDepth(2);
+    this.setDepth(DEPTHS.coffin);
 
-    this.glow = scene.add.circle(x, y, 58, COLORS.coffinActive, 0.18).setDepth(1).setVisible(false);
+    this.glow = scene.add
+      .circle(x, y, 58, COLORS.coffinActive, 0.18)
+      .setDepth(DEPTHS.coffinGlow)
+      .setVisible(false);
   }
 
   get isActivated(): boolean {

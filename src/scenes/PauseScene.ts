@@ -25,7 +25,7 @@ export class PauseScene extends Phaser.Scene {
     this.makeButton(GAME_HEIGHT * 0.64, 'Quit to Menu', () => {
       this.scene.stop(SCENES.game);
       this.scene.stop();
-      this.scene.start(SCENES.mainMenu);
+      this.scene.start(SCENES.game); // fresh scene boots into its menu phase
     });
 
     this.input.keyboard?.on('keydown-ESC', () => this.resumeGame());

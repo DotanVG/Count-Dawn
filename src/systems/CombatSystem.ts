@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { PLAYER } from '../data/balance';
-import { COLORS } from '../game/constants';
+import { COLORS, DEPTHS } from '../game/constants';
 import type { Player } from '../entities/Player';
 import { Hunter } from '../entities/Hunter';
 
@@ -31,6 +31,7 @@ export class CombatSystem {
     if (now < this.nextAttackAt || !this.player.isAlive) return;
     this.nextAttackAt = now + PLAYER.attackCooldownMs;
 
+    this.player.playAttackAnim();
     this.onAttack();
     this.drawArc();
 
@@ -53,7 +54,7 @@ export class CombatSystem {
 
   private drawArc(): void {
     const halfArc = Phaser.Math.DegToRad(PLAYER.attackArcHalfAngleDeg);
-    const g = this.scene.add.graphics({ x: this.player.x, y: this.player.y }).setDepth(9);
+    const g = this.scene.add.graphics({ x: this.player.x, y: this.player.y }).setDepth(DEPTHS.attackFx);
     g.fillStyle(COLORS.attackArc, 0.35);
     g.slice(0, 0, PLAYER.attackRange, this.player.aimAngle - halfArc, this.player.aimAngle + halfArc);
     g.fillPath();

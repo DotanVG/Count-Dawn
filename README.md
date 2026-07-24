@@ -8,14 +8,17 @@ A reverse horde survival game for the **"Countdown"** game jam theme.
 - **Production (main):** https://count-dawn.vercel.app
 - **Staging (staging branch):** https://count-dawn-git-staging-dotanvgs-projects.vercel.app
 
-> ⚠️ **Asset status:** all current graphics are simple runtime-generated placeholder shapes (Phaser Graphics). No audio ships yet. Real licensed top-down art and audio will replace them soon — see [docs/ASSET_INTEGRATION.md](docs/ASSET_INTEGRATION.md). No AI-generated art or audio will be used.
+> **Asset status:** the vampire, hunters, Captain and castle now use licensed free pixel-art packs from CraftPix (see Credits). The blood droplet and coffin are still runtime-generated placeholders. No audio ships yet — the hook points are ready ([docs/ASSET_INTEGRATION.md](docs/ASSET_INTEGRATION.md)). No AI-generated art or audio is used.
 
 ## Prototype state
 
 The complete core loop is playable end to end:
 
-- ✅ One castle arena (1280×720 internal resolution, FIT-scaled to the window)
-- ✅ Sunrise countdown (120s) — the visual centerpiece of the HUD, urgent pulse in the last 10s, gradual dawn tint over the night
+- ✅ Castle great-hall built from a 16px dungeon tileset (4x scale): north wall with sky windows, animated torches
+- ✅ Living sky behind the windows: night gradient with twinkling stars → pre-dawn purple → sunrise, with a pixel sun that physically rises into the windows
+- ✅ The main menu **is** the level; START triggers the vampire's fly-in through the center window
+- ✅ Sunrise countdown (60s for fast playtests) — big timer framed in the center window, tick pops, growing tremble, red panic mode + vignette + camera shakes in the last 10s
+- ✅ Fully animated 4-direction vampire (idle/run/attack/hurt/death) and sword-hunter enemies with death animations
 - ✅ Hunters spawn at arena edges every ~1.25s (max 18 alive) and chase the vampire
 - ✅ Mouse-aimed melee arc attack with cooldown pip and hit flash
 - ✅ Dead hunters drop blood pickups; Blood Meter targets 100
@@ -25,7 +28,8 @@ The complete core loop is playable end to end:
 - ✅ Pause overlay (Esc / P), main menu, fullscreen button
 - ✅ Player: invulnerability window + damage flash, world-bounds clamping, frame-rate-independent movement
 - ✅ Unit tests for the pure game rules (countdown single-fire guarantees, coffin activation rules, single end-of-run transition)
-- ⬜ Real art & audio (integration points ready)
+- ⬜ Audio (integration points ready)
+- ⬜ Real coffin / blood-pickup art
 - ⬜ Touch controls (input layer prepared, see below)
 - ⬜ Dash, extra enemy types, boss phases — intentionally out of scope for now
 
@@ -106,4 +110,12 @@ Suggested flow: feature branches → `staging` (playtest on the test URL) → me
 - **Noam** — _(role TBD)_
 - **Abed** — _(role TBD)_
 
-Current graphics are generated placeholders; third-party asset credits will be added here when real assets are integrated.
+### Third-party assets
+
+All from [CraftPix](https://craftpix.net) under the [CraftPix file license](https://craftpix.net/file-licenses/) (free packs, game use permitted):
+
+- **Free Vampire 4-Direction Pixel Character Sprite Pack** — the Count (Vampires1)
+- **Free Base 4-Direction Male Character Pixel Art** — hunters & Hunter Captain (sword variant)
+- **Free 2D Top-Down Pixel Dungeon Asset Pack** — castle tiles & torch flames
+
+The coffin and blood droplet are runtime-generated placeholders. No AI-generated art or audio.

@@ -7,10 +7,10 @@
 export const FAST_DEV_MODE = false;
 
 export const NIGHT = {
-  /** Full night length in seconds. */
-  durationSeconds: FAST_DEV_MODE ? 30 : 120,
+  /** Full night length in seconds (short for fast playtest iterations). */
+  durationSeconds: FAST_DEV_MODE ? 25 : 60,
   /** Boss spawns when this many seconds remain. */
-  bossSpawnAtRemainingSeconds: FAST_DEV_MODE ? 20 : 30,
+  bossSpawnAtRemainingSeconds: FAST_DEV_MODE ? 15 : 25,
   /** Timer turns urgent when this many seconds remain. */
   finalWarningSeconds: 10,
 } as const;

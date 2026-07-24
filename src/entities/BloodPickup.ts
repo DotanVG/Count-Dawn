@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { HUNTER } from '../data/balance';
+import { DEPTHS } from '../game/constants';
 import { TEXTURES } from '../utils/assetKeys';
 
 /** A dropped blood droplet. Sits in the arena until the player overlaps it. */
@@ -10,7 +11,7 @@ export class BloodPickup extends Phaser.Physics.Arcade.Sprite {
     super(scene, x, y, TEXTURES.blood);
     scene.add.existing(this);
     scene.physics.add.existing(this);
-    this.setDepth(3);
+    this.setDepth(DEPTHS.pickup);
 
     // Gentle bob so pickups read as collectible.
     scene.tweens.add({

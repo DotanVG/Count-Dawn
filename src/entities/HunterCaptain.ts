@@ -1,12 +1,15 @@
 import Phaser from 'phaser';
 import { BOSS } from '../data/balance';
+import { DEPTHS } from '../game/constants';
 import { EVENTS, type GameEventEmitter } from '../game/events';
-import { TEXTURES } from '../utils/assetKeys';
 import { Hunter } from './Hunter';
 
+/** Tint that separates the Captain from his men (dark blood-red armor look). */
+const CAPTAIN_TINT = 0xff9a7a;
+
 /**
- * The boss. One phase, bigger, tougher, hits harder; broadcasts its health so
- * the HUD boss bar can follow without a direct reference.
+ * The boss. Same sheet as a hunter but much larger, tinted, tougher;
+ * broadcasts its health so the HUD boss bar can follow.
  */
 export class HunterCaptain extends Hunter {
   readonly maxHealth = BOSS.health;
@@ -17,8 +20,14 @@ export class HunterCaptain extends Hunter {
     y: number,
     private readonly emitter: GameEventEmitter,
   ) {
-    super(scene, x, y, TEXTURES.boss, BOSS);
-    this.setDepth(6);
+    super(scene, x, y, BOSS);
+    this.setScale(3.4);
+    this.setDepth(DEPTHS.boss);
+    this.applyBaseTint();
+  }
+
+  protected override applyBaseTint(): void {
+    this.setTint(CAPTAIN_TINT);
   }
 
   override takeDamage(amount: number): boolean {
@@ -31,12 +40,13 @@ export class HunterCaptain extends Hunter {
     return killed;
   }
 
-  /** Entrance flourish so the spawn reads clearly even with placeholder art. */
+  /** Entrance flourish: bursts up from the floor with a camera shake. */
   playEntrance(): void {
-    this.setScale(0.2);
+    const targetScale = this.scaleX;
+    this.setScale(0.5);
     this.scene.tweens.add({
       targets: this,
-      scale: 1,
+      scale: targetScale,
       duration: 450,
       ease: 'Back.easeOut',
     });

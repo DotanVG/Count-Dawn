@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { HUNTER } from '../data/balance';
-import { GAME_WIDTH, GAME_HEIGHT, WALL_THICKNESS } from '../game/constants';
+import { ARENA } from '../game/constants';
 
 /**
  * Spawns regular hunters at random arena-edge positions on a fixed interval,
@@ -42,17 +42,17 @@ export class SpawnSystem {
   }
 
   private randomEdgePosition(): { x: number; y: number } {
-    const margin = WALL_THICKNESS + 24;
+    const inset = 40;
     const edge = Phaser.Math.Between(0, 3);
     switch (edge) {
-      case 0: // top
-        return { x: Phaser.Math.Between(margin, GAME_WIDTH - margin), y: margin };
+      case 0: // along the north wall
+        return { x: Phaser.Math.Between(ARENA.left + inset, ARENA.right - inset), y: ARENA.top + inset };
       case 1: // bottom
-        return { x: Phaser.Math.Between(margin, GAME_WIDTH - margin), y: GAME_HEIGHT - margin };
+        return { x: Phaser.Math.Between(ARENA.left + inset, ARENA.right - inset), y: ARENA.bottom - inset };
       case 2: // left
-        return { x: margin, y: Phaser.Math.Between(margin, GAME_HEIGHT - margin) };
+        return { x: ARENA.left + inset, y: Phaser.Math.Between(ARENA.top + inset, ARENA.bottom - inset) };
       default: // right
-        return { x: GAME_WIDTH - margin, y: Phaser.Math.Between(margin, GAME_HEIGHT - margin) };
+        return { x: ARENA.right - inset, y: Phaser.Math.Between(ARENA.top + inset, ARENA.bottom - inset) };
     }
   }
 }

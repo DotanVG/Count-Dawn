@@ -26,7 +26,7 @@ export class BossHealthBar {
       .setOrigin(0.5);
 
     this.container = scene.add
-      .container(GAME_WIDTH / 2, 122, [bg, this.fill, label])
+      .container(GAME_WIDTH / 2, 252, [bg, this.fill, label])
       .setDepth(100)
       .setVisible(false);
 
