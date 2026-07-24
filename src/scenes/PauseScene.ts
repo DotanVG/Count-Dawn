@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, SCENES } from '../game/constants';
+import { isTouchDevice } from '../game/device';
 
 const FONT = 'Trebuchet MS, sans-serif';
 
@@ -21,7 +22,11 @@ export class PauseScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.makeButton(GAME_HEIGHT * 0.52, 'Resume  (Esc / P)', () => this.resumeGame());
+    this.makeButton(
+      GAME_HEIGHT * 0.52,
+      isTouchDevice() ? 'Resume' : 'Resume  (Esc / P)',
+      () => this.resumeGame(),
+    );
     this.makeButton(GAME_HEIGHT * 0.64, 'Quit to Menu', () => {
       this.scene.stop(SCENES.game);
       this.scene.stop();

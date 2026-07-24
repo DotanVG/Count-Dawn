@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { BLOOD, NIGHT, PLAYER } from '../data/balance';
-import { DEPTHS, GAME_WIDTH, GAME_HEIGHT } from '../game/constants';
+import { DEPTHS, GAME_WIDTH, GAME_HEIGHT, HUD_ANCHORS } from '../game/constants';
 import { EVENTS } from '../game/events';
+import { TEXTURES } from '../utils/assetKeys';
 import type { Objective } from '../types/game';
 import { BossHealthBar } from './BossHealthBar';
 
@@ -13,12 +14,16 @@ const OBJECTIVE_TEXT: Record<Objective, string> = {
 };
 
 const FONT = 'Trebuchet MS, sans-serif';
+const HP_GREEN = 0x4caf50;
+const BLOOD_RED = 0xc41e2f;
+const BAR_W = 216;
 
 /**
  * All in-game HUD elements. The sunrise timer is the centerpiece: it sits in
  * the middle sky window (where the sun rises into it), pops on every tick,
  * trembles harder as time runs out, and goes into a red panic mode for the
- * final ten seconds, complete with a pulsing vignette and camera shakes.
+ * final ten seconds. Health/blood changes puff matching green/red particles
+ * at the bars, and the victory coffin-transfer drains blood into health.
  */
 export class HUD {
   private timerText: Phaser.GameObjects.Text;
@@ -28,9 +33,10 @@ export class HUD {
   private bloodBarFill: Phaser.GameObjects.Rectangle;
   private bloodText: Phaser.GameObjects.Text;
   private objectiveText: Phaser.GameObjects.Text;
-  private cooldownPip: Phaser.GameObjects.Arc;
   private vignette: Phaser.GameObjects.Rectangle;
   private bossBar: BossHealthBar;
+  private hpParticles: Phaser.GameObjects.Particles.ParticleEmitter;
+  private bloodParticles: Phaser.GameObjects.Particles.ParticleEmitter;
   private appearTargets: Phaser.GameObjects.GameObject[] = [];
   private panic = false;
 
@@ -53,11 +59,11 @@ export class HUD {
 
     // Health (top-left).
     const healthBg = scene.add
-      .rectangle(20, 24, 220, 18, 0x000000, 0.55)
+      .rectangle(20, 24, BAR_W + 4, 18, 0x000000, 0.55)
       .setOrigin(0, 0.5)
       .setDepth(DEPTHS.hud);
     this.healthBarFill = scene.add
-      .rectangle(22, 24, 216, 14, 0x4caf50)
+      .rectangle(22, 24, BAR_W, 14, HP_GREEN)
       .setOrigin(0, 0.5)
       .setDepth(DEPTHS.hud + 1);
     this.healthText = scene.add
@@ -66,11 +72,11 @@ export class HUD {
 
     // Blood meter (top-right).
     const bloodBg = scene.add
-      .rectangle(GAME_WIDTH - 240, 24, 220, 18, 0x000000, 0.55)
+      .rectangle(GAME_WIDTH - 240, 24, BAR_W + 4, 18, 0x000000, 0.55)
       .setOrigin(0, 0.5)
       .setDepth(DEPTHS.hud);
     this.bloodBarFill = scene.add
-      .rectangle(GAME_WIDTH - 238, 24, 0, 14, 0xc41e2f)
+      .rectangle(GAME_WIDTH - 238, 24, 0, 14, BLOOD_RED)
       .setOrigin(0, 0.5)
       .setDepth(DEPTHS.hud + 1);
     this.bloodText = scene.add
@@ -89,17 +95,31 @@ export class HUD {
       .setOrigin(0.5)
       .setDepth(DEPTHS.hud);
 
-    // Attack cooldown pip (bottom-left).
-    this.cooldownPip = scene.add
-      .circle(34, GAME_HEIGHT - 34, 14, 0xff5f7a, 1)
-      .setDepth(DEPTHS.hud);
-
-    // Red panic vignette for the final seconds (border-only feel via 4 edges
-    // would cost more objects; a soft full flash reads fine at low alpha).
+    // Red panic vignette for the final seconds.
     this.vignette = scene.add
-      .rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0xc41e2f, 0)
+      .rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, BLOOD_RED, 0)
       .setOrigin(0)
       .setDepth(DEPTHS.hud - 1);
+
+    // Green/red puffs used for HP loss, blood gain, and the coffin transfer.
+    this.hpParticles = scene.add
+      .particles(0, 0, TEXTURES.particle, {
+        speed: { min: 40, max: 140 },
+        lifespan: { min: 250, max: 550 },
+        scale: { start: 1.1, end: 0 },
+        tint: HP_GREEN,
+        emitting: false,
+      })
+      .setDepth(DEPTHS.hud + 2);
+    this.bloodParticles = scene.add
+      .particles(0, 0, TEXTURES.particle, {
+        speed: { min: 40, max: 140 },
+        lifespan: { min: 250, max: 550 },
+        scale: { start: 1.1, end: 0 },
+        tint: 0xff4d4d,
+        emitting: false,
+      })
+      .setDepth(DEPTHS.hud + 2);
 
     this.bossBar = new BossHealthBar(scene, emitter);
 
@@ -115,13 +135,12 @@ export class HUD {
       this.bloodBarFill,
       this.bloodText,
       this.objectiveText,
-      this.cooldownPip,
     ];
 
     emitter.on(EVENTS.COUNTDOWN_TICK, this.onTick, this);
     emitter.on(EVENTS.FINAL_TEN_SECONDS, this.onFinalSeconds, this);
-    emitter.on(EVENTS.PLAYER_DAMAGED, this.setHealth, this);
-    emitter.on(EVENTS.BLOOD_CHANGED, this.setBlood, this);
+    emitter.on(EVENTS.PLAYER_DAMAGED, this.onPlayerDamaged, this);
+    emitter.on(EVENTS.BLOOD_CHANGED, this.onBloodChanged, this);
     emitter.on(EVENTS.OBJECTIVE_CHANGED, this.onObjective, this);
   }
 
@@ -144,17 +163,50 @@ export class HUD {
     }
   }
 
-  /** Called from GameScene.update — cooldown recovery is a smooth value, not an event. */
-  setCooldownProgress(progress: number): void {
-    this.cooldownPip.setAlpha(progress >= 1 ? 1 : 0.25 + progress * 0.4);
-    this.cooldownPip.setScale(0.6 + progress * 0.4);
+  /** Red burst where a bloodlet reaches the blood bar. */
+  burstAtBloodBar(): void {
+    this.bloodParticles.explode(8, HUD_ANCHORS.bloodBar.x, HUD_ANCHORS.bloodBar.y);
+  }
+
+  /**
+   * Victory beat: the blood meter drains into the health bar — HP fills as
+   * blood empties, green/red particles streaming at each bar.
+   */
+  playCoffinTransfer(bloodRatio: number, healthRatio: number, onComplete: () => void): void {
+    const stream = this.scene.time.addEvent({
+      delay: 90,
+      loop: true,
+      callback: () => {
+        this.hpParticles.explode(5, 22 + this.healthBarFill.width, 24);
+        this.bloodParticles.explode(5, GAME_WIDTH - 238 + this.bloodBarFill.width, 24);
+      },
+    });
+
+    this.scene.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: 1300,
+      ease: 'Sine.easeInOut',
+      onUpdate: (tween) => {
+        const t = tween.getValue() ?? 0;
+        this.bloodBarFill.width = BAR_W * bloodRatio * (1 - t);
+        this.healthBarFill.width = BAR_W * Phaser.Math.Linear(healthRatio, 1, t);
+        this.healthBarFill.setFillStyle(HP_GREEN);
+      },
+      onComplete: () => {
+        stream.remove();
+        this.healthText.setText(`HP ${PLAYER.maxHealth}/${PLAYER.maxHealth}`);
+        this.bloodText.setText('Blood spent');
+        onComplete();
+      },
+    });
   }
 
   destroy(): void {
     this.emitter.off(EVENTS.COUNTDOWN_TICK, this.onTick, this);
     this.emitter.off(EVENTS.FINAL_TEN_SECONDS, this.onFinalSeconds, this);
-    this.emitter.off(EVENTS.PLAYER_DAMAGED, this.setHealth, this);
-    this.emitter.off(EVENTS.BLOOD_CHANGED, this.setBlood, this);
+    this.emitter.off(EVENTS.PLAYER_DAMAGED, this.onPlayerDamaged, this);
+    this.emitter.off(EVENTS.BLOOD_CHANGED, this.onBloodChanged, this);
     this.emitter.off(EVENTS.OBJECTIVE_CHANGED, this.onObjective, this);
     this.bossBar.destroy();
   }
@@ -175,7 +227,6 @@ export class HUD {
       1,
     );
 
-    // Tick pop, bigger as tension grows.
     this.scene.tweens.add({
       targets: this.timerText,
       scale: { from: 1 + 0.08 + tension * 0.22, to: 1 },
@@ -183,7 +234,6 @@ export class HUD {
       ease: 'Quad.easeOut',
     });
 
-    // Tremble: random jitter around the home position, growing with tension.
     if (tension > 0) {
       const shake = 2 + tension * 6;
       this.timerText.setPosition(
@@ -212,16 +262,26 @@ export class HUD {
     });
   }
 
+  private onPlayerDamaged(current: number, max: number): void {
+    this.setHealth(current, max);
+    // Green motes falling away from the end of the health bar — HP lost.
+    this.hpParticles.explode(10, 22 + this.healthBarFill.width, 24);
+  }
+
+  private onBloodChanged(current: number, target: number): void {
+    this.setBlood(current, target);
+  }
+
   private setHealth(current: number, max: number): void {
     const ratio = Phaser.Math.Clamp(current / max, 0, 1);
-    this.healthBarFill.width = 216 * ratio;
-    this.healthBarFill.setFillStyle(ratio > 0.35 ? 0x4caf50 : 0xe53935);
+    this.healthBarFill.width = BAR_W * ratio;
+    this.healthBarFill.setFillStyle(ratio > 0.35 ? HP_GREEN : 0xe53935);
     this.healthText.setText(`HP ${current}/${max}`);
   }
 
   private setBlood(current: number, target: number): void {
     const ratio = Phaser.Math.Clamp(current / target, 0, 1);
-    this.bloodBarFill.width = 216 * ratio;
+    this.bloodBarFill.width = BAR_W * ratio;
     this.bloodText.setText(`Blood ${Math.min(current, target)}/${target}`);
   }
 

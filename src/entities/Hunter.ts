@@ -19,6 +19,7 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   readonly contactDamage: number;
   protected readonly moveSpeed: number;
   facing: Dir4 = 'down';
+  private nextSwingAt = 0;
 
   constructor(
     scene: Phaser.Scene,
@@ -46,11 +47,31 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   pursue(targetX: number, targetY: number): void {
     if (!this.isAlive) return;
     const angle = Phaser.Math.Angle.Between(this.x, this.y, targetX, targetY);
-    this.setVelocity(Math.cos(angle) * this.moveSpeed, Math.sin(angle) * this.moveSpeed);
-
     const dir = angleToDir4(angle);
-    if (dir !== this.facing) {
-      this.facing = dir;
+    this.facing = dir;
+
+    // Range check against sprite scale so the bigger Captain swings sooner.
+    const dist = Phaser.Math.Distance.Between(this.x, this.y, targetX, targetY);
+    const inMeleeRange = dist <= HUNTER.meleeRange * (this.scaleX / 2);
+
+    // Let a started swing play out before movement anims take over again.
+    const swinging =
+      this.anims.currentAnim?.key.startsWith('hunter-attack') === true && this.anims.isPlaying;
+
+    if (inMeleeRange) {
+      this.setVelocity(0, 0);
+      const now = this.scene.time.now;
+      if (!swinging && now >= this.nextSwingAt) {
+        this.nextSwingAt = now + HUNTER.meleeIntervalMs;
+        this.play(animKey('hunter', 'attack', dir), true);
+      } else if (!swinging) {
+        this.play(animKey('hunter', 'idle', dir), true);
+      }
+      return;
+    }
+
+    this.setVelocity(Math.cos(angle) * this.moveSpeed, Math.sin(angle) * this.moveSpeed);
+    if (!swinging) {
       this.play(animKey('hunter', 'walk', dir), true);
     }
   }

@@ -24,8 +24,12 @@ export class PreloadScene extends Phaser.Scene {
     this.load.spritesheet(TEXTURES.hunterIdle, 'assets/characters/humans/hunter_idle.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.hunterWalk, 'assets/characters/humans/hunter_walk.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.hunterRun, 'assets/characters/humans/hunter_run.png', CHAR_FRAME);
+    this.load.spritesheet(TEXTURES.hunterAttack, 'assets/characters/humans/hunter_attack.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.hunterHurt, 'assets/characters/humans/hunter_hurt.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.hunterDeath, 'assets/characters/humans/hunter_death.png', CHAR_FRAME);
+
+    // Menu / itch cover art.
+    this.load.image(TEXTURES.cover, 'assets/ui/count_dawn_cover.jpeg');
 
     // Castle — CraftPix free top-down dungeon pack.
     this.load.image(TEXTURES.tiles, 'assets/environment/castle/walls_floor.png');

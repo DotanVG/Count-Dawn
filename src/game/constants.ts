@@ -1,6 +1,8 @@
 /** Displayed game title and metadata — rename the game from this one place. */
 export const GAME_TITLE = 'Count Dawn';
 export const GAME_TAGLINE = 'Hunt the hunters. Fill your veins. Beat the sunrise.';
+/** Menu tagline, typed/erased one sentence at a time. */
+export const TAGLINE_SENTENCES = ['Hunt the hunters', 'Fill your veins', 'Beat the sunrise'] as const;
 
 /** Stable internal resolution; the canvas is fitted to the window by Phaser Scale.FIT. */
 export const GAME_WIDTH = 1280;
@@ -33,6 +35,13 @@ export const SCENES = {
   pause: 'PauseScene',
   gameOver: 'GameOverScene',
   victory: 'VictoryScene',
+  rotate: 'RotateScene',
+} as const;
+
+/** Screen anchors the gameplay layer needs to aim effects at (bar fill edges). */
+export const HUD_ANCHORS = {
+  healthBar: { x: 130, y: 24 },
+  bloodBar: { x: GAME_WIDTH - 130, y: 24 },
 } as const;
 
 export const COLORS = {

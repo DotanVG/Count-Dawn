@@ -16,7 +16,10 @@ The complete core loop is playable end to end:
 
 - ✅ Castle great-hall built from a 16px dungeon tileset (4x scale): north wall with sky windows, animated torches
 - ✅ Living sky behind the windows: night gradient with twinkling stars → pre-dawn purple → sunrise, with a pixel sun that physically rises into the windows
-- ✅ The main menu **is** the level; START triggers the vampire's fly-in through the center window
+- ✅ The main menu **is** the level: cover art + typewriter tagline over the night hall; START opens the coffin and the Count spirals out across the room to land dead center
+- ✅ Victory reverses the entrance — the Count spirals back into the coffin and his collected blood drains into his health bar with green/red particle streams
+- ✅ Hunters drop +1 bloodlets that fly to the blood bar on pickup (red burst on arrival); hunters stop and swing their swords in melee range
+- ✅ Mobile support: red virtual joystick, ⚔ auto-strike-nearest button (Space on desktop), tap-to-strike toward the tap, rotate-to-landscape gate, device-aware menus
 - ✅ Sunrise countdown (60s for fast playtests) — big timer framed in the center window, tick pops, growing tremble, red panic mode + vignette + camera shakes in the last 10s
 - ✅ Fully animated 4-direction vampire (idle/run/attack/hurt/death) and sword-hunter enemies with death animations
 - ✅ Hunters spawn at arena edges every ~1.25s (max 18 alive) and chase the vampire
@@ -37,15 +40,15 @@ Full loop details in [docs/GAME_LOOP.md](docs/GAME_LOOP.md).
 
 ## Controls
 
-| Action  | Input                    |
-| ------- | ------------------------ |
-| Move    | WASD / Arrow keys        |
-| Aim     | Mouse                    |
-| Attack  | Left click / Space       |
-| Pause   | Esc / P                  |
-| Restart | R (on end screens)       |
+| Action         | Desktop            | Mobile                      |
+| -------------- | ------------------ | --------------------------- |
+| Move           | WASD / Arrow keys  | Virtual joystick            |
+| Aim + Attack   | Mouse + Left click | Tap toward the target       |
+| Strike nearest | Space (hold)       | ⚔ button (hold)             |
+| Pause          | Esc / P            | ⏸ button                    |
+| Restart        | R (on end screens) | Tap the button              |
 
-Touch controls are not implemented yet; the input layer ([src/systems/InputController.ts](src/systems/InputController.ts)) is built so a virtual joystick can slot in later.
+Mobile requires landscape; a rotate prompt appears in portrait.
 
 ## Tech
 

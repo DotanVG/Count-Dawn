@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, SCENES } from '../game/constants';
+import { isTouchDevice } from '../game/device';
 import type { RunSummary } from '../types/game';
 
 const FONT = 'Trebuchet MS, sans-serif';
@@ -43,8 +44,9 @@ export class GameOverScene extends Phaser.Scene {
       )
       .setOrigin(0.5);
 
+    const touch = isTouchDevice();
     const restart = this.add
-      .text(cx, GAME_HEIGHT * 0.66, 'RESTART  (R)', {
+      .text(cx, GAME_HEIGHT * 0.66, touch ? 'RESTART' : 'RESTART  (R)', {
         fontFamily: FONT,
         fontSize: '28px',
         color: '#0d0716',
@@ -60,12 +62,14 @@ export class GameOverScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-R', () => this.scene.start(SCENES.game, { autostart: true }));
     this.input.keyboard?.on('keydown-M', () => this.scene.start(SCENES.game));
 
-    this.add
-      .text(cx, GAME_HEIGHT * 0.78, 'M — back to menu', {
+    const menuLink = this.add
+      .text(cx, GAME_HEIGHT * 0.78, touch ? 'Back to menu' : 'M — back to menu', {
         fontFamily: FONT,
-        fontSize: '16px',
+        fontSize: touch ? '20px' : '16px',
         color: '#9d8bbf',
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setInteractive({ useHandCursor: true });
+    menuLink.on('pointerdown', () => this.scene.start(SCENES.game));
   }
 }

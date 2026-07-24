@@ -6,6 +6,7 @@ import { GameScene } from '../scenes/GameScene';
 import { PauseScene } from '../scenes/PauseScene';
 import { GameOverScene } from '../scenes/GameOverScene';
 import { VictoryScene } from '../scenes/VictoryScene';
+import { RotateScene } from '../scenes/RotateScene';
 
 /**
  * Phaser configuration: stable 1280x720 internal world, FIT-scaled to the
@@ -31,5 +32,5 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, PreloadScene, GameScene, PauseScene, GameOverScene, VictoryScene],
+  scene: [BootScene, PreloadScene, GameScene, PauseScene, GameOverScene, VictoryScene, RotateScene],
 };

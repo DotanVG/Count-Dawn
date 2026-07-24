@@ -4,17 +4,20 @@ import { TEXTURES } from '../utils/assetKeys';
 
 /**
  * The coffin: visible from the start, inert until GameFlowSystem activates it.
+ * Opens/closes for the vampire's entrances and exits (placeholder textures
+ * for now — the artist's open/close sprites will replace the two keys).
  * When approached too early it shows a short hint about unmet requirements.
  */
 export class Coffin extends Phaser.Physics.Arcade.Image {
   private activated = false;
+  private opened = false;
   private pulseTween: Phaser.Tweens.Tween | null = null;
   private glow: Phaser.GameObjects.Arc;
   private hintText: Phaser.GameObjects.Text | null = null;
   private hintCooldownUntil = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene, x, y, TEXTURES.coffin);
+    super(scene, x, y, TEXTURES.coffinClosed);
     scene.add.existing(this);
     scene.physics.add.existing(this, true);
     this.setDepth(DEPTHS.coffin);
@@ -27,6 +30,25 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
 
   get isActivated(): boolean {
     return this.activated;
+  }
+
+  get isOpen(): boolean {
+    return this.opened;
+  }
+
+  /** Swap to the open/closed art with a small pop so the change reads. */
+  setOpen(open: boolean): void {
+    if (this.opened === open) return;
+    this.opened = open;
+    this.setTexture(open ? TEXTURES.coffinOpen : TEXTURES.coffinClosed);
+    if (this.activated) this.setTint(COLORS.coffinActive);
+    this.scene.tweens.add({
+      targets: this,
+      scaleX: { from: 1.12, to: 1 },
+      scaleY: { from: 1.08, to: 1 },
+      duration: 180,
+      ease: 'Quad.easeOut',
+    });
   }
 
   activate(): void {

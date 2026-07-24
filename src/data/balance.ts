@@ -31,11 +31,15 @@ export const HUNTER = {
   health: 50,
   contactDamage: 10,
   moveSpeed: 110,
-  bloodDrop: 10,
+  /** Bloodlets scattered on death; each is worth BLOOD.dropletValue. */
+  bloodDroplets: 5,
   spawnIntervalMs: 1250,
   maxAlive: 18,
   /** Hunters never spawn closer than this to the player. */
   minSpawnDistanceFromPlayer: 220,
+  /** Within this range the hunter stops and swings his sword. */
+  meleeRange: 72,
+  meleeIntervalMs: 900,
 } as const;
 
 export const BOSS = {
@@ -45,5 +49,7 @@ export const BOSS = {
 } as const;
 
 export const BLOOD = {
-  target: 100,
+  target: 50,
+  /** Each collected bloodlet is worth this much. */
+  dropletValue: 1,
 } as const;

@@ -1,16 +1,17 @@
 import Phaser from 'phaser';
-import { BLOOD, NIGHT } from '../data/balance';
+import { BLOOD, HUNTER, NIGHT, PLAYER } from '../data/balance';
 import {
   ARENA,
   COLORS,
   DEPTHS,
-  GAME_TAGLINE,
-  GAME_TITLE,
   GAME_WIDTH,
   GAME_HEIGHT,
+  HUD_ANCHORS,
   SCENES,
+  TAGLINE_SENTENCES,
 } from '../game/constants';
 import { EVENTS } from '../game/events';
+import { isTouchDevice } from '../game/device';
 import { Player } from '../entities/Player';
 import { Hunter } from '../entities/Hunter';
 import { HunterCaptain } from '../entities/HunterCaptain';
@@ -25,29 +26,35 @@ import { AudioSystem } from '../systems/AudioSystem';
 import { CastleMap } from '../world/CastleMap';
 import { DawnSky } from '../world/DawnSky';
 import { HUD } from '../ui/HUD';
-import { AUDIO } from '../utils/assetKeys';
+import { TouchControls } from '../ui/TouchControls';
+import { TEXTURES, AUDIO } from '../utils/assetKeys';
 import type { EndCause, RunSummary } from '../types/game';
 
 type Phase = 'menu' | 'intro' | 'playing' | 'ended';
 
 interface GameSceneData {
-  /** Skip the menu (used by the restart buttons) and fly straight in. */
+  /** Skip the menu (used by the restart buttons) and rise straight from the coffin. */
   autostart?: boolean;
 }
 
 const FONT = 'Trebuchet MS, sans-serif';
-const PLAYER_SPAWN = { x: 280, y: 430 };
 const COFFIN_POS = { x: 150, y: 430 };
-/** The vampire flies in through the middle sky window. */
-const FLY_IN_START = { x: GAME_WIDTH / 2, y: 120 };
+/** The vampire's landing spot: the center of the hall. */
+const PLAYER_SPAWN = {
+  x: (ARENA.left + ARENA.right) / 2,
+  y: (ARENA.top + ARENA.bottom) / 2,
+};
 
 /**
  * One night in the castle. The scene doubles as the main menu: the hall,
- * sky and torches are always alive; pressing START triggers the vampire
- * fly-in, the HUD appears and the countdown begins.
+ * sky and torches are always alive; pressing START opens the coffin, the
+ * Count spirals out across the hall and lands in the middle, the HUD
+ * appears and the countdown begins. Victory reverses it — he spirals back
+ * into the coffin and his spent blood refills his health.
  */
 export class GameScene extends Phaser.Scene {
   private phase: Phase = 'menu';
+  private isTouch = false;
   private emitter!: Phaser.Events.EventEmitter;
   private flow!: GameFlowSystem;
   private countdown: CountdownSystem | null = null;
@@ -62,9 +69,11 @@ export class GameScene extends Phaser.Scene {
   private combat!: CombatSystem;
   private spawner: SpawnSystem | null = null;
   private hud: HUD | null = null;
+  private touch: TouchControls | null = null;
   private dawnOverlay!: Phaser.GameObjects.Rectangle;
   private nightOverlay!: Phaser.GameObjects.Rectangle;
   private menuUi: Phaser.GameObjects.Container | null = null;
+  private taglineTimer: Phaser.Time.TimerEvent | null = null;
 
   constructor() {
     super(SCENES.game);
@@ -72,10 +81,12 @@ export class GameScene extends Phaser.Scene {
 
   create(data: GameSceneData): void {
     this.phase = 'menu';
+    this.isTouch = isTouchDevice();
     this.boss = null;
     this.countdown = null;
     this.spawner = null;
     this.hud = null;
+    this.touch = null;
 
     this.emitter = new Phaser.Events.EventEmitter();
     this.flow = new GameFlowSystem(this.emitter, BLOOD.target);
@@ -131,25 +142,67 @@ export class GameScene extends Phaser.Scene {
     this.countdown.update(delta);
     if (this.phase !== 'playing') return; // dawn may have just ended the run
 
+    this.updatePlayerControl();
+
+    for (const hunter of this.getAttackTargets()) {
+      hunter.pursue(this.player.x, this.player.y);
+    }
+
+    const p = this.countdown.progress;
+    this.nightOverlay.setAlpha(0.42 * (1 - p * p));
+    this.dawnOverlay.setAlpha(p * p * 0.18);
+  }
+
+  /** Called by the mobile pause button; the Esc/P keys route here too. */
+  requestPause(): void {
+    if (this.phase !== 'playing' || this.scene.isPaused()) return;
+    this.scene.pause();
+    this.scene.launch(SCENES.pause);
+  }
+
+  // ── Per-device control routing ──────────────────────────────────────────
+
+  private updatePlayerControl(): void {
+    if (this.isTouch && this.touch) {
+      const mv = this.touch.getMove();
+      this.player.move(mv.x, mv.y);
+      // Face the direction of travel; taps/strikes override at strike time.
+      if (mv.x !== 0 || mv.y !== 0) {
+        this.player.aimAt(this.player.x + mv.x * 100, this.player.y + mv.y * 100);
+      }
+      if (this.touch.isAutoAttackHeld()) {
+        this.autoAttackNearest();
+      }
+      return;
+    }
+
     const move = this.inputController.getMoveVector();
     this.player.move(move.x, move.y);
 
     const aim = this.inputController.getAimPoint();
     this.player.aimAt(aim.x, aim.y);
 
-    if (this.inputController.isAttackDown()) {
+    if (this.inputController.isMouseAttackDown()) {
       this.combat.tryAttack(this.getAttackTargets());
+    } else if (this.inputController.isAutoAttackDown()) {
+      this.autoAttackNearest();
     }
+  }
 
-    for (const hunter of this.getAttackTargets()) {
-      hunter.pursue(this.player.x, this.player.y);
+  /** Space / ⚔ button: turn toward the nearest living hunter and strike. */
+  private autoAttackNearest(): void {
+    const targets = this.getAttackTargets();
+    let nearest: Hunter | null = null;
+    let nearestDist = Infinity;
+    for (const t of targets) {
+      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, t.x, t.y);
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearest = t;
+      }
     }
-
-    this.hud?.setCooldownProgress(this.combat.cooldownProgress);
-
-    const p = this.countdown.progress;
-    this.nightOverlay.setAlpha(0.42 * (1 - p * p));
-    this.dawnOverlay.setAlpha(p * p * 0.18);
+    if (nearest) this.player.aimAt(nearest.x, nearest.y);
+    this.combat.tryAttack(targets);
   }
 
   // ── Menu & intro ────────────────────────────────────────────────────────
@@ -158,30 +211,25 @@ export class GameScene extends Phaser.Scene {
     const cx = GAME_WIDTH / 2;
 
     const dim = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0d0716, 0.45).setOrigin(0);
-    const title = this.add
-      .text(cx, GAME_HEIGHT * 0.3, GAME_TITLE, {
-        fontFamily: FONT,
-        fontSize: '84px',
-        color: '#c9a7ff',
-        fontStyle: 'bold',
-        stroke: '#0d0716',
-        strokeThickness: 10,
-      })
-      .setOrigin(0.5);
+
+    // Cover art, fully opaque, centered in the upper middle of the page.
+    const cover = this.add.image(cx, 260, TEXTURES.cover).setDisplaySize(300, 300);
+
+    // Typewriter tagline: types a sentence, holds, deletes it, types the next.
     const tagline = this.add
-      .text(cx, GAME_HEIGHT * 0.42, GAME_TAGLINE, { fontFamily: FONT, fontSize: '22px', color: '#e8ddff' })
+      .text(cx, 470, '', { fontFamily: FONT, fontSize: '30px', color: '#e8ddff', fontStyle: 'bold' })
       .setOrigin(0.5);
+    this.startTaglineTyper(tagline);
+
+    const instructions = this.isTouch
+      ? 'Joystick — Move      Tap — Strike toward tap      ⚔ — Strike nearest      ⏸ — Pause'
+      : 'Move — WASD / Arrows      Aim — Mouse      Attack — Click / Space      Pause — Esc / P';
     const controls = this.add
-      .text(
-        cx,
-        GAME_HEIGHT * 0.55,
-        'Move — WASD / Arrows      Aim — Mouse      Attack — Click / Space      Pause — Esc / P',
-        { fontFamily: FONT, fontSize: '17px', color: '#9d8bbf' },
-      )
+      .text(cx, 545, instructions, { fontFamily: FONT, fontSize: '17px', color: '#9d8bbf' })
       .setOrigin(0.5);
 
     const start = this.add
-      .text(cx, GAME_HEIGHT * 0.7, 'START NIGHT', {
+      .text(cx, 630, 'START NIGHT', {
         fontFamily: FONT,
         fontSize: '34px',
         color: '#0d0716',
@@ -203,49 +251,122 @@ export class GameScene extends Phaser.Scene {
       ease: 'Sine.easeInOut',
     });
 
-    this.menuUi = this.add.container(0, 0, [dim, title, tagline, controls, start]).setDepth(DEPTHS.menu);
+    this.menuUi = this.add.container(0, 0, [dim, cover, tagline, controls, start]).setDepth(DEPTHS.menu);
 
     this.input.keyboard?.once('keydown-ENTER', () => this.startIntro());
+  }
+
+  /** Write-stream / reverse-stream the three tagline sentences, forever. */
+  private startTaglineTyper(target: Phaser.GameObjects.Text): void {
+    let sentence = 0;
+    let length = 0;
+    let mode: 'typing' | 'holding' | 'deleting' = 'typing';
+    let holdTicks = 0;
+
+    this.taglineTimer = this.time.addEvent({
+      delay: 55,
+      loop: true,
+      callback: () => {
+        const text = TAGLINE_SENTENCES[sentence];
+        if (mode === 'typing') {
+          length++;
+          target.setText(text.slice(0, length));
+          if (length >= text.length) {
+            mode = 'holding';
+            holdTicks = 16; // ~0.9s pause on the full sentence
+          }
+        } else if (mode === 'holding') {
+          if (--holdTicks <= 0) mode = 'deleting';
+        } else {
+          length--;
+          target.setText(text.slice(0, length));
+          if (length <= 0) {
+            sentence = (sentence + 1) % TAGLINE_SENTENCES.length;
+            mode = 'typing';
+          }
+        }
+      },
+    });
   }
 
   private startIntro(): void {
     if (this.phase !== 'menu') return;
     this.phase = 'intro';
 
+    this.taglineTimer?.remove();
+    this.taglineTimer = null;
     if (this.menuUi) {
       const ui = this.menuUi;
       this.menuUi = null;
       this.tweens.add({ targets: ui, alpha: 0, duration: 300, onComplete: () => ui.destroy() });
     }
 
-    // The Count swoops in through the middle window.
+    // The coffin creaks open and the Count rises out of it…
+    this.coffin.setOpen(true);
     this.player
       .setVisible(true)
-      .setPosition(FLY_IN_START.x, FLY_IN_START.y)
-      .setScale(0.7)
-      .setAlpha(0.6);
+      .setPosition(COFFIN_POS.x, COFFIN_POS.y - 20)
+      .setScale(0.9)
+      .setAlpha(0.55);
     this.player.play('vampire-run-down');
 
-    this.tweens.add({
-      targets: this.player,
-      x: PLAYER_SPAWN.x,
-      duration: 1100,
-      ease: 'Sine.easeOut',
+    // …then sweeps around the hall in a shrinking spiral to land dead center.
+    this.time.delayedCall(350, () => {
+      this.flightSpiral({
+        center: PLAYER_SPAWN,
+        from: { x: this.player.x, y: this.player.y },
+        duration: 1700,
+        toScale: 2,
+        toAlpha: 1,
+        squash: 0.42,
+        onComplete: () => {
+          this.coffin.setOpen(false);
+          this.startPlaying();
+        },
+      });
     });
-    this.tweens.add({
-      targets: this.player,
-      y: PLAYER_SPAWN.y,
-      scale: 2,
-      alpha: 1,
-      duration: 1100,
-      ease: 'Quad.easeIn',
-      onComplete: () => this.startPlaying(),
-    });
-    this.tweens.add({
-      targets: this.player,
-      angle: { from: -14, to: 0 },
-      duration: 1100,
+  }
+
+  /**
+   * Fly the player along a spiral that starts at `from` and converges on
+   * `center` (radius shrinking to zero over 1.5 turns). Used forward for the
+   * intro (coffin → hall center) and with a coffin-centered spiral for the
+   * victory outro (hall → coffin).
+   */
+  private flightSpiral(opts: {
+    center: { x: number; y: number };
+    from: { x: number; y: number };
+    duration: number;
+    toScale: number;
+    toAlpha: number;
+    /** Vertical flattening so the spiral fits the wide, short hall. */
+    squash: number;
+    onComplete: () => void;
+  }): void {
+    const dx = opts.from.x - opts.center.x;
+    const dy = opts.from.y - opts.center.y;
+    const r0 = Math.hypot(dx, dy);
+    const a0 = Math.atan2(dy, dx);
+    const fromScale = this.player.scale;
+    const fromAlpha = this.player.alpha;
+
+    this.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: opts.duration,
       ease: 'Sine.easeInOut',
+      onUpdate: (tween) => {
+        const t = tween.getValue() ?? 0;
+        const angle = a0 + t * Math.PI * 3; // 1.5 loops
+        const r = r0 * (1 - t);
+        this.player.setPosition(
+          opts.center.x + Math.cos(angle) * r,
+          opts.center.y + Math.sin(angle) * r * opts.squash,
+        );
+        this.player.setScale(Phaser.Math.Linear(fromScale, opts.toScale, t));
+        this.player.setAlpha(Phaser.Math.Linear(fromAlpha, opts.toAlpha, t));
+      },
+      onComplete: opts.onComplete,
     });
   }
 
@@ -256,6 +377,17 @@ export class GameScene extends Phaser.Scene {
 
     this.hud = new HUD(this, this.emitter);
     this.hud.animateIn();
+
+    if (this.isTouch) {
+      this.touch = new TouchControls(this, {
+        onTapAttack: (worldX, worldY) => {
+          if (this.phase !== 'playing') return;
+          this.player.aimAt(worldX, worldY);
+          this.combat.tryAttack(this.getAttackTargets());
+        },
+        onPause: () => this.requestPause(),
+      });
+    }
 
     this.countdown = new CountdownSystem(
       this.emitter,
@@ -293,16 +425,39 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.physics.add.overlap(this.player, this.pickups, (_player, pickupObj) => {
-      const pickup = pickupObj as BloodPickup;
-      this.flow.addBlood(pickup.amount);
-      this.audioFx.play(AUDIO.bloodPickup);
-      pickup.collect();
+      this.collectPickup(pickupObj as BloodPickup);
     });
 
     this.physics.add.overlap(this.player, this.coffin, () => {
       if (this.phase !== 'playing') return;
       if (this.flow.tryEnterCoffin()) return;
       this.coffin.showRequirementHint(this.coffinHintMessage());
+    });
+  }
+
+  /** Fly the bloodlet up to the blood bar; it counts on arrival, in a red burst. */
+  private collectPickup(pickup: BloodPickup): void {
+    if (pickup.collecting) return;
+    pickup.collecting = true;
+    (pickup.body as Phaser.Physics.Arcade.Body).enable = false;
+    this.tweens.killTweensOf(pickup); // stop the idle bob
+    pickup.setDepth(DEPTHS.hud + 1);
+
+    this.tweens.add({
+      targets: pickup,
+      x: HUD_ANCHORS.bloodBar.x,
+      y: HUD_ANCHORS.bloodBar.y,
+      scale: 0.6,
+      duration: 420,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        if (!this.flow.hasEnded) {
+          this.flow.addBlood(pickup.amount);
+          this.audioFx.play(AUDIO.bloodPickup);
+          this.hud?.burstAtBloodBar();
+        }
+        this.pickups.remove(pickup, true, true);
+      },
     });
   }
 
@@ -328,14 +483,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setupPauseKeys(): void {
-    this.input.keyboard?.on('keydown-ESC', this.pauseGame, this);
-    this.input.keyboard?.on('keydown-P', this.pauseGame, this);
-  }
-
-  private pauseGame(): void {
-    if (this.phase !== 'playing' || this.scene.isPaused()) return;
-    this.scene.pause();
-    this.scene.launch(SCENES.pause);
+    this.input.keyboard?.on('keydown-ESC', this.requestPause, this);
+    this.input.keyboard?.on('keydown-P', this.requestPause, this);
   }
 
   private spawnBoss(): void {
@@ -377,10 +526,29 @@ export class GameScene extends Phaser.Scene {
       this.boss = null;
       this.flow.notifyBossDefeated();
     } else {
-      this.pickups.add(new BloodPickup(this, hunter.x, hunter.y));
+      this.scatterBloodlets(hunter.x, hunter.y);
       this.audioFx.play(AUDIO.hunterDeath);
     }
     this.hunters.remove(hunter, true, true);
+  }
+
+  /** Dead hunters burst into a handful of +1 bloodlets around the corpse. */
+  private scatterBloodlets(x: number, y: number): void {
+    for (let i = 0; i < HUNTER.bloodDroplets; i++) {
+      const angle = (Math.PI * 2 * i) / HUNTER.bloodDroplets + Phaser.Math.FloatBetween(-0.4, 0.4);
+      const dist = Phaser.Math.Between(14, 38);
+      const px = Phaser.Math.Clamp(x + Math.cos(angle) * dist, ARENA.left + 10, ARENA.right - 10);
+      const py = Phaser.Math.Clamp(y + Math.sin(angle) * dist, ARENA.top + 10, ARENA.bottom - 10);
+      const pickup = new BloodPickup(this, x, y);
+      this.pickups.add(pickup);
+      this.tweens.add({
+        targets: pickup,
+        x: px,
+        y: py,
+        duration: 220,
+        ease: 'Quad.easeOut',
+      });
+    }
   }
 
   private onDawnReached(): void {
@@ -403,9 +571,41 @@ export class GameScene extends Phaser.Scene {
 
     this.audioFx.play(cause === 'victory' ? AUDIO.victory : AUDIO.defeat);
 
-    // Short beat so the last hit / dawn flash reads before the transition.
-    this.time.delayedCall(900, () => {
-      this.scene.start(cause === 'victory' ? SCENES.victory : SCENES.gameOver, summary);
+    if (cause === 'victory') {
+      this.playVictoryOutro(summary);
+    } else {
+      // Short beat so the last hit / dawn flash reads before the transition.
+      this.time.delayedCall(900, () => {
+        this.scene.start(SCENES.gameOver, summary);
+      });
+    }
+  }
+
+  /**
+   * Victory: the coffin opens, the Count spirals back into it (the reverse
+   * of his entrance), the lid closes, and his collected blood drains into
+   * his health bar before the victory screen.
+   */
+  private playVictoryOutro(summary: RunSummary): void {
+    this.coffin.setOpen(true);
+
+    this.flightSpiral({
+      center: { x: COFFIN_POS.x, y: COFFIN_POS.y - 10 },
+      from: { x: this.player.x, y: this.player.y },
+      duration: 1500,
+      toScale: 0.9,
+      toAlpha: 0.55,
+      squash: 0.6,
+      onComplete: () => {
+        this.player.setVisible(false);
+        this.coffin.setOpen(false);
+
+        const bloodRatio = Phaser.Math.Clamp(this.flow.currentBlood / this.flow.bloodTarget, 0, 1);
+        const healthRatio = Phaser.Math.Clamp(this.player.health / PLAYER.maxHealth, 0, 1);
+        this.hud?.playCoffinTransfer(bloodRatio, healthRatio, () => {
+          this.time.delayedCall(350, () => this.scene.start(SCENES.victory, summary));
+        });
+      },
     });
   }
 
@@ -413,7 +613,8 @@ export class GameScene extends Phaser.Scene {
     this.emitter.removeAllListeners();
     this.hud?.destroy();
     this.spawner?.stop();
-    this.input.keyboard?.off('keydown-ESC', this.pauseGame, this);
-    this.input.keyboard?.off('keydown-P', this.pauseGame, this);
+    this.taglineTimer?.remove();
+    this.input.keyboard?.off('keydown-ESC', this.requestPause, this);
+    this.input.keyboard?.off('keydown-P', this.requestPause, this);
   }
 }

@@ -14,15 +14,20 @@ export const TEXTURES = {
   hunterIdle: 'hunter-idle',
   hunterWalk: 'hunter-walk',
   hunterRun: 'hunter-run',
+  hunterAttack: 'hunter-attack',
   hunterHurt: 'hunter-hurt',
   hunterDeath: 'hunter-death',
   // Environment
   tiles: 'castle-tiles',
   fire: 'fire-animation',
   objects: 'castle-objects',
-  // Still runtime-generated placeholders
+  // UI
+  cover: 'count-dawn-cover',
+  // Still runtime-generated placeholders (artist sprites will replace the coffins)
   blood: 'tex-blood',
-  coffin: 'tex-coffin',
+  coffinClosed: 'tex-coffin-closed',
+  coffinOpen: 'tex-coffin-open',
+  particle: 'tex-particle',
 } as const;
 
 export type Dir4 = 'down' | 'up' | 'left' | 'right';

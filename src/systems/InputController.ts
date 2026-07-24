@@ -43,9 +43,14 @@ export class InputController {
     return new Phaser.Math.Vector2(x, y).normalize();
   }
 
-  /** Held attack input: left mouse button or Space. */
-  isAttackDown(): boolean {
-    return this.scene.input.activePointer.isDown || this.keys.space.isDown;
+  /** Held mouse attack (desktop): strikes toward the cursor. */
+  isMouseAttackDown(): boolean {
+    return this.scene.input.activePointer.isDown;
+  }
+
+  /** Held Space: auto-strikes the nearest hunter (same as the mobile ⚔ button). */
+  isAutoAttackDown(): boolean {
+    return this.keys.space.isDown;
   }
 
   /** Current aim point in world coordinates (mouse position). */
