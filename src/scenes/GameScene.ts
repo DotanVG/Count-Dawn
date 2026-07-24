@@ -74,6 +74,7 @@ export class GameScene extends Phaser.Scene {
   private nightOverlay!: Phaser.GameObjects.Rectangle;
   private menuUi: Phaser.GameObjects.Container | null = null;
   private taglineTimer: Phaser.Time.TimerEvent | null = null;
+  private aimArc: Phaser.GameObjects.Graphics | null = null;
 
   constructor() {
     super(SCENES.game);
@@ -127,7 +128,9 @@ export class GameScene extends Phaser.Scene {
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanup, this);
 
-    if (data?.autostart) {
+    // Strict check: Phaser keeps the previous start()'s data when none is
+    // passed, so a stale { autostart: true } must not skip the menu.
+    if (data?.autostart === true) {
       this.startIntro();
     } else {
       this.buildMenu();
@@ -181,12 +184,26 @@ export class GameScene extends Phaser.Scene {
 
     const aim = this.inputController.getAimPoint();
     this.player.aimAt(aim.x, aim.y);
+    this.drawAimArc();
 
     if (this.inputController.isMouseAttackDown()) {
       this.combat.tryAttack(this.getAttackTargets());
     } else if (this.inputController.isAutoAttackDown()) {
       this.autoAttackNearest();
     }
+  }
+
+  /** Desktop aim cursor: a faint quarter-circle around the Count, facing the mouse. */
+  private drawAimArc(): void {
+    if (!this.aimArc) return;
+    const g = this.aimArc;
+    const quarter = Math.PI / 4; // 90° total, centered on the aim
+    g.clear();
+    g.setPosition(this.player.x, this.player.y);
+    g.lineStyle(5, COLORS.attackArc, 0.35);
+    g.beginPath();
+    g.arc(0, 0, 82, this.player.aimAngle - quarter, this.player.aimAngle + quarter, false);
+    g.strokePath();
   }
 
   /** Space / ⚔ button: turn toward the nearest living hunter and strike. */
@@ -301,30 +318,44 @@ export class GameScene extends Phaser.Scene {
       this.tweens.add({ targets: ui, alpha: 0, duration: 300, onComplete: () => ui.destroy() });
     }
 
-    // The coffin creaks open and the Count rises out of it…
+    // The coffin creaks open and the Count rises out of it, small…
     this.coffin.setOpen(true);
     this.player
       .setVisible(true)
       .setPosition(COFFIN_POS.x, COFFIN_POS.y - 20)
       .setScale(0.9)
       .setAlpha(0.55);
-    this.player.play('vampire-run-down');
+    this.setBatForm(true);
 
-    // …then sweeps around the hall in a shrinking spiral to land dead center.
+    // …then sweeps around the hall in a shrinking spiral, growing to full
+    // boss size, and lands dead center.
     this.time.delayedCall(350, () => {
       this.flightSpiral({
         center: PLAYER_SPAWN,
         from: { x: this.player.x, y: this.player.y },
         duration: 1700,
-        toScale: 2,
+        toScale: PLAYER.spriteScale,
         toAlpha: 1,
         squash: 0.42,
         onComplete: () => {
+          this.setBatForm(false);
           this.coffin.setOpen(false);
           this.startPlaying();
         },
       });
     });
+  }
+
+  /**
+   * BAT PLACEHOLDER: when the bat spritesheet lands (TEXTURES.bat +
+   * ANIMS.batFly), this is where the Count turns into a bat for the coffin
+   * fly-in/fly-out — swap the texture/anim here and back. The same sheet
+   * will power the future bat-minion summons: spawned bats that pick a
+   * random subset of hunters and pull their pursuit onto themselves (so not
+   * every mob reacts the same) until the hunter kills the bat.
+   */
+  private setBatForm(active: boolean): void {
+    this.player.play(active ? 'vampire-run-down' : 'vampire-idle-down');
   }
 
   /**
@@ -378,6 +409,10 @@ export class GameScene extends Phaser.Scene {
     this.hud = new HUD(this, this.emitter);
     this.hud.animateIn();
 
+    if (!this.isTouch) {
+      this.aimArc = this.add.graphics().setDepth(DEPTHS.player - 1);
+    }
+
     if (this.isTouch) {
       this.touch = new TouchControls(this, {
         onTapAttack: (worldX, worldY) => {
@@ -400,8 +435,17 @@ export class GameScene extends Phaser.Scene {
       this,
       () => this.hunters.countActive(true),
       () => ({ x: this.player.x, y: this.player.y }),
-      (x, y) => this.hunters.add(new Hunter(this, x, y)),
+      (x, y) => this.hunters.add(this.createHunter(x, y)),
     );
+  }
+
+  /** Sword swings damage the player when they land (invulnerability still applies). */
+  private createHunter(x: number, y: number): Hunter {
+    const hunter = new Hunter(this, x, y);
+    hunter.onStrikeHit = () => {
+      if (this.phase === 'playing') this.player.takeDamage(hunter.contactDamage);
+    };
+    return hunter;
   }
 
   private setPlayerDormant(dormant: boolean): void {
@@ -491,6 +535,9 @@ export class GameScene extends Phaser.Scene {
     if (this.boss) return;
     const pos = this.bossSpawnPosition();
     this.boss = new HunterCaptain(this, pos.x, pos.y, this.emitter);
+    this.boss.onStrikeHit = () => {
+      if (this.phase === 'playing' && this.boss) this.player.takeDamage(this.boss.contactDamage);
+    };
     this.hunters.add(this.boss);
     this.boss.playEntrance();
     this.flow.notifyBossSpawned();
@@ -570,15 +617,65 @@ export class GameScene extends Phaser.Scene {
     };
 
     this.audioFx.play(cause === 'victory' ? AUDIO.victory : AUDIO.defeat);
+    this.aimArc?.clear();
 
     if (cause === 'victory') {
       this.playVictoryOutro(summary);
+    } else if (cause === 'dawn') {
+      this.playDawnBurn(summary);
     } else {
-      // Short beat so the last hit / dawn flash reads before the transition.
+      // Death by hunters: the death animation already played in takeDamage.
       this.time.delayedCall(900, () => {
         this.scene.start(SCENES.gameOver, summary);
       });
     }
+  }
+
+  /**
+   * Dawn caught the Count outside his coffin: sunlight burns him — orange
+   * embers, a strobing burn flash — then he crumbles through his death
+   * animation, and only after that does the game-over screen appear.
+   */
+  private playDawnBurn(summary: RunSummary): void {
+    const embers = this.add
+      .particles(0, 0, TEXTURES.particle, {
+        speed: { min: 30, max: 120 },
+        lifespan: { min: 400, max: 900 },
+        scale: { start: 1.3, end: 0 },
+        gravityY: -80, // embers rise
+        tint: [0xff9a3d, 0xff4d4d, 0xffd76b],
+        emitting: false,
+      })
+      .setDepth(DEPTHS.attackFx);
+
+    // Blink: strobe the burn tint while embers pour off him.
+    let flashes = 0;
+    const strobe = this.time.addEvent({
+      delay: 110,
+      repeat: 7,
+      callback: () => {
+        flashes++;
+        embers.explode(8, this.player.x, this.player.y - 20);
+        if (flashes % 2 === 1) {
+          this.player.setTint(0xff9a3d);
+          this.player.setTintMode(Phaser.TintModes.FILL);
+        } else {
+          this.player.clearTint();
+          this.player.setTintMode(Phaser.TintModes.MULTIPLY);
+        }
+      },
+    });
+
+    this.time.delayedCall(950, () => {
+      strobe.remove();
+      this.player.clearTint();
+      this.player.setTintMode(Phaser.TintModes.MULTIPLY);
+      this.player.playDeathAnim();
+      this.player.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+        embers.explode(24, this.player.x, this.player.y - 10);
+        this.time.delayedCall(600, () => this.scene.start(SCENES.gameOver, summary));
+      });
+    });
   }
 
   /**
@@ -588,6 +685,7 @@ export class GameScene extends Phaser.Scene {
    */
   private playVictoryOutro(summary: RunSummary): void {
     this.coffin.setOpen(true);
+    this.setBatForm(true); // BAT PLACEHOLDER: he flies back as a bat too
 
     this.flightSpiral({
       center: { x: COFFIN_POS.x, y: COFFIN_POS.y - 10 },
@@ -597,6 +695,7 @@ export class GameScene extends Phaser.Scene {
       toAlpha: 0.55,
       squash: 0.6,
       onComplete: () => {
+        this.setBatForm(false);
         this.player.setVisible(false);
         this.coffin.setOpen(false);
 

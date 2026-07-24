@@ -3,10 +3,10 @@ import { COLORS, DEPTHS } from '../game/constants';
 import { TEXTURES } from '../utils/assetKeys';
 
 /**
- * The coffin: visible from the start, inert until GameFlowSystem activates it.
- * Opens/closes for the vampire's entrances and exits (placeholder textures
- * for now — the artist's open/close sprites will replace the two keys).
- * When approached too early it shows a short hint about unmet requirements.
+ * The coffin (Romi's art, three states: closed → half-open → open): visible
+ * from the start, inert until GameFlowSystem activates it. Opens/closes for
+ * the vampire's coffin entrances and exits. When approached too early it
+ * shows a short hint about unmet requirements.
  */
 export class Coffin extends Phaser.Physics.Arcade.Image {
   private activated = false;
@@ -20,10 +20,13 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
     super(scene, x, y, TEXTURES.coffinClosed);
     scene.add.existing(this);
     scene.physics.add.existing(this, true);
+    // The art lives on a 256px canvas; the coffin itself is ~160x230 inside it.
+    this.setScale(0.55);
+    (this.body as Phaser.Physics.Arcade.StaticBody).setSize(95, 130);
     this.setDepth(DEPTHS.coffin);
 
     this.glow = scene.add
-      .circle(x, y, 58, COLORS.coffinActive, 0.18)
+      .circle(x, y, 66, COLORS.coffinActive, 0.18)
       .setDepth(DEPTHS.coffinGlow)
       .setVisible(false);
   }
@@ -36,17 +39,20 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
     return this.opened;
   }
 
-  /** Swap to the open/closed art with a small pop so the change reads. */
+  /** Animate the lid through the half-open frame with a small pop. */
   setOpen(open: boolean): void {
     if (this.opened === open) return;
     this.opened = open;
-    this.setTexture(open ? TEXTURES.coffinOpen : TEXTURES.coffinClosed);
-    if (this.activated) this.setTint(COLORS.coffinActive);
+    this.setTexture(TEXTURES.coffinHalf);
+    this.scene.time.delayedCall(130, () => {
+      if (!this.active) return;
+      this.setTexture(open ? TEXTURES.coffinOpen : TEXTURES.coffinClosed);
+    });
     this.scene.tweens.add({
       targets: this,
-      scaleX: { from: 1.12, to: 1 },
-      scaleY: { from: 1.08, to: 1 },
-      duration: 180,
+      scaleX: { from: 0.62, to: 0.55 },
+      scaleY: { from: 0.6, to: 0.55 },
+      duration: 200,
       ease: 'Quad.easeOut',
     });
   }
@@ -56,6 +62,7 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
     this.activated = true;
     this.hideHint();
 
+    // Pulsing glow only — no tint, Romi's art keeps its own colors.
     this.glow.setVisible(true);
     this.pulseTween = this.scene.tweens.add({
       targets: this.glow,
@@ -65,7 +72,6 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
       yoyo: true,
       repeat: -1,
     });
-    this.setTint(COLORS.coffinActive);
   }
 
   /** Shown when the player touches the coffin before requirements are met. */

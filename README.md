@@ -115,10 +115,12 @@ Suggested flow: feature branches → `staging` (playtest on the test URL) → me
 
 ### Third-party assets
 
-All from [CraftPix](https://craftpix.net) under the [CraftPix file license](https://craftpix.net/file-licenses/) (free packs, game use permitted):
+Character & environment art from [CraftPix](https://craftpix.net) under the [CraftPix file license](https://craftpix.net/file-licenses/) (free packs, game use permitted):
 
 - **Free Vampire 4-Direction Pixel Character Sprite Pack** — the Count (Vampires1)
-- **Free Base 4-Direction Male Character Pixel Art** — hunters & Hunter Captain (sword variant)
+- **Free Base 4-Direction Male Character Pixel Art** — hunters & Hunter Captain (sword variant, incl. swing attack)
 - **Free 2D Top-Down Pixel Dungeon Asset Pack** — castle tiles & torch flames
 
-The coffin and blood droplet are runtime-generated placeholders. No AI-generated art or audio.
+Original art by **Romi**: the coffin (closed/half/open) and the garlic (a future stationary-hunter throwable, loaded but not yet used).
+
+The blood droplet is a runtime-generated placeholder. A bat sprite is planned for the coffin fly-in/out and summonable bat minions — see the `setBatForm` / `TEXTURES.bat` placeholders in the code. No AI-generated art or audio.

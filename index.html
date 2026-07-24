@@ -86,6 +86,76 @@
       #fullscreen-btn .tr { top: 12px; right: 12px; border-width: 3px 3px 0 0; }
       #fullscreen-btn .bl { bottom: 12px; left: 12px; border-width: 0 0 3px 3px; }
       #fullscreen-btn .br { bottom: 12px; right: 12px; border-width: 0 3px 3px 0; }
+
+      /* Rotate-to-landscape overlay: a real DOM layer sized to the whole
+         viewport, so it is large and crisp even though the Phaser canvas is
+         letterboxed in portrait. Shown purely by CSS on touch + portrait; the
+         orientation gate handles pausing gameplay/audio behind it. */
+      #rotate-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 9500;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6vh;
+        background: #0d0716;
+        color: #c9a7ff;
+        text-align: center;
+        padding: 8vw;
+      }
+      @media (orientation: portrait) and (pointer: coarse) {
+        #rotate-overlay { display: flex; }
+      }
+      #rotate-overlay .phone {
+        width: 34vw;
+        max-width: 220px;
+        aspect-ratio: 10 / 19;
+        border: 0.9vw solid #c9a7ff;
+        border-radius: 5vw;
+        background: rgba(201, 167, 255, 0.08);
+        position: relative;
+        animation: cd-rotate 2.6s ease-in-out infinite;
+      }
+      #rotate-overlay .phone::before {
+        content: '';
+        position: absolute;
+        top: 6%;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 24%;
+        height: 2.4%;
+        border-radius: 2vw;
+        background: #c9a7ff;
+        opacity: 0.85;
+      }
+      #rotate-overlay .arrow {
+        font-size: 18vw;
+        line-height: 1;
+        color: #e0364a;
+        animation: cd-pulse 1.6s ease-in-out infinite;
+      }
+      #rotate-overlay h2 {
+        font-size: 7vw;
+        margin: 0;
+        font-weight: bold;
+      }
+      #rotate-overlay p {
+        font-size: 4vw;
+        margin: 0;
+        color: #e8ddff;
+        opacity: 0.8;
+      }
+      @keyframes cd-rotate {
+        0%, 30% { transform: rotate(0deg); }
+        55%, 80% { transform: rotate(-90deg); }
+        100% { transform: rotate(0deg); }
+      }
+      @keyframes cd-pulse {
+        0%, 100% { opacity: 0.35; transform: scale(0.9); }
+        50% { opacity: 1; transform: scale(1.1); }
+      }
     </style>
   </head>
   <body>
@@ -98,6 +168,12 @@
       <span class="fs-corner bl" aria-hidden="true"></span>
       <span class="fs-corner br" aria-hidden="true"></span>
     </button>
+    <div id="rotate-overlay" aria-hidden="true">
+      <div class="arrow">↻</div>
+      <div class="phone"></div>
+      <h2>Rotate your device</h2>
+      <p>Count Dawn plays best in landscape 🦇</p>
+    </div>
     <script type="module" src="/src/game/main.ts"></script>
   </body>
 </html>

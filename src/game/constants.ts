@@ -35,7 +35,6 @@ export const SCENES = {
   pause: 'PauseScene',
   gameOver: 'GameOverScene',
   victory: 'VictoryScene',
-  rotate: 'RotateScene',
 } as const;
 
 /** Screen anchors the gameplay layer needs to aim effects at (bar fill edges). */

@@ -28,7 +28,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     super(scene, x, y, TEXTURES.vampireIdle, 0);
     scene.add.existing(this);
     scene.physics.add.existing(this);
-    this.setScale(2);
+    this.setScale(PLAYER.spriteScale);
     // Body in unscaled 64x64 texture space: a small circle around the torso/feet.
     this.setCircle(11, 21, 26);
     this.setCollideWorldBounds(true);
@@ -55,9 +55,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.facing = angleToDir4(this.aimAngle);
   }
 
-  /** Called by CombatSystem the moment an attack fires. */
+  /**
+   * Called by CombatSystem the moment an attack fires. The body only holds the
+   * attack pose briefly so walk/run resumes between swings — the Count can
+   * strike on the move (the swish arc carries the attack read either way).
+   */
   playAttackAnim(): void {
-    this.attackAnimUntil = this.scene.time.now + PLAYER.attackCooldownMs;
+    this.attackAnimUntil = this.scene.time.now + 160;
     this.play(animKey('vampire', 'attack', this.facing), true);
   }
 

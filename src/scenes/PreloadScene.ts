@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { SCENES } from '../game/constants';
 import { TEXTURES } from '../utils/assetKeys';
 import { createCharacterAnimations } from '../utils/animations';
+import { createPlaceholderTextures } from '../utils/placeholderTextures';
 
 const CHAR_FRAME = { frameWidth: 64, frameHeight: 64 };
 
@@ -31,6 +32,13 @@ export class PreloadScene extends Phaser.Scene {
     // Menu / itch cover art.
     this.load.image(TEXTURES.cover, 'assets/ui/count_dawn_cover.jpeg');
 
+    // Props — Romi's coffin (3 states) + the garlic (future throwable of the
+    // stationary hunter type; loaded now so it ships with the build).
+    this.load.image(TEXTURES.coffinClosed, 'assets/environment/props/coffin_closed.png');
+    this.load.image(TEXTURES.coffinHalf, 'assets/environment/props/coffin_half.png');
+    this.load.image(TEXTURES.coffinOpen, 'assets/environment/props/coffin_open.png');
+    this.load.image(TEXTURES.garlic, 'assets/environment/props/garlic.png');
+
     // Castle — CraftPix free top-down dungeon pack.
     this.load.image(TEXTURES.tiles, 'assets/environment/castle/walls_floor.png');
     this.load.spritesheet(TEXTURES.fire, 'assets/environment/castle/fire_animation.png', {
@@ -40,6 +48,8 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   create(): void {
+    // After loading: generated textures only fill keys no real asset claimed.
+    createPlaceholderTextures(this);
     createCharacterAnimations(this);
     this.scene.start(SCENES.game);
   }

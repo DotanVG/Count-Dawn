@@ -60,7 +60,7 @@ export class GameOverScene extends Phaser.Scene {
     restart.on('pointerdown', () => this.scene.start(SCENES.game, { autostart: true }));
 
     this.input.keyboard?.on('keydown-R', () => this.scene.start(SCENES.game, { autostart: true }));
-    this.input.keyboard?.on('keydown-M', () => this.scene.start(SCENES.game));
+    this.input.keyboard?.on('keydown-M', () => this.scene.start(SCENES.game, { autostart: false }));
 
     const menuLink = this.add
       .text(cx, GAME_HEIGHT * 0.78, touch ? 'Back to menu' : 'M — back to menu', {
@@ -70,6 +70,8 @@ export class GameOverScene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setInteractive({ useHandCursor: true });
-    menuLink.on('pointerdown', () => this.scene.start(SCENES.game));
+    // Explicit false: Phaser reuses the previous start() data when omitted,
+    // which would carry a stale autostart:true and skip the menu.
+    menuLink.on('pointerdown', () => this.scene.start(SCENES.game, { autostart: false }));
   }
 }

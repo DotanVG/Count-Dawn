@@ -19,7 +19,10 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   readonly contactDamage: number;
   protected readonly moveSpeed: number;
   facing: Dir4 = 'down';
+  /** Set by GameScene: called when a sword swing actually connects. */
+  onStrikeHit: (() => void) | null = null;
   private nextSwingAt = 0;
+  private lastTargetDist = Infinity;
 
   constructor(
     scene: Phaser.Scene,
@@ -33,7 +36,7 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     this.moveSpeed = stats.moveSpeed;
     scene.add.existing(this);
     scene.physics.add.existing(this);
-    this.setScale(2);
+    this.setScale(HUNTER.spriteScale);
     this.setCircle(10, 22, 28);
     this.setDepth(DEPTHS.hunter);
     this.play(animKey('hunter', 'walk', 'down'));
@@ -52,6 +55,7 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
 
     // Range check against sprite scale so the bigger Captain swings sooner.
     const dist = Phaser.Math.Distance.Between(this.x, this.y, targetX, targetY);
+    this.lastTargetDist = dist;
     const inMeleeRange = dist <= HUNTER.meleeRange * (this.scaleX / 2);
 
     // Let a started swing play out before movement anims take over again.
@@ -64,6 +68,12 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
       if (!swinging && now >= this.nextSwingAt) {
         this.nextSwingAt = now + HUNTER.meleeIntervalMs;
         this.play(animKey('hunter', 'attack', dir), true);
+        // The blade connects mid-animation — if the target is still in reach.
+        this.scene.time.delayedCall(HUNTER.meleeHitDelayMs, () => {
+          if (!this.active || !this.isAlive) return;
+          const reach = HUNTER.meleeRange * (this.scaleX / 2) * HUNTER.meleeHitReachFactor;
+          if (this.lastTargetDist <= reach) this.onStrikeHit?.();
+        });
       } else if (!swinging) {
         this.play(animKey('hunter', 'idle', dir), true);
       }

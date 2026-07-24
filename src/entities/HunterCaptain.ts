@@ -21,7 +21,7 @@ export class HunterCaptain extends Hunter {
     private readonly emitter: GameEventEmitter,
   ) {
     super(scene, x, y, BOSS);
-    this.setScale(3.4);
+    this.setScale(BOSS.spriteScale);
     this.setDepth(DEPTHS.boss);
     this.applyBaseTint();
   }

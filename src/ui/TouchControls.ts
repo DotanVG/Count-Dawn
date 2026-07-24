@@ -33,6 +33,11 @@ export class TouchControls {
     private readonly scene: Phaser.Scene,
     private readonly callbacks: TouchCallbacks,
   ) {
+    // Phaser tracks a single touch pointer by default; add more so the
+    // joystick, attack button and taps can all be held at the same time.
+    // Without this, moving and attacking are mutually exclusive.
+    scene.input.addPointer(2);
+
     const joyX = 150;
     const joyY = GAME_HEIGHT - 150;
     this.base = scene.add

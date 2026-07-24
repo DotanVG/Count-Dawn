@@ -52,17 +52,41 @@ export class CombatSystem {
     }
   }
 
+  /**
+   * Swish: the red arc sweeps across the strike zone (leading edge racing
+   * from one side of the arc to the other) instead of appearing all at once,
+   * then fades. Same effect on desktop and mobile.
+   */
   private drawArc(): void {
     const halfArc = Phaser.Math.DegToRad(PLAYER.attackArcHalfAngleDeg);
+    const aim = this.player.aimAngle;
+    const startAngle = aim - halfArc;
     const g = this.scene.add.graphics({ x: this.player.x, y: this.player.y }).setDepth(DEPTHS.attackFx);
-    g.fillStyle(COLORS.attackArc, 0.35);
-    g.slice(0, 0, PLAYER.attackRange, this.player.aimAngle - halfArc, this.player.aimAngle + halfArc);
-    g.fillPath();
-    this.scene.tweens.add({
-      targets: g,
-      alpha: 0,
-      duration: 130,
-      onComplete: () => g.destroy(),
+
+    this.scene.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: 110,
+      ease: 'Quad.easeOut',
+      onUpdate: (tween) => {
+        const t = tween.getValue() ?? 0;
+        g.clear();
+        // Faint full-zone hint plus the solid swept part behind the leading edge.
+        g.fillStyle(COLORS.attackArc, 0.12);
+        g.slice(0, 0, PLAYER.attackRange, startAngle, startAngle + 2 * halfArc);
+        g.fillPath();
+        g.fillStyle(COLORS.attackArc, 0.4);
+        g.slice(0, 0, PLAYER.attackRange, startAngle, startAngle + 2 * halfArc * t);
+        g.fillPath();
+      },
+      onComplete: () => {
+        this.scene.tweens.add({
+          targets: g,
+          alpha: 0,
+          duration: 90,
+          onComplete: () => g.destroy(),
+        });
+      },
     });
   }
 }

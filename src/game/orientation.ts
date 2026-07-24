@@ -2,11 +2,14 @@ import type Phaser from 'phaser';
 import { SCENES } from './constants';
 
 /**
- * Landscape-only gate for touch devices: entering portrait launches the
- * RotateScene overlay, suspends audio, and pauses an in-progress GameScene;
- * returning to landscape undoes exactly what this module did (a user-opened
- * PauseScene is left untouched). Desktop (fine pointer) never trips it.
- * Simplified from BeatEmPie — Scale.FIT handles the canvas itself.
+ * Landscape-only gate for touch devices. The visible "rotate your device"
+ * overlay is a pure-CSS DOM layer in index.html (shown by an
+ * `orientation: portrait` + `pointer: coarse` media query), so it is large
+ * and crisp regardless of how the Phaser canvas is letterboxed. This module
+ * is only the coordination layer: while a touch device is in portrait it
+ * pauses an in-progress GameScene and suspends audio, and undoes exactly that
+ * on return to landscape (a user-opened PauseScene is left untouched).
+ * Desktop (fine pointer) never trips it.
  */
 export function installOrientationGate(game: Phaser.Game): void {
   const coarsePointerQuery = window.matchMedia('(pointer: coarse)');
@@ -20,9 +23,6 @@ export function installOrientationGate(game: Phaser.Game): void {
     gateActive = active;
 
     if (active) {
-      if (!game.scene.isActive(SCENES.rotate)) {
-        game.scene.start(SCENES.rotate);
-      }
       if (!game.sound.locked) {
         game.sound.pauseAll();
         autoPausedAudio = true;
@@ -32,7 +32,6 @@ export function installOrientationGate(game: Phaser.Game): void {
         autoPausedGame = true;
       }
     } else {
-      game.scene.stop(SCENES.rotate);
       if (autoPausedAudio && !game.sound.locked) {
         game.sound.resumeAll();
         autoPausedAudio = false;

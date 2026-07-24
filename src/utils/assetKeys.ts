@@ -23,10 +23,20 @@ export const TEXTURES = {
   objects: 'castle-objects',
   // UI
   cover: 'count-dawn-cover',
-  // Still runtime-generated placeholders (artist sprites will replace the coffins)
+  // Props (Romi's art)
+  coffinClosed: 'coffin-closed',
+  coffinHalf: 'coffin-half',
+  coffinOpen: 'coffin-open',
+  /** Future throwable weapon of the stationary hunter type — loaded, unused yet. */
+  garlic: 'garlic',
+  /**
+   * BAT PLACEHOLDER: future bat spritesheet. Will replace the vampire sprite
+   * during the coffin fly-in/fly-out (see GameScene.setBatForm) and power the
+   * summonable bat minions that draw hunter aggro.
+   */
+  bat: 'bat',
+  // Still runtime-generated placeholders
   blood: 'tex-blood',
-  coffinClosed: 'tex-coffin-closed',
-  coffinOpen: 'tex-coffin-open',
   particle: 'tex-particle',
 } as const;
 
@@ -42,6 +52,8 @@ export function animKey(character: 'vampire' | 'hunter', action: string, dir: Di
 
 export const ANIMS = {
   torch: 'torch-flame',
+  /** BAT PLACEHOLDER: register from the bat sheet when it lands. */
+  batFly: 'bat-fly',
 } as const;
 
 /**
