@@ -4,20 +4,32 @@ A reverse horde survival game for the **"Countdown"** game jam theme.
 
 **Count Dawn** is a vampire who must hunt waves of human hunters, collect enough blood, defeat the Hunter Captain, and return to his coffin before sunrise. The countdown to dawn is always ticking — and always on screen.
 
-> ⚠️ **Asset status:** all current graphics are simple runtime-generated placeholder shapes (Phaser Graphics). No audio ships yet. Real licensed top-down art and audio will replace them soon — see [docs/ASSET_INTEGRATION.md](docs/ASSET_INTEGRATION.md).
+- **Repository:** https://github.com/DotanVG/Count-Dawn
+- **Production (main):** https://count-dawn.vercel.app
+- **Staging (staging branch):** https://count-dawn-git-staging-dotanvgs-projects.vercel.app
 
-## Current prototype scope
+> ⚠️ **Asset status:** all current graphics are simple runtime-generated placeholder shapes (Phaser Graphics). No audio ships yet. Real licensed top-down art and audio will replace them soon — see [docs/ASSET_INTEGRATION.md](docs/ASSET_INTEGRATION.md). No AI-generated art or audio will be used.
 
-- One castle arena, one night, one complete playable loop
-- Hunters spawn at the arena edges and chase the vampire
-- Melee arc attack aimed with the mouse
-- Defeated hunters drop blood pickups that fill the Blood Meter
-- The Hunter Captain (boss) appears 30 seconds before sunrise
-- Fill the Blood Meter **and** defeat the Captain to activate the coffin
-- Reach the coffin before the timer hits zero to win
-- Dawn or death means defeat; instant restart with **R**
+## Prototype state
 
-Details in [docs/GAME_LOOP.md](docs/GAME_LOOP.md).
+The complete core loop is playable end to end:
+
+- ✅ One castle arena (1280×720 internal resolution, FIT-scaled to the window)
+- ✅ Sunrise countdown (120s) — the visual centerpiece of the HUD, urgent pulse in the last 10s, gradual dawn tint over the night
+- ✅ Hunters spawn at arena edges every ~1.25s (max 18 alive) and chase the vampire
+- ✅ Mouse-aimed melee arc attack with cooldown pip and hit flash
+- ✅ Dead hunters drop blood pickups; Blood Meter targets 100
+- ✅ Hunter Captain boss at T−30s: entrance effect, dedicated health bar, heavier contact damage
+- ✅ Coffin activates only when blood is full **and** the Captain is dead (pulsing glow, hint messages if approached early)
+- ✅ Victory / dawn-defeat / death-defeat endings with run stats and instant restart (R)
+- ✅ Pause overlay (Esc / P), main menu, fullscreen button
+- ✅ Player: invulnerability window + damage flash, world-bounds clamping, frame-rate-independent movement
+- ✅ Unit tests for the pure game rules (countdown single-fire guarantees, coffin activation rules, single end-of-run transition)
+- ⬜ Real art & audio (integration points ready)
+- ⬜ Touch controls (input layer prepared, see below)
+- ⬜ Dash, extra enemy types, boss phases — intentionally out of scope for now
+
+Full loop details in [docs/GAME_LOOP.md](docs/GAME_LOOP.md).
 
 ## Controls
 
@@ -30,6 +42,10 @@ Details in [docs/GAME_LOOP.md](docs/GAME_LOOP.md).
 | Restart | R (on end screens)       |
 
 Touch controls are not implemented yet; the input layer ([src/systems/InputController.ts](src/systems/InputController.ts)) is built so a virtual joystick can slot in later.
+
+## Tech
+
+Phaser 4 · TypeScript (strict) · Vite · Arcade Physics · ESLint · `node:test` — fully static build, no backend.
 
 ## Setup
 
@@ -72,9 +88,16 @@ docs/      game loop, asset integration, deployment
 
 Set `FAST_DEV_MODE = true` in [src/data/balance.ts](src/data/balance.ts) for a 30-second night with an early boss — handy for testing the full loop quickly.
 
-## Deployment
+## Branches & deployment
 
-`npm run build` produces a fully static `dist/` — deployable to Vercel as-is and to itch.io as a zipped HTML5 game. Steps in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+| Branch    | Vercel environment | URL                                                        |
+| --------- | ------------------ | ---------------------------------------------------------- |
+| `main`    | Production         | https://count-dawn.vercel.app                              |
+| `staging` | Preview (Test)     | https://count-dawn-git-staging-dotanvgs-projects.vercel.app |
+
+Every push to **any** branch triggers a Vercel build: `main` deploys to Production, everything else gets a Preview deployment (with `staging` keeping the stable test URL above). `npm run build` produces the static `dist/` that also works for itch.io — see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+Suggested flow: feature branches → `staging` (playtest on the test URL) → merge to `main` when a build is jam-ready.
 
 ## Credits
 
