@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta
+      name="description"
+      content="Count Dawn — a reverse horde survival game: a vampire hunts waves of human hunters, collects blood, defeats their leader, and races back to his coffin before sunrise."
+    />
+    <title>Count Dawn</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #0d0716;
+        font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+        overscroll-behavior: none;
+      }
+      #game-root {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #0d0716;
+      }
+      #game-root canvas {
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
+      #boot-loader {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #c9a7ff;
+        font-size: 1.5rem;
+        letter-spacing: 0.1em;
+        pointer-events: none;
+        z-index: 10;
+      }
+      #fullscreen-btn {
+        position: fixed;
+        top: calc(env(safe-area-inset-top, 0px) + 16px);
+        right: calc(env(safe-area-inset-right, 0px) + 16px);
+        width: 48px;
+        height: 48px;
+        border: 0;
+        border-radius: 50%;
+        background: rgba(13, 7, 22, 0.5);
+        cursor: pointer;
+        z-index: 9000;
+        transition: transform 160ms ease, background 160ms ease;
+      }
+      #fullscreen-btn:hover {
+        background: rgba(58, 33, 92, 0.65);
+        transform: scale(1.06);
+      }
+      #fullscreen-btn .fs-corner {
+        position: absolute;
+        width: 12px;
+        height: 12px;
+        border-color: #c9a7ff;
+        border-style: solid;
+      }
+      #fullscreen-btn .tl { top: 12px; left: 12px; border-width: 3px 0 0 3px; }
+      #fullscreen-btn .tr { top: 12px; right: 12px; border-width: 3px 3px 0 0; }
+      #fullscreen-btn .bl { bottom: 12px; left: 12px; border-width: 0 0 3px 3px; }
+      #fullscreen-btn .br { bottom: 12px; right: 12px; border-width: 0 3px 3px 0; }
+    </style>
+  </head>
+  <body>
+    <div id="game-root">
+      <div id="boot-loader">Waking the Count…</div>
+    </div>
+    <button id="fullscreen-btn" type="button" aria-label="Enter fullscreen" title="Enter fullscreen" hidden>
+      <span class="fs-corner tl" aria-hidden="true"></span>
+      <span class="fs-corner tr" aria-hidden="true"></span>
+      <span class="fs-corner bl" aria-hidden="true"></span>
+      <span class="fs-corner br" aria-hidden="true"></span>
+    </button>
+    <script type="module" src="/src/game/main.ts"></script>
+  </body>
+</html>
