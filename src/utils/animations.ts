@@ -21,9 +21,17 @@ const DIRS: Dir4[] = ['down', 'up', 'left', 'right'];
 interface SheetSpec {
   texture: string;
   action: string;
+  /** Columns in the sheet — also the stride from one direction's row to the next. */
   frames: number;
   frameRate: number;
   repeat: number;
+  /**
+   * Directions whose row holds FEWER real frames than the sheet is wide,
+   * because the pack left the rest of that row transparent. Playing the whole
+   * row blinks the character out of existence for the padding frames — see
+   * the note on HUNTER_SHEETS' idle entry for the one case that ships.
+   */
+  shortRows?: Partial<Record<Dir4, number>>;
 }
 
 const VAMPIRE_ATTACK_FRAMES = 12;
@@ -46,8 +54,25 @@ const VAMPIRE_SHEETS: SheetSpec[] = [
   { texture: TEXTURES.vampireDeath, action: 'death', frames: 11, frameRate: 12, repeat: 0 },
 ];
 
+/**
+ * The pack's idle sheet is 12 columns wide, but the BACK-TURNED row only holds
+ * four painted frames — columns 4-11 of that row are fully transparent. Played
+ * as a 12-frame loop the hunter vanished for a solid second out of every one
+ * and a half whenever he stood still facing away from the camera. It was most
+ * obvious on the garlic thrower, whose carried bulb is a separate image and so
+ * kept hovering there on its own with no one holding it.
+ */
+const IDLE_BACK_TURNED_FRAMES: Partial<Record<Dir4, number>> = { up: 4 };
+
 const HUNTER_SHEETS: SheetSpec[] = [
-  { texture: TEXTURES.hunterIdle, action: 'idle', frames: 12, frameRate: 8, repeat: -1 },
+  {
+    texture: TEXTURES.hunterIdle,
+    action: 'idle',
+    frames: 12,
+    frameRate: 8,
+    repeat: -1,
+    shortRows: IDLE_BACK_TURNED_FRAMES,
+  },
   { texture: TEXTURES.hunterWalk, action: 'walk', frames: 6, frameRate: 10, repeat: -1 },
   { texture: TEXTURES.hunterRun, action: 'run', frames: 8, frameRate: 12, repeat: -1 },
   { texture: TEXTURES.hunterAttack, action: 'attack', frames: 8, frameRate: 14, repeat: 0 },
@@ -57,7 +82,14 @@ const HUNTER_SHEETS: SheetSpec[] = [
 
 /** The unarmed variant ships no attack sheet — the throw is animated by code. */
 const THROWER_SHEETS: SheetSpec[] = [
-  { texture: TEXTURES.throwerIdle, action: 'idle', frames: 12, frameRate: 8, repeat: -1 },
+  {
+    texture: TEXTURES.throwerIdle,
+    action: 'idle',
+    frames: 12,
+    frameRate: 8,
+    repeat: -1,
+    shortRows: IDLE_BACK_TURNED_FRAMES, // same pack, same padded back row
+  },
   { texture: TEXTURES.throwerWalk, action: 'walk', frames: 6, frameRate: 10, repeat: -1 },
   { texture: TEXTURES.throwerRun, action: 'run', frames: 8, frameRate: 12, repeat: -1 },
   { texture: TEXTURES.throwerHurt, action: 'hurt', frames: 5, frameRate: 14, repeat: 0 },
@@ -117,14 +149,21 @@ function registerSheets(
     for (const dir of DIRS) {
       const key = animKey(character, sheet.action, dir);
       if (scene.anims.exists(key)) continue;
+      // The row always starts a full sheet-width in, even when the painted
+      // frames run out early — the padding is at the END of the short row.
       const start = rows[dir] * sheet.frames;
+      const count = sheet.shortRows?.[dir] ?? sheet.frames;
+      // A short LOOP is slowed to match the full rows' cycle length, so the
+      // back-turned idle keeps breathing at the same pace as the others
+      // instead of twitching through four frames three times as fast.
+      const looping = sheet.repeat === -1;
       scene.anims.create({
         key,
         frames: scene.anims.generateFrameNumbers(sheet.texture, {
           start,
-          end: start + sheet.frames - 1,
+          end: start + count - 1,
         }),
-        frameRate: sheet.frameRate,
+        frameRate: looping ? (sheet.frameRate * count) / sheet.frames : sheet.frameRate,
         repeat: sheet.repeat,
       });
     }
