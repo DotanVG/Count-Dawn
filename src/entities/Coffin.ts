@@ -20,13 +20,29 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
     super(scene, x, y, TEXTURES.coffinClosed);
     scene.add.existing(this);
     scene.physics.add.existing(this, true);
-    // The art lives on a 256px canvas; the coffin itself is ~160x230 inside it.
+    // The art lives on a 256px canvas; the coffin shape itself is roughly
+    // 160x230 within it. StaticBody.setSize's 3rd arg (default true) centers
+    // the body on the game object's center, which is what we want here.
     this.setScale(0.55);
-    (this.body as Phaser.Physics.Arcade.StaticBody).setSize(95, 130);
+    const body = this.body as Phaser.Physics.Arcade.StaticBody;
+    // Arcade StaticBody's setSize() takes literal world-pixel dimensions —
+    // it does NOT multiply by the game object's scale itself, and (verified
+    // empirically) its auto-centering also doesn't correctly account for
+    // scale, leaving the body's center dozens of pixels off from the actual
+    // sprite (exactly why the coffin's overlap used to catch near its top
+    // but miss near its bottom). So: scale the content box ourselves (the
+    // coffin's drawn shape is ~160x230 in the unscaled 256x256 canvas) and
+    // force position/center from the known (x, y) directly, sidestepping
+    // the quirk entirely instead of fighting it.
+    const bodyW = 160 * 0.55;
+    const bodyH = 230 * 0.55;
+    body.setSize(bodyW, bodyH);
+    body.position.set(x - bodyW / 2, y - bodyH / 2);
+    body.updateCenter();
     this.setDepth(DEPTHS.coffin);
 
     this.glow = scene.add
-      .circle(x, y, 66, COLORS.coffinActive, 0.18)
+      .circle(x, y, 80, COLORS.coffinActive, 0.22)
       .setDepth(DEPTHS.coffinGlow)
       .setVisible(false);
   }
@@ -62,16 +78,30 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
     this.activated = true;
     this.hideHint();
 
-    // Pulsing glow only — no tint, Romi's art keeps its own colors.
+    // Pulsing glow, the clearest visual "come back now" signal — no tint on
+    // the sprite itself, Romi's art keeps its own colors.
     this.glow.setVisible(true);
     this.pulseTween = this.scene.tweens.add({
       targets: this.glow,
-      alpha: { from: 0.1, to: 0.35 },
-      scale: { from: 0.9, to: 1.15 },
-      duration: 700,
+      alpha: { from: 0.16, to: 0.5 },
+      scale: { from: 0.9, to: 1.2 },
+      duration: 650,
       yoyo: true,
       repeat: -1,
     });
+  }
+
+  /**
+   * Called at the start of each new round in the seamless day/night loop:
+   * without this, `activated` stayed permanently true after the first
+   * victory, so the glow never turned back off and `showRequirementHint`
+   * (which bails out early while activated) stopped working for round 2+.
+   */
+  resetForNewRound(): void {
+    this.activated = false;
+    this.pulseTween?.stop();
+    this.pulseTween = null;
+    this.glow.setVisible(false).setAlpha(0.22).setScale(1);
   }
 
   /** Shown when the player touches the coffin before requirements are met. */

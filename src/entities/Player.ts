@@ -4,6 +4,7 @@ import { DEPTHS } from '../game/constants';
 import { EVENTS, type GameEventEmitter } from '../game/events';
 import { TEXTURES, animKey, type Dir4 } from '../utils/assetKeys';
 import { angleToDir4 } from '../utils/direction';
+import { VAMPIRE_ATTACK_DURATION_MS } from '../utils/animations';
 
 /**
  * The vampire. Handles movement, directional animation, health, damage
@@ -56,13 +57,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
-   * Called by CombatSystem the moment an attack fires. The body only holds the
-   * attack pose briefly so walk/run resumes between swings — the Count can
-   * strike on the move. The sprite itself pops bigger for the swing (instead
-   * of a separate overlay effect) so the small attack frames read as impact.
+   * Called by CombatSystem the moment an attack fires. Holds the attack pose
+   * for the FULL swing+magic-burst animation (400ms) so every frame actually
+   * plays instead of being cut short by movement resuming — the flashy
+   * charge/star-burst frames near the end were getting skipped entirely
+   * before. The sprite itself also pops bigger for the swing (instead of a
+   * separate overlay effect) so the small attack frames read as impact.
    */
   playAttackAnim(): void {
-    this.attackAnimUntil = this.scene.time.now + 160;
+    this.attackAnimUntil = this.scene.time.now + VAMPIRE_ATTACK_DURATION_MS;
     this.play(animKey('vampire', 'attack', this.facing), true);
 
     this.scene.tweens.add({
@@ -75,6 +78,20 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   playDeathAnim(): void {
     this.play(animKey('vampire', 'death', this.facing), true);
+  }
+
+  /**
+   * Called between rounds in the seamless day/night loop: the Player entity
+   * persists across rounds (unlike GameFlowSystem, which is recreated), so
+   * without this its `health` field would carry over from the previous
+   * night instead of the HUD's fresh-looking bar actually meaning 100/100.
+   */
+  resetForNewRound(): void {
+    this.health = PLAYER.maxHealth;
+    this.invulnUntil = 0;
+    this.clearTint();
+    this.setTintMode(Phaser.TintModes.MULTIPLY);
+    this.setAlpha(1);
   }
 
   takeDamage(amount: number): void {

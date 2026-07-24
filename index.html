@@ -11,6 +11,7 @@
       content="Count Dawn — a reverse horde survival game: a vampire hunts waves of human hunters, collects blood, defeats their leader, and races back to his coffin before sunrise."
     />
     <title>Count Dawn</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <style>
       :root {
         color-scheme: dark;
@@ -135,7 +136,6 @@
         max-width: 96px;
         height: auto;
         color: #e0364a;
-        animation: cd-pulse 1.6s ease-in-out infinite;
         transform-origin: center;
       }
       #rotate-overlay h2 {
@@ -154,10 +154,6 @@
         55%, 80% { transform: rotate(-90deg); }
         100% { transform: rotate(0deg); }
       }
-      @keyframes cd-pulse {
-        0%, 100% { opacity: 0.35; transform: scale(0.9); }
-        50% { opacity: 1; transform: scale(1.1); }
-      }
     </style>
   </head>
   <body>
@@ -171,9 +167,34 @@
       <span class="fs-corner br" aria-hidden="true"></span>
     </button>
     <div id="rotate-overlay" aria-hidden="true">
-      <svg class="arrow-svg" viewBox="0 0 100 60" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <path d="M 78 27 A 38 38 0 0 0 24 27" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" />
-        <path d="M 12 34 L 30 20 L 28 40 Z" fill="currentColor" />
+      <!--
+        Curved rotate arrow: the stroke progressively draws from the right
+        end to the left (stroke-dashoffset 100->0), then un-draws back
+        (0->100), on a loop — mirroring the original canvas-drawn version.
+        The arrowhead rides the SAME path via animateMotion with matching
+        keyTimes, so it always sits exactly on the curve, tangent to it
+        (rotate="auto"), and always leads the reveal — no separate/guessed
+        coordinates that can drift out of alignment with the curve.
+      -->
+      <svg class="arrow-svg" viewBox="0 0 100 60" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true">
+        <path
+          id="cd-arrow-path"
+          d="M 82 41 A 40 40 0 0 0 22 41"
+          fill="none"
+          pathLength="100"
+          stroke="currentColor"
+          stroke-width="7"
+          stroke-linecap="round"
+          stroke-dasharray="100"
+          stroke-dashoffset="100"
+        >
+          <animate attributeName="stroke-dashoffset" values="100;0;100" keyTimes="0;0.5;1" dur="1.8s" repeatCount="indefinite" />
+        </path>
+        <polygon points="-7,-5 7,0 -7,5" fill="currentColor">
+          <animateMotion dur="1.8s" repeatCount="indefinite" rotate="auto" keyPoints="0;1;0" keyTimes="0;0.5;1" calcMode="linear">
+            <mpath href="#cd-arrow-path" xlink:href="#cd-arrow-path"></mpath>
+          </animateMotion>
+        </polygon>
       </svg>
       <div class="phone"></div>
       <h2>Rotate your device</h2>

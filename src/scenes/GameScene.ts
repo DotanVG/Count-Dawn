@@ -319,6 +319,9 @@ export class GameScene extends Phaser.Scene {
     this.menuUi = this.add.container(0, 0, [dim, cover, tagline, controls, start]).setDepth(DEPTHS.menu);
 
     this.input.keyboard?.once('keydown-ENTER', () => this.startIntro());
+
+    // Menu-only theme (Noam) — looping, stopped the instant the night starts.
+    this.audioFx.play(AUDIO.menuTheme, { loop: true, volume: 0.5 });
   }
 
   /** Write-stream / reverse-stream the three tagline sentences, forever. */
@@ -358,6 +361,7 @@ export class GameScene extends Phaser.Scene {
     if (this.phase !== 'menu') return;
     this.phase = 'intro';
 
+    this.audioFx.stop(AUDIO.menuTheme);
     this.taglineTimer?.remove();
     this.taglineTimer = null;
     if (this.menuUi) {
@@ -486,6 +490,12 @@ export class GameScene extends Phaser.Scene {
   /** (Re)creates the per-round simulation: flow, countdown, spawner. Reused every night. */
   private beginRoundSystems(): void {
     this.boss = null;
+    // The Player and Coffin entities persist across rounds (unlike flow and
+    // countdown, which are recreated below) — without resetting them
+    // explicitly, HP stayed wherever it was left and the coffin stayed
+    // permanently "activated" after the first win.
+    this.player.resetForNewRound();
+    this.coffin.resetForNewRound();
     this.flow = new GameFlowSystem(this.emitter, BLOOD.target);
     this.countdown = new CountdownSystem(
       this.emitter,
@@ -546,8 +556,18 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Solid body: hunters (and the Captain, same group) walk around the
-    // coffin instead of through it.
-    this.physics.add.collider(this.hunters, this.coffin);
+    // coffin instead of through it — except while still walking IN from
+    // off-screen, since an entrance path (esp. from the left, where the
+    // coffin sits) can run right through its footprint; colliding then just
+    // wedges them against it, stuck and invisible (still at the hidden
+    // "entering" depth) forever.
+    this.physics.add.collider(
+      this.hunters,
+      this.coffin,
+      undefined,
+      (hunterObj) => !(hunterObj as Hunter).isEntering,
+      this,
+    );
   }
 
   /** Fly the bloodlet up to the blood bar; it counts on arrival, in a red burst. */
@@ -617,13 +637,16 @@ export class GameScene extends Phaser.Scene {
     this.audioFx.play(AUDIO.bossAppear);
   }
 
-  /** Arena-edge midpoint farthest from the player — where the Captain arrives. */
+  /**
+   * Arena-edge midpoint farthest from the player — where the Captain
+   * arrives. Bottom/left/right only, matching SpawnSystem: never the north
+   * wall behind the player's spawn point.
+   */
   private bossArrivalPosition(): { x: number; y: number } {
     const cx = (ARENA.left + ARENA.right) / 2;
     const cy = (ARENA.top + ARENA.bottom) / 2;
     const inset = 70;
     const candidates = [
-      { x: cx, y: ARENA.top + inset },
       { x: cx, y: ARENA.bottom - inset },
       { x: ARENA.left + inset, y: cy },
       { x: ARENA.right - inset, y: cy },
@@ -821,6 +844,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private cleanup(): void {
+    this.audioFx.stop(AUDIO.menuTheme);
     this.emitter.removeAllListeners();
     this.hud?.destroy();
     this.spawner?.stop();

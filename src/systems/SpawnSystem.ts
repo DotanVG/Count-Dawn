@@ -45,15 +45,19 @@ export class SpawnSystem {
     // All attempts were too close to the player — skip this interval.
   }
 
+  /**
+   * Bottom, left, or right only — never the north wall. The player starts
+   * facing that wall from the coffin, so hunters walking in from behind him
+   * (off the top edge) would spawn out of view in an unfair way; the sides
+   * and the bottom are all visible/approachable from the play area instead.
+   */
   private randomEdgePosition(): { x: number; y: number } {
     const inset = 40;
-    const edge = Phaser.Math.Between(0, 3);
+    const edge = Phaser.Math.Between(0, 2);
     switch (edge) {
-      case 0: // along the north wall
-        return { x: Phaser.Math.Between(ARENA.left + inset, ARENA.right - inset), y: ARENA.top + inset };
-      case 1: // bottom
+      case 0: // bottom
         return { x: Phaser.Math.Between(ARENA.left + inset, ARENA.right - inset), y: ARENA.bottom - inset };
-      case 2: // left
+      case 1: // left
         return { x: ARENA.left + inset, y: Phaser.Math.Between(ARENA.top + inset, ARENA.bottom - inset) };
       default: // right
         return { x: ARENA.right - inset, y: Phaser.Math.Between(ARENA.top + inset, ARENA.bottom - inset) };

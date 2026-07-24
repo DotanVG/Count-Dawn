@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { SCENES } from '../game/constants';
-import { TEXTURES } from '../utils/assetKeys';
+import { TEXTURES, AUDIO } from '../utils/assetKeys';
 import { createCharacterAnimations } from '../utils/animations';
 import { createPlaceholderTextures } from '../utils/placeholderTextures';
 
@@ -18,6 +18,11 @@ export class PreloadScene extends Phaser.Scene {
     this.load.spritesheet(TEXTURES.vampireWalk, 'assets/characters/vampire/vampire_walk.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.vampireRun, 'assets/characters/vampire/vampire_run.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.vampireAttack, 'assets/characters/vampire/vampire_attack.png', CHAR_FRAME);
+    this.load.spritesheet(
+      TEXTURES.vampireAttackMagic,
+      'assets/characters/vampire/vampire_attack_magic.png',
+      CHAR_FRAME,
+    );
     this.load.spritesheet(TEXTURES.vampireHurt, 'assets/characters/vampire/vampire_hurt.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.vampireDeath, 'assets/characters/vampire/vampire_death.png', CHAR_FRAME);
 
@@ -31,6 +36,12 @@ export class PreloadScene extends Phaser.Scene {
 
     // Menu / itch cover art.
     this.load.image(TEXTURES.cover, 'assets/ui/count_dawn_cover.jpeg');
+
+    // Menu theme (Noam) — menu only, never plays during a night.
+    this.load.audio(AUDIO.menuTheme, [
+      'assets/audio/menu_theme.ogg',
+      'assets/audio/menu_theme.mp3',
+    ]);
 
     // Props — Romi's coffin (3 states) + the garlic (future throwable of the
     // stationary hunter type; loaded now so it ships with the build).

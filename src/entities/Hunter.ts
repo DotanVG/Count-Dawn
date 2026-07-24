@@ -52,6 +52,11 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     return this.health > 0;
   }
 
+  /** True while walking in from off-screen — used to skip the coffin collider until arrival. */
+  get isEntering(): boolean {
+    return this.entering;
+  }
+
   /**
    * Start a walk-in entrance: this hunter is expected to already be
    * positioned off-screen (see entrance.ts's offCanvasSpawnPoint). Until it

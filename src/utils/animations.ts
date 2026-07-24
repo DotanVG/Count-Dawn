@@ -22,11 +22,22 @@ interface SheetSpec {
   repeat: number;
 }
 
+const VAMPIRE_ATTACK_FRAMES = 12;
+const VAMPIRE_ATTACK_FRAME_RATE = 30;
+/** Full swing+magic-burst duration — Player holds the attack pose this long so it plays out completely. */
+export const VAMPIRE_ATTACK_DURATION_MS = (VAMPIRE_ATTACK_FRAMES / VAMPIRE_ATTACK_FRAME_RATE) * 1000;
+
 const VAMPIRE_SHEETS: SheetSpec[] = [
   { texture: TEXTURES.vampireIdle, action: 'idle', frames: 4, frameRate: 6, repeat: -1 },
   { texture: TEXTURES.vampireWalk, action: 'walk', frames: 6, frameRate: 10, repeat: -1 },
   { texture: TEXTURES.vampireRun, action: 'run', frames: 8, frameRate: 14, repeat: -1 },
-  { texture: TEXTURES.vampireAttack, action: 'attack', frames: 12, frameRate: 30, repeat: 0 },
+  {
+    texture: TEXTURES.vampireAttack,
+    action: 'attack',
+    frames: VAMPIRE_ATTACK_FRAMES,
+    frameRate: VAMPIRE_ATTACK_FRAME_RATE,
+    repeat: 0,
+  },
   { texture: TEXTURES.vampireHurt, action: 'hurt', frames: 4, frameRate: 12, repeat: 0 },
   { texture: TEXTURES.vampireDeath, action: 'death', frames: 11, frameRate: 12, repeat: 0 },
 ];
@@ -53,6 +64,18 @@ export function createCharacterAnimations(scene: Phaser.Scene): void {
       frames: [1, 5, 9, 13, 17, 21].map((frame) => ({ key: TEXTURES.fire, frame })),
       frameRate: 10,
       repeat: -1,
+    });
+  }
+
+  // Hit-impact burst: the magic-only overlay layer from the vampire attack
+  // sheet (down row), frames 6-10 — the charge-burst-to-star-to-fade beat,
+  // spawned standalone at a hunter's position on every landed strike.
+  if (!scene.anims.exists(ANIMS.hitMagic)) {
+    scene.anims.create({
+      key: ANIMS.hitMagic,
+      frames: scene.anims.generateFrameNumbers(TEXTURES.vampireAttackMagic, { start: 6, end: 10 }),
+      frameRate: 20,
+      repeat: 0,
     });
   }
 }

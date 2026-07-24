@@ -200,6 +200,11 @@ export class HUD {
     this.vignette.setAlpha(0);
     this.setHealth(PLAYER.maxHealth, PLAYER.maxHealth);
     this.setBlood(0, BLOOD.target);
+    // Without this the objective line kept showing "Return to your coffin"
+    // (the previous round's final state) until the new round's first
+    // OBJECTIVE_CHANGED event — GameFlowSystem only emits on state changes,
+    // not on construction, so nothing would correct it otherwise.
+    this.objectiveText.setText(OBJECTIVE_TEXT['collect-blood']);
   }
 
   /**

@@ -8,6 +8,8 @@ export const TEXTURES = {
   vampireWalk: 'vampire-walk',
   vampireRun: 'vampire-run',
   vampireAttack: 'vampire-attack',
+  /** Magic-burst overlay layer from the same attack sheet — used as a standalone hit-impact effect on the target, not on the player. */
+  vampireAttackMagic: 'vampire-attack-magic',
   vampireHurt: 'vampire-hurt',
   vampireDeath: 'vampire-death',
   // Hunter (sword male) sheets — rows: 0=down(front), 1=left, 2=right, 3=up(back)
@@ -52,6 +54,8 @@ export function animKey(character: 'vampire' | 'hunter', action: string, dir: Di
 
 export const ANIMS = {
   torch: 'torch-flame',
+  /** One-shot magic burst spawned at a hunter's position when a strike lands. */
+  hitMagic: 'hit-magic-burst',
   /** BAT PLACEHOLDER: register from the bat sheet when it lands. */
   batFly: 'bat-fly',
 } as const;
@@ -61,6 +65,8 @@ export const ANIMS = {
  * something was actually loaded under it, so these are safe no-ops.
  */
 export const AUDIO = {
+  /** Menu-only theme (Noam) — played while on the main menu, stopped once the night starts. */
+  menuTheme: 'menu-theme',
   playerAttack: 'sfx-player-attack',
   playerHurt: 'sfx-player-hurt',
   hunterDeath: 'sfx-hunter-death',

@@ -12,4 +12,10 @@ export class AudioSystem {
     if (!this.scene.cache.audio.exists(key)) return;
     this.scene.sound.play(key, config);
   }
+
+  /** Stops every currently-playing instance of this key (e.g. looping menu music). */
+  stop(key: string): void {
+    if (!this.scene.cache.audio.exists(key)) return;
+    this.scene.sound.stopByKey(key);
+  }
 }

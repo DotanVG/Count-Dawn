@@ -1,13 +1,17 @@
 import Phaser from 'phaser';
 import { PLAYER } from '../data/balance';
+import { DEPTHS } from '../game/constants';
 import type { Player } from '../entities/Player';
 import { Hunter } from '../entities/Hunter';
+import { TEXTURES, ANIMS } from '../utils/assetKeys';
 
 /**
  * The player's directional melee strike: cooldown and arc hit detection
- * against all living hunters (boss included). No separate visual effect —
- * the attack sprite itself pops bigger (Player.playAttackAnim) so the small
- * pixel-art frames read clearly instead of being hidden under an overlay.
+ * against all living hunters (boss included). No overlay on the player
+ * himself — the attack sprite pops bigger instead (Player.playAttackAnim) so
+ * the small pixel-art frames read clearly. Every landed hit spawns a
+ * standalone magic-burst effect (the Vampires1_Attack_magic sheet) at the
+ * TARGET's position, separate from the player's own attack animation.
  */
 export class CombatSystem {
   private nextAttackAt = 0;
@@ -46,9 +50,18 @@ export class CombatSystem {
       const diff = Math.abs(Phaser.Math.Angle.Wrap(angleTo - this.player.aimAngle));
       if (diff > halfArc) continue;
 
-      if (hunter.takeDamage(PLAYER.attackDamage)) {
+      const killed = hunter.takeDamage(PLAYER.attackDamage);
+      this.spawnHitMagic(hunter.x, hunter.y);
+      if (killed) {
         this.onKill(hunter);
       }
     }
+  }
+
+  /** One-shot magic burst on the hunter that got hit, self-destroying when it finishes. */
+  private spawnHitMagic(x: number, y: number): void {
+    const fx = this.scene.add.sprite(x, y, TEXTURES.vampireAttackMagic, 0).setDepth(DEPTHS.attackFx);
+    fx.play(ANIMS.hitMagic);
+    fx.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => fx.destroy());
   }
 }
