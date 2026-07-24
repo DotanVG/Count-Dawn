@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BOSS } from '../data/balance';
+import { BOSS, KNOCKBACK } from '../data/balance';
 import { DEPTHS } from '../game/constants';
 import { EVENTS, type GameEventEmitter } from '../game/events';
 import { Hunter } from './Hunter';
@@ -13,6 +13,8 @@ const CAPTAIN_TINT = 0xff9a7a;
  */
 export class HunterCaptain extends Hunter {
   readonly maxHealth = BOSS.health;
+  /** He rocks back a little, but the Count can't shove him around the hall. */
+  protected override knockbackResistance = KNOCKBACK.bossFactor;
 
   constructor(
     scene: Phaser.Scene,

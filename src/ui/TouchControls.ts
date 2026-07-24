@@ -26,6 +26,8 @@ export class TouchControls {
   private attackPointerId = -1;
   private readonly radius = 92;
   private autoAttackHeld = false;
+  /** Latched by the 🦇 button, consumed once by GameScene — one press, one dash. */
+  private dashPressed = false;
   /** Circular keep-out zones (buttons) where a tap must NOT trigger a strike. */
   private controlZones: { x: number; y: number; r: number }[] = [];
 
@@ -54,6 +56,10 @@ export class TouchControls {
     this.makeButton(GAME_WIDTH - 130, GAME_HEIGHT - 140, 72, '⚔', (pointer) => {
       this.attackPointerId = pointer.id;
       this.autoAttackHeld = true;
+    });
+    // Bat dash, tucked above and inside the strike button.
+    this.makeButton(GAME_WIDTH - 250, GAME_HEIGHT - 96, 52, '🦇', () => {
+      this.dashPressed = true;
     });
     // Mobile-only pause, below the fullscreen button.
     this.makeButton(GAME_WIDTH - 56, 140, 30, '⏸', () => this.callbacks.onPause());
@@ -92,6 +98,13 @@ export class TouchControls {
   /** True while the ⚔ button is held — GameScene auto-strikes the nearest hunter. */
   isAutoAttackHeld(): boolean {
     return this.autoAttackHeld;
+  }
+
+  /** True once per 🦇 press; reading it clears the latch. */
+  consumeDashPressed(): boolean {
+    const pressed = this.dashPressed;
+    this.dashPressed = false;
+    return pressed;
   }
 
   getMove(): { x: number; y: number } {

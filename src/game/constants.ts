@@ -65,6 +65,8 @@ export const DEPTHS = {
   coffin: 4,
   pickup: 5,
   corpse: 6,
+  /** Floor-level effects: the garlic throwers' targeting crosshair. */
+  groundFx: 7,
   hunter: 8,
   boss: 9,
   player: 10,

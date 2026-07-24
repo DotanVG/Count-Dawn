@@ -16,6 +16,7 @@ const OBJECTIVE_TEXT: Record<Objective, string> = {
 const FONT = 'Trebuchet MS, sans-serif';
 const HP_GREEN = 0x4caf50;
 const BLOOD_RED = 0xc41e2f;
+const DASH_PURPLE = 0x9d6bff;
 const BAR_W = 216;
 
 /**
@@ -30,6 +31,8 @@ export class HUD {
   private timerHome = { x: GAME_WIDTH / 2, y: 88 };
   private healthBarFill: Phaser.GameObjects.Rectangle;
   private healthText: Phaser.GameObjects.Text;
+  private dashBarFill: Phaser.GameObjects.Rectangle;
+  private dashLabel: Phaser.GameObjects.Text;
   private bloodBarFill: Phaser.GameObjects.Rectangle;
   private bloodText: Phaser.GameObjects.Text;
   private objectiveText: Phaser.GameObjects.Text;
@@ -69,6 +72,19 @@ export class HUD {
       .setDepth(DEPTHS.hud + 1);
     this.healthText = scene.add
       .text(24, 40, '', { fontFamily: FONT, fontSize: '14px', color: '#cfe8cf' })
+      .setDepth(DEPTHS.hud + 1);
+
+    // Bat-dash charge, a slim strip under the health bar.
+    const dashBg = scene.add
+      .rectangle(20, 62, BAR_W + 4, 8, 0x000000, 0.55)
+      .setOrigin(0, 0.5)
+      .setDepth(DEPTHS.hud);
+    this.dashBarFill = scene.add
+      .rectangle(22, 62, BAR_W, 5, DASH_PURPLE)
+      .setOrigin(0, 0.5)
+      .setDepth(DEPTHS.hud + 1);
+    this.dashLabel = scene.add
+      .text(24, 68, 'DASH', { fontFamily: FONT, fontSize: '11px', color: '#c9a7ff' })
       .setDepth(DEPTHS.hud + 1);
 
     // Blood meter (top-right).
@@ -142,6 +158,9 @@ export class HUD {
       healthBg,
       this.healthBarFill,
       this.healthText,
+      dashBg,
+      this.dashBarFill,
+      this.dashLabel,
       bloodBg,
       this.bloodBarFill,
       this.bloodText,
@@ -173,6 +192,17 @@ export class HUD {
         delay: 100,
       });
     }
+  }
+
+  /**
+   * Dash charge, driven from GameScene.update: dim and short while it
+   * recharges, full and bright the instant it's usable again.
+   */
+  setDashCharge(progress: number): void {
+    const ready = progress >= 1;
+    this.dashBarFill.width = BAR_W * Phaser.Math.Clamp(progress, 0, 1);
+    this.dashBarFill.setFillStyle(DASH_PURPLE, ready ? 1 : 0.45);
+    this.dashLabel.setAlpha(ready ? 1 : 0.5);
   }
 
   /** Red burst where a bloodlet reaches the blood bar. */

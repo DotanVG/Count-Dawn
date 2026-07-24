@@ -54,6 +54,9 @@ export class CombatSystem {
       this.spawnHitMagic(hunter.x, hunter.y);
       if (killed) {
         this.onKill(hunter);
+      } else {
+        // Shove survivors away from the Count so the hit reads as an impact.
+        hunter.applyKnockback(this.player.x, this.player.y);
       }
     }
   }

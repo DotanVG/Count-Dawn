@@ -19,6 +19,12 @@ export const TEXTURES = {
   hunterAttack: 'hunter-attack',
   hunterHurt: 'hunter-hurt',
   hunterDeath: 'hunter-death',
+  // Garlic thrower (unarmed male) sheets — same pack/rows as the hunter, no attack sheet exists.
+  throwerIdle: 'thrower-idle',
+  throwerWalk: 'thrower-walk',
+  throwerRun: 'thrower-run',
+  throwerHurt: 'thrower-hurt',
+  throwerDeath: 'thrower-death',
   // Environment
   tiles: 'castle-tiles',
   fire: 'fire-animation',
@@ -29,7 +35,7 @@ export const TEXTURES = {
   coffinClosed: 'coffin-closed',
   coffinHalf: 'coffin-half',
   coffinOpen: 'coffin-open',
-  /** Future throwable weapon of the stationary hunter type — loaded, unused yet. */
+  /** Thrown by the garlic thrower once his target locks onto the Count. */
   garlic: 'garlic',
   /**
    * BAT PLACEHOLDER: future bat spritesheet. Will replace the vampire sprite
@@ -44,11 +50,14 @@ export const TEXTURES = {
 
 export type Dir4 = 'down' | 'up' | 'left' | 'right';
 
+/** Every character that has a set of directional animations registered. */
+export type CharacterKey = 'vampire' | 'hunter' | 'thrower';
+
 export type VampireAction = 'idle' | 'walk' | 'run' | 'attack' | 'hurt' | 'death';
 export type HunterAction = 'idle' | 'walk' | 'run' | 'hurt' | 'death';
 
 /** Directional animation key, e.g. animKey('vampire', 'walk', 'left'). */
-export function animKey(character: 'vampire' | 'hunter', action: string, dir: Dir4): string {
+export function animKey(character: CharacterKey, action: string, dir: Dir4): string {
   return `${character}-${action}-${dir}`;
 }
 
@@ -56,7 +65,10 @@ export const ANIMS = {
   torch: 'torch-flame',
   /** One-shot magic burst spawned at a hunter's position when a strike lands. */
   hitMagic: 'hit-magic-burst',
-  /** BAT PLACEHOLDER: register from the bat sheet when it lands. */
+  /**
+   * BAT PLACEHOLDER: register from the bat sheet when it lands. Used by
+   * Player.setBatForm for BOTH the coffin fly-in/out and the dash.
+   */
   batFly: 'bat-fly',
 } as const;
 

@@ -34,6 +34,13 @@ export class PreloadScene extends Phaser.Scene {
     this.load.spritesheet(TEXTURES.hunterHurt, 'assets/characters/humans/hunter_hurt.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.hunterDeath, 'assets/characters/humans/hunter_death.png', CHAR_FRAME);
 
+    // Garlic throwers — same pack, unarmed variant (no attack sheet exists).
+    this.load.spritesheet(TEXTURES.throwerIdle, 'assets/characters/humans/thrower_idle.png', CHAR_FRAME);
+    this.load.spritesheet(TEXTURES.throwerWalk, 'assets/characters/humans/thrower_walk.png', CHAR_FRAME);
+    this.load.spritesheet(TEXTURES.throwerRun, 'assets/characters/humans/thrower_run.png', CHAR_FRAME);
+    this.load.spritesheet(TEXTURES.throwerHurt, 'assets/characters/humans/thrower_hurt.png', CHAR_FRAME);
+    this.load.spritesheet(TEXTURES.throwerDeath, 'assets/characters/humans/thrower_death.png', CHAR_FRAME);
+
     // Menu / itch cover art.
     this.load.image(TEXTURES.cover, 'assets/ui/count_dawn_cover.jpeg');
 
@@ -43,8 +50,7 @@ export class PreloadScene extends Phaser.Scene {
       'assets/audio/menu_theme.mp3',
     ]);
 
-    // Props — Romi's coffin (3 states) + the garlic (future throwable of the
-    // stationary hunter type; loaded now so it ships with the build).
+    // Props — Romi's coffin (3 states) + the garlic thrown by the throwers.
     this.load.image(TEXTURES.coffinClosed, 'assets/environment/props/coffin_closed.png');
     this.load.image(TEXTURES.coffinHalf, 'assets/environment/props/coffin_half.png');
     this.load.image(TEXTURES.coffinOpen, 'assets/environment/props/coffin_open.png');

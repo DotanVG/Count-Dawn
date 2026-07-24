@@ -17,6 +17,7 @@ export class InputController {
     arrowLeft: Phaser.Input.Keyboard.Key;
     arrowRight: Phaser.Input.Keyboard.Key;
     space: Phaser.Input.Keyboard.Key;
+    dash: Phaser.Input.Keyboard.Key;
   };
 
   constructor(private readonly scene: Phaser.Scene) {
@@ -32,6 +33,7 @@ export class InputController {
       arrowLeft: kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT),
       arrowRight: kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT),
       space: kb.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
+      dash: kb.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT),
     };
   }
 
@@ -51,6 +53,11 @@ export class InputController {
   /** Held Space: auto-strikes the nearest hunter (same as the mobile ⚔ button). */
   isAutoAttackDown(): boolean {
     return this.keys.space.isDown;
+  }
+
+  /** Shift, edge-triggered: holding it must not chain dashes on every frame. */
+  isDashJustPressed(): boolean {
+    return Phaser.Input.Keyboard.JustDown(this.keys.dash);
   }
 
   /** Current aim point in world coordinates (mouse position). */

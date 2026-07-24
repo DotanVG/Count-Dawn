@@ -8,7 +8,7 @@ A reverse horde survival game for the **"Countdown"** game jam theme.
 - **Production (main):** https://count-dawn.vercel.app
 - **Staging (staging branch):** https://count-dawn-git-staging-dotanvgs-projects.vercel.app
 
-> **Asset status:** the vampire, hunters, Captain and castle use licensed free pixel-art packs from CraftPix (see Credits). Romi created the coffin, garlic, and cover art. Ouzana composed the original main-title soundtrack; gameplay SFX and additional level music are planned. The blood droplet is still a runtime-generated placeholder. No AI-generated art or audio is used.
+> **Asset status:** the vampire, hunters, garlic throwers, Captain and castle use licensed free pixel-art packs from CraftPix (see Credits). Romi created the coffin, garlic, and cover art. Ouzana composed the original main-title soundtrack; gameplay SFX and additional level music are planned. The blood droplet is still a runtime-generated placeholder. No AI-generated art or audio is used.
 
 ## Prototype state
 
@@ -23,7 +23,10 @@ The complete core loop is playable end to end:
 - ✅ Sunrise countdown (60s for fast playtests) — big timer framed in the center window, tick pops, growing tremble, red panic mode + vignette + camera shakes in the last 10s
 - ✅ Fully animated 4-direction vampire (idle/run/attack/hurt/death) and sword-hunter enemies with death animations
 - ✅ Hunters spawn at arena edges and chase the vampire; every new night raises the blood target, increases the alive cap, and accelerates spawning
-- ✅ Mouse-aimed melee arc attack with cooldown pip and hit flash
+- ✅ Mouse-aimed melee arc attack with cooldown pip, hit flash and knockback — landed strikes shove the target back, flinch it, and cancel the swing it was winding up (the Captain resists most of it)
+- ✅ Garlic throwers: unarmed hunters who walk in visibly carrying a garlic bulb, hold a standoff, paint a green glowing crosshair that crawls from their feet onto the Count, and lob the bulb at the spot it locks onto — dodgeable by moving or dashing. Capped at one per night number (1 on night 1, 2 on night 2…), so ranged pressure ramps while the rest of the growing spawn budget stays melee
+- ✅ Flat damage economy: every regular hit — sword or garlic — costs 5 HP; the Hunter Captain hits for 10
+- ✅ Bat dash (Shift / 🦇): a short invulnerable burst with after-images and a HUD charge strip — the escape from a crowd and the counter to a lock
 - ✅ Dead hunters drop blood pickups; Night 1 targets 50 blood, increasing by 15 each new night
 - ✅ Filling the round's Blood Meter immediately summons the Hunter Captain: entrance effect, dedicated health bar, heavier contact damage
 - ✅ Coffin activates only when blood is full **and** the Captain is dead (pulsing glow, hint messages if approached early)
@@ -34,7 +37,8 @@ The complete core loop is playable end to end:
 - ✅ Original main-title music
 - ⬜ Gameplay SFX and additional level music
 - ⬜ Real blood-pickup art
-- ⬜ Dash, extra enemy types, boss phases — intentionally out of scope for now
+- ⬜ Bat spritesheet — the dash and the coffin flights are wired to a single placeholder (`Player.setBatForm`) waiting on the art
+- ⬜ Boss phases — intentionally out of scope for now
 
 Full loop details in [docs/GAME_LOOP.md](docs/GAME_LOOP.md).
 
@@ -45,6 +49,7 @@ Full loop details in [docs/GAME_LOOP.md](docs/GAME_LOOP.md).
 | Move           | WASD / Arrow keys  | Virtual joystick            |
 | Aim + Attack   | Mouse + Left click | Tap toward the target       |
 | Strike nearest | Space (hold)       | ⚔ button (hold)             |
+| Bat dash       | Shift              | 🦇 button                   |
 | Pause          | Esc / P            | ⏸ button                    |
 | Restart        | R (on end screens) | Tap the button              |
 
@@ -119,10 +124,10 @@ Suggested flow: feature branches → `staging` (playtest on the test URL) → me
 Character & environment art from [CraftPix](https://craftpix.net) under the [CraftPix file license](https://craftpix.net/file-licenses/) (free packs, game use permitted):
 
 - **Free Vampire 4-Direction Pixel Character Sprite Pack** — the Count (Vampires1)
-- **Free Base 4-Direction Male Character Pixel Art** — hunters & Hunter Captain (sword variant, incl. swing attack)
+- **Free Base 4-Direction Male Character Pixel Art** — hunters & Hunter Captain (sword variant, incl. swing attack); garlic throwers (unarmed variant)
 - **Free 2D Top-Down Pixel Dungeon Asset Pack** — castle tiles & torch flames
 
-Original art by **Romi**: the cover art, coffin (closed/half/open), and garlic (a future stationary-hunter throwable, loaded but not yet used).
+Original art by **Romi**: the cover art, coffin (closed/half/open), and garlic (thrown at the Count by the garlic throwers).
 
 Original music by **Ouzana**: the main-title theme. Gameplay SFX and additional level music are planned.
 

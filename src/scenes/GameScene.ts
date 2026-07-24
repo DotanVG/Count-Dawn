@@ -3,6 +3,7 @@ import {
   HUNTER,
   NIGHT,
   PLAYER,
+  THROWER,
   bloodTargetForNight,
   hunterPressureForNight,
 } from '../data/balance';
@@ -21,6 +22,8 @@ import { isTouchDevice } from '../game/device';
 import { Player } from '../entities/Player';
 import { Hunter } from '../entities/Hunter';
 import { HunterCaptain } from '../entities/HunterCaptain';
+import { GarlicThrower } from '../entities/GarlicThrower';
+import { Garlic } from '../entities/Garlic';
 import { BloodPickup } from '../entities/BloodPickup';
 import { Coffin } from '../entities/Coffin';
 import { InputController } from '../systems/InputController';
@@ -75,6 +78,7 @@ export class GameScene extends Phaser.Scene {
   private boss: HunterCaptain | null = null;
   private hunters!: Phaser.Physics.Arcade.Group;
   private pickups!: Phaser.Physics.Arcade.Group;
+  private garlics!: Phaser.Physics.Arcade.Group;
   private inputController!: InputController;
   private combat!: CombatSystem;
   private spawner: SpawnSystem | null = null;
@@ -113,6 +117,7 @@ export class GameScene extends Phaser.Scene {
 
     this.hunters = this.physics.add.group();
     this.pickups = this.physics.add.group();
+    this.garlics = this.physics.add.group();
 
     this.inputController = new InputController(this);
     this.combat = new CombatSystem(
@@ -162,6 +167,7 @@ export class GameScene extends Phaser.Scene {
     if (this.phase !== 'playing') return; // dawn may have just ended the run
 
     this.updatePlayerControl();
+    this.hud?.setDashCharge(this.player.dashCooldownProgress);
 
     for (const hunter of this.getAttackTargets()) {
       hunter.pursue(this.player.x, this.player.y);
@@ -184,11 +190,12 @@ export class GameScene extends Phaser.Scene {
   private updatePlayerControl(): void {
     if (this.isTouch && this.touch) {
       const mv = this.touch.getMove();
-      this.player.move(mv.x, mv.y);
       // Face the direction of travel; taps/strikes override at strike time.
       if (mv.x !== 0 || mv.y !== 0) {
         this.player.aimAt(this.player.x + mv.x * 100, this.player.y + mv.y * 100);
       }
+      if (this.touch.consumeDashPressed()) this.player.tryDash(mv.x, mv.y);
+      this.player.move(mv.x, mv.y);
       this.drawAimArc();
       if (this.touch.isAutoAttackHeld()) {
         this.autoAttackNearest();
@@ -197,10 +204,12 @@ export class GameScene extends Phaser.Scene {
     }
 
     const move = this.inputController.getMoveVector();
-    this.player.move(move.x, move.y);
-
     const aim = this.inputController.getAimPoint();
     this.player.aimAt(aim.x, aim.y);
+
+    // Dash first: it takes over the velocity that move() would otherwise set.
+    if (this.inputController.isDashJustPressed()) this.player.tryDash(move.x, move.y);
+    this.player.move(move.x, move.y);
     this.drawAimArc();
 
     if (this.inputController.isMouseAttackDown()) {
@@ -293,8 +302,8 @@ export class GameScene extends Phaser.Scene {
     this.startTaglineTyper(tagline);
 
     const instructions = this.isTouch
-      ? 'Joystick — Move      Tap — Strike toward tap      ⚔ — Strike nearest      ⏸ — Pause'
-      : 'Move — WASD / Arrows      Aim — Mouse      Attack — Click / Space      Pause — Esc / P';
+      ? 'Joystick — Move   Tap — Strike toward tap   ⚔ — Strike nearest   🦇 — Bat dash   ⏸ — Pause'
+      : 'Move — WASD / Arrows   Aim — Mouse   Attack — Click / Space   Bat dash — Shift   Pause — Esc / P';
     const controls = this.add
       .text(cx, 545, instructions, { fontFamily: FONT, fontSize: '17px', color: '#9d8bbf' })
       .setOrigin(0.5);
@@ -412,15 +421,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * BAT PLACEHOLDER: when the bat spritesheet lands (TEXTURES.bat +
-   * ANIMS.batFly), this is where the Count turns into a bat for the coffin
-   * fly-in/fly-out — swap the texture/anim here and back. The same sheet
-   * will power the future bat-minion summons: spawned bats that pick a
-   * random subset of hunters and pull their pursuit onto themselves (so not
-   * every mob reacts the same) until the hunter kills the bat.
+   * BAT PLACEHOLDER lives on Player.setBatForm — shared by the coffin
+   * fly-in/fly-out and the dash, so the bat sheet only has to be wired in
+   * once when it lands.
    */
   private setBatForm(active: boolean): void {
-    this.player.play(active ? 'vampire-run-down' : 'vampire-idle-down');
+    this.player.setBatForm(active);
   }
 
   /**
@@ -524,14 +530,97 @@ export class GameScene extends Phaser.Scene {
     this.hud?.setNight(this.night);
   }
 
-  /** Sword swings damage the player when they land (invulnerability still applies). */
+  /**
+   * Sword swings damage the player when they land (invulnerability still
+   * applies). A share of every night's spawns arrive as garlic throwers
+   * instead — same entrance, completely different threat.
+   */
   private createHunter(spawnX: number, spawnY: number, arrivalX: number, arrivalY: number): Hunter {
-    const hunter = new Hunter(this, spawnX, spawnY);
+    const hunter = this.canSpawnThrower()
+      ? this.createThrower(spawnX, spawnY)
+      : new Hunter(this, spawnX, spawnY);
     hunter.beginEntrance(arrivalX, arrivalY);
     hunter.onStrikeHit = () => {
       if (this.phase === 'playing') this.player.takeDamage(hunter.contactDamage);
     };
     return hunter;
+  }
+
+  /**
+   * Throwers are capped at the night number — one on night 1, two on night 2,
+   * and so on — so the ranged pressure ramps predictably while the rest of the
+   * (growing) spawn budget keeps going to melee hunters.
+   */
+  private canSpawnThrower(): boolean {
+    if (this.night < THROWER.firstNight) return false;
+    if (Math.random() >= THROWER.spawnChance) return false;
+    return this.countAliveThrowers() < this.night * THROWER.maxAlivePerNight;
+  }
+
+  private countAliveThrowers(): number {
+    let alive = 0;
+    for (const hunter of this.hunters.getChildren()) {
+      if (hunter instanceof GarlicThrower && hunter.active && hunter.isAlive) alive++;
+    }
+    return alive;
+  }
+
+  private createThrower(spawnX: number, spawnY: number): GarlicThrower {
+    const thrower = new GarlicThrower(this, spawnX, spawnY);
+    thrower.onThrow = (fromX, fromY, toX, toY) => {
+      if (this.phase !== 'playing') return;
+      const garlic = new Garlic(this, fromX, fromY, toX, toY, (ix, iy, direct) =>
+        this.onGarlicImpact(ix, iy, direct),
+      );
+      this.garlics.add(garlic);
+      garlic.launch(); // must follow the group add — see Garlic.launch()
+    };
+    return thrower;
+  }
+
+  /**
+   * A garlic bulb either thumped into the Count or landed on the floor where
+   * the crosshair locked. A landing still splashes — standing next to the
+   * lock point is not the same as dodging it.
+   */
+  private onGarlicImpact(x: number, y: number, direct: boolean): void {
+    this.spawnGarlicBurst(x, y);
+    if (this.phase !== 'playing') return;
+
+    const hit =
+      direct ||
+      Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) <=
+        THROWER.garlicSplashRadius;
+    if (hit) this.player.takeDamage(THROWER.garlicDamage);
+  }
+
+  /** Green splash where a bulb bursts. */
+  private spawnGarlicBurst(x: number, y: number): void {
+    const burst = this.add
+      .particles(0, 0, TEXTURES.particle, {
+        speed: { min: 40, max: 170 },
+        lifespan: { min: 220, max: 480 },
+        scale: { start: 1.2, end: 0 },
+        tint: [0x7dff9b, 0xd8ffe4, 0xffffff],
+        emitting: false,
+      })
+      .setDepth(DEPTHS.attackFx);
+    burst.explode(14, x, y);
+    this.time.delayedCall(600, () => burst.destroy());
+
+    const ring = this.add
+      .circle(x, y, THROWER.garlicSplashRadius, 0x7dff9b, 0.3)
+      .setDepth(DEPTHS.groundFx)
+      .setStrokeStyle(3, 0xd8ffe4, 0.9)
+      .setScale(0.2);
+    this.tweens.add({
+      targets: ring,
+      scale: 1,
+      alpha: 0,
+      duration: 320,
+      ease: 'Quad.easeOut',
+      onComplete: () => ring.destroy(),
+    });
   }
 
   private setPlayerDormant(dormant: boolean): void {
@@ -556,6 +645,13 @@ export class GameScene extends Phaser.Scene {
 
     this.physics.add.overlap(this.player, this.pickups, (_player, pickupObj) => {
       this.collectPickup(pickupObj as BloodPickup);
+    });
+
+    // A bulb that reaches him mid-flight bursts on the spot; one that misses
+    // keeps going and resolves at the locked point instead (see Garlic).
+    this.physics.add.overlap(this.player, this.garlics, (_player, garlicObj) => {
+      if (this.player.isInvulnerable) return; // dashed clean through it
+      (garlicObj as Garlic).hitPlayer();
     });
 
     this.physics.add.overlap(this.player, this.coffin, () => {
@@ -730,6 +826,12 @@ export class GameScene extends Phaser.Scene {
     this.physics.pause();
     this.aimArc?.clear();
 
+    // Nothing is aiming at a Count who has already lost (or won) the night.
+    this.garlics.clear(true, true);
+    for (const target of this.getAttackTargets()) {
+      if (target instanceof GarlicThrower) target.abortAim();
+    }
+
     if (cause === 'victory') {
       this.phase = 'transition';
       this.playVictoryOutro();
@@ -809,9 +911,11 @@ export class GameScene extends Phaser.Scene {
    * begins. No screen shown; see playNightCycle / startNewRound.
    */
   private playVictoryOutro(): void {
-    // Clear the field immediately so the hall reads clean through the outro.
+    // Clear the field immediately so the hall reads clean through the outro
+    // (clearing the hunters also takes their targeting crosshairs with them).
     this.hunters.clear(true, true);
     this.pickups.clear(true, true);
+    this.garlics.clear(true, true);
 
     this.coffin.setOpen(true);
     this.setBatForm(true); // BAT PLACEHOLDER: he flies back as a bat too
