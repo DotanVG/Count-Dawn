@@ -190,7 +190,7 @@ export class HUD {
    * bars back to a fresh-round look (the coffin transfer already set the
    * numbers; this just resets cosmetic state — color, size, jitter, vignette).
    */
-  resetForNewRound(): void {
+  resetForNewRound(bloodTarget: number): void {
     this.panic = false;
     this.timerText.setColor('#e8ddff');
     this.timerText.setFontSize('58px');
@@ -199,7 +199,7 @@ export class HUD {
     this.timerText.setPosition(this.timerHome.x, this.timerHome.y);
     this.vignette.setAlpha(0);
     this.setHealth(PLAYER.maxHealth, PLAYER.maxHealth);
-    this.setBlood(0, BLOOD.target);
+    this.setBlood(0, bloodTarget);
     // Without this the objective line kept showing "Return to your coffin"
     // (the previous round's final state) until the new round's first
     // OBJECTIVE_CHANGED event — GameFlowSystem only emits on state changes,

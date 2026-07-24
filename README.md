@@ -8,7 +8,7 @@ A reverse horde survival game for the **"Countdown"** game jam theme.
 - **Production (main):** https://count-dawn.vercel.app
 - **Staging (staging branch):** https://count-dawn-git-staging-dotanvgs-projects.vercel.app
 
-> **Asset status:** the vampire, hunters, Captain and castle now use licensed free pixel-art packs from CraftPix (see Credits). The blood droplet and coffin are still runtime-generated placeholders. No audio ships yet — the hook points are ready ([docs/ASSET_INTEGRATION.md](docs/ASSET_INTEGRATION.md)). No AI-generated art or audio is used.
+> **Asset status:** the vampire, hunters, Captain and castle use licensed free pixel-art packs from CraftPix (see Credits). Romi created the coffin, garlic, and cover art. Ouzana composed the original main-title soundtrack; gameplay SFX and additional level music are planned. The blood droplet is still a runtime-generated placeholder. No AI-generated art or audio is used.
 
 ## Prototype state
 
@@ -22,18 +22,18 @@ The complete core loop is playable end to end:
 - ✅ Mobile support: red virtual joystick, ⚔ auto-strike-nearest button (Space on desktop), tap-to-strike toward the tap, rotate-to-landscape gate, device-aware menus
 - ✅ Sunrise countdown (60s for fast playtests) — big timer framed in the center window, tick pops, growing tremble, red panic mode + vignette + camera shakes in the last 10s
 - ✅ Fully animated 4-direction vampire (idle/run/attack/hurt/death) and sword-hunter enemies with death animations
-- ✅ Hunters spawn at arena edges every ~1.25s (max 18 alive) and chase the vampire
+- ✅ Hunters spawn at arena edges and chase the vampire; every new night raises the blood target, increases the alive cap, and accelerates spawning
 - ✅ Mouse-aimed melee arc attack with cooldown pip and hit flash
-- ✅ Dead hunters drop blood pickups; Blood Meter targets 100
-- ✅ Hunter Captain boss at T−30s: entrance effect, dedicated health bar, heavier contact damage
+- ✅ Dead hunters drop blood pickups; Night 1 targets 50 blood, increasing by 15 each new night
+- ✅ Filling the round's Blood Meter immediately summons the Hunter Captain: entrance effect, dedicated health bar, heavier contact damage
 - ✅ Coffin activates only when blood is full **and** the Captain is dead (pulsing glow, hint messages if approached early)
 - ✅ Victory / dawn-defeat / death-defeat endings with run stats and instant restart (R)
 - ✅ Pause overlay (Esc / P), main menu, fullscreen button
 - ✅ Player: invulnerability window + damage flash, world-bounds clamping, frame-rate-independent movement
 - ✅ Unit tests for the pure game rules (countdown single-fire guarantees, coffin activation rules, single end-of-run transition)
-- ⬜ Audio (integration points ready)
-- ⬜ Real coffin / blood-pickup art
-- ⬜ Touch controls (input layer prepared, see below)
+- ✅ Original main-title music
+- ⬜ Gameplay SFX and additional level music
+- ⬜ Real blood-pickup art
 - ⬜ Dash, extra enemy types, boss phases — intentionally out of scope for now
 
 Full loop details in [docs/GAME_LOOP.md](docs/GAME_LOOP.md).
@@ -93,7 +93,7 @@ docs/      game loop, asset integration, deployment
 
 ## Dev mode
 
-Set `FAST_DEV_MODE = true` in [src/data/balance.ts](src/data/balance.ts) for a 30-second night with an early boss — handy for testing the full loop quickly.
+Set `FAST_DEV_MODE = true` in [src/data/balance.ts](src/data/balance.ts) for a 25-second night. The Captain is always summoned by filling the Blood Meter, never by the timer.
 
 ## Branches & deployment
 
@@ -109,7 +109,8 @@ Suggested flow: feature branches → `staging` (playtest on the test URL) → me
 ## Credits
 
 - **Dotan** — _(role TBD)_
-- **Romi** — _(role TBD)_
+- **Romi** — coffin and garlic art; cover art
+- **Ouzana** — original soundtrack (main-title theme; gameplay SFX and more level music planned)
 - **Noam** — _(role TBD)_
 - **Abed** — _(role TBD)_
 
@@ -121,6 +122,8 @@ Character & environment art from [CraftPix](https://craftpix.net) under the [Cra
 - **Free Base 4-Direction Male Character Pixel Art** — hunters & Hunter Captain (sword variant, incl. swing attack)
 - **Free 2D Top-Down Pixel Dungeon Asset Pack** — castle tiles & torch flames
 
-Original art by **Romi**: the coffin (closed/half/open) and the garlic (a future stationary-hunter throwable, loaded but not yet used).
+Original art by **Romi**: the cover art, coffin (closed/half/open), and garlic (a future stationary-hunter throwable, loaded but not yet used).
+
+Original music by **Ouzana**: the main-title theme. Gameplay SFX and additional level music are planned.
 
 The blood droplet is a runtime-generated placeholder. A bat sprite is planned for the coffin fly-in/out and summonable bat minions — see the `setBatForm` / `TEXTURES.bat` placeholders in the code. No AI-generated art or audio.

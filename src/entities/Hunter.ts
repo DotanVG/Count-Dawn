@@ -29,6 +29,7 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   private lastTargetDist = Infinity;
   private entering = false;
   private arrivalPoint: { x: number; y: number } | null = null;
+  private coffinDetour: { x: number; y: number } | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -84,6 +85,14 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
       return;
     }
 
+    if (this.coffinDetour) {
+      this.walkToward(this.coffinDetour.x, this.coffinDetour.y);
+      if (Phaser.Math.Distance.Between(this.x, this.y, this.coffinDetour.x, this.coffinDetour.y) < 12) {
+        this.coffinDetour = null;
+      }
+      return;
+    }
+
     const angle = Phaser.Math.Angle.Between(this.x, this.y, targetX, targetY);
     const dir = angleToDir4(angle);
     this.facing = dir;
@@ -119,6 +128,31 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     if (!swinging) {
       this.play(animKey('hunter', 'walk', dir), true);
     }
+  }
+
+  /**
+   * Pick a stable route around the coffin on first contact. Hunters that hit
+   * its upper half go above it; hunters that hit its lower half go below it.
+   * The waypoint is placed beyond the coffin on the player's side so direct
+   * pursuit cannot immediately steer the hunter back into the obstacle.
+   */
+  avoidCoffin(
+    coffinX: number,
+    coffinY: number,
+    coffinHalfWidth: number,
+    coffinHalfHeight: number,
+    targetX: number,
+  ): void {
+    if (this.entering || this.coffinDetour) return;
+    const clearance = 24 + 10 * this.scaleX;
+    this.coffinDetour = {
+      x: targetX >= coffinX
+        ? coffinX + coffinHalfWidth + clearance
+        : coffinX - coffinHalfWidth - clearance,
+      y: this.y < coffinY
+        ? coffinY - coffinHalfHeight - clearance
+        : coffinY + coffinHalfHeight + clearance,
+    };
   }
 
   private walkToward(targetX: number, targetY: number): void {

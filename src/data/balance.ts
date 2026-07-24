@@ -3,14 +3,12 @@
  * gameplay code must not hardcode its own values.
  */
 
-/** Shortens the night and accelerates the boss for quick testing. */
+/** Shortens the night for quick testing. */
 export const FAST_DEV_MODE = false;
 
 export const NIGHT = {
   /** Full night length in seconds (short for fast playtest iterations). */
   durationSeconds: FAST_DEV_MODE ? 25 : 60,
-  /** Boss spawns when this many seconds remain. */
-  bossSpawnAtRemainingSeconds: FAST_DEV_MODE ? 15 : 25,
   /** Timer turns urgent when this many seconds remain. */
   finalWarningSeconds: 10,
 } as const;
@@ -47,6 +45,12 @@ export const HUNTER = {
   /** The swing lands if the target is still within meleeRange * this factor. */
   meleeHitReachFactor: 1.35,
   spriteScale: 2,
+  /** Each new night adds this many simultaneous hunters. */
+  maxAlivePerNight: 2,
+  /** Each new night shortens the spawn delay by this many milliseconds. */
+  spawnIntervalDecreasePerNightMs: 75,
+  /** Prevents later nights from turning the spawner into a solid stream. */
+  minimumSpawnIntervalMs: 650,
 } as const;
 
 export const BOSS = {
@@ -59,6 +63,23 @@ export const BOSS = {
 
 export const BLOOD = {
   target: 50,
+  /** Additional blood required for every night after the first. */
+  targetIncreasePerNight: 15,
   /** Each collected bloodlet is worth this much. */
   dropletValue: 1,
 } as const;
+
+export function bloodTargetForNight(night: number): number {
+  return BLOOD.target + Math.max(0, night - 1) * BLOOD.targetIncreasePerNight;
+}
+
+export function hunterPressureForNight(night: number): { spawnIntervalMs: number; maxAlive: number } {
+  const increases = Math.max(0, night - 1);
+  return {
+    spawnIntervalMs: Math.max(
+      HUNTER.minimumSpawnIntervalMs,
+      HUNTER.spawnIntervalMs - increases * HUNTER.spawnIntervalDecreasePerNightMs,
+    ),
+    maxAlive: HUNTER.maxAlive + increases * HUNTER.maxAlivePerNight,
+  };
+}

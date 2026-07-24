@@ -71,6 +71,8 @@ Physics sizing is set explicitly (e.g. `Player` calls `setCircle(20, 4, 4)`), in
 
 ## Audio
 
+The original main-title theme by **Ouzana** is loaded from `public/assets/audio/`. Gameplay SFX and additional level music are planned.
+
 Load files in `PreloadScene` under the `AUDIO` keys:
 
 ```ts

@@ -26,6 +26,19 @@ test('coffin does not activate with only full blood', () => {
 
   assert.equal(flow.isCoffinActive, false);
   assert.equal(emitter.count(EVENTS.COFFIN_ACTIVATED), 0);
+  assert.equal(emitter.count(EVENTS.BOSS_SPAWN_REQUESTED), 1);
+});
+
+test('reaching the blood target requests the boss exactly once', () => {
+  const emitter = createRecorder();
+  const flow = new GameFlowSystem(emitter, 100);
+
+  flow.addBlood(99);
+  assert.equal(emitter.count(EVENTS.BOSS_SPAWN_REQUESTED), 0);
+  flow.addBlood(1);
+  flow.addBlood(20);
+
+  assert.equal(emitter.count(EVENTS.BOSS_SPAWN_REQUESTED), 1);
 });
 
 test('coffin does not activate with only the boss defeated', () => {

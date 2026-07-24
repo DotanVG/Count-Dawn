@@ -1,5 +1,11 @@
 import Phaser from 'phaser';
-import { BLOOD, HUNTER, NIGHT, PLAYER } from '../data/balance';
+import {
+  HUNTER,
+  NIGHT,
+  PLAYER,
+  bloodTargetForNight,
+  hunterPressureForNight,
+} from '../data/balance';
 import {
   ARENA,
   COLORS,
@@ -95,7 +101,7 @@ export class GameScene extends Phaser.Scene {
     this.touch = null;
 
     this.emitter = new Phaser.Events.EventEmitter();
-    this.flow = new GameFlowSystem(this.emitter, BLOOD.target);
+    this.flow = new GameFlowSystem(this.emitter, bloodTargetForNight(this.night));
     this.audioFx = new AudioSystem(this);
 
     new CastleMap(this);
@@ -496,17 +502,20 @@ export class GameScene extends Phaser.Scene {
     // permanently "activated" after the first win.
     this.player.resetForNewRound();
     this.coffin.resetForNewRound();
-    this.flow = new GameFlowSystem(this.emitter, BLOOD.target);
+    const bloodTarget = bloodTargetForNight(this.night);
+    const pressure = hunterPressureForNight(this.night);
+    this.flow = new GameFlowSystem(this.emitter, bloodTarget);
     this.countdown = new CountdownSystem(
       this.emitter,
       NIGHT.durationSeconds,
-      NIGHT.bossSpawnAtRemainingSeconds,
       NIGHT.finalWarningSeconds,
     );
 
     this.spawner?.stop();
     this.spawner = new SpawnSystem(
       this,
+      pressure.spawnIntervalMs,
+      pressure.maxAlive,
       () => this.hunters.countActive(true),
       () => ({ x: this.player.x, y: this.player.y }),
       (sx, sy, ax, ay) => this.hunters.add(this.createHunter(sx, sy, ax, ay)),
@@ -564,7 +573,16 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(
       this.hunters,
       this.coffin,
-      undefined,
+      (hunterObj) => {
+        const body = this.coffin.body as Phaser.Physics.Arcade.StaticBody;
+        (hunterObj as Hunter).avoidCoffin(
+          this.coffin.x,
+          this.coffin.y,
+          body.width / 2,
+          body.height / 2,
+          this.player.x,
+        );
+      },
       (hunterObj) => !(hunterObj as Hunter).isEntering,
       this,
     );
@@ -832,7 +850,7 @@ export class GameScene extends Phaser.Scene {
       },
       onComplete: () => {
         this.night++;
-        this.hud?.resetForNewRound();
+        this.hud?.resetForNewRound(bloodTargetForNight(this.night));
         this.riseFromCoffin(() => {
           this.physics.resume();
           this.phase = 'playing';

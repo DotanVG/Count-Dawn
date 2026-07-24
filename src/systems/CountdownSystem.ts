@@ -9,11 +9,9 @@ import { EVENTS, type GameEventEmitter } from '../game/events.ts';
  */
 export class CountdownSystem {
   private readonly durationMs: number;
-  private readonly bossThresholdMs: number;
   private readonly finalWarningMs: number;
 
   private elapsedMs = 0;
-  private bossRequested = false;
   private finalWarningFired = false;
   private dawnFired = false;
   private lastWholeSecond = -1;
@@ -21,11 +19,9 @@ export class CountdownSystem {
   constructor(
     private readonly emitter: GameEventEmitter,
     durationSeconds: number,
-    bossSpawnAtRemainingSeconds: number,
     finalWarningSeconds: number,
   ) {
     this.durationMs = durationSeconds * 1000;
-    this.bossThresholdMs = bossSpawnAtRemainingSeconds * 1000;
     this.finalWarningMs = finalWarningSeconds * 1000;
   }
 
@@ -60,11 +56,6 @@ export class CountdownSystem {
     if (wholeSecond !== this.lastWholeSecond) {
       this.lastWholeSecond = wholeSecond;
       this.emitter.emit(EVENTS.COUNTDOWN_TICK, wholeSecond);
-    }
-
-    if (!this.bossRequested && remaining <= this.bossThresholdMs) {
-      this.bossRequested = true;
-      this.emitter.emit(EVENTS.BOSS_SPAWN_REQUESTED);
     }
 
     if (!this.finalWarningFired && remaining <= this.finalWarningMs) {

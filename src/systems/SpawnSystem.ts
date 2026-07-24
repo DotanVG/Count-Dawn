@@ -14,12 +14,14 @@ export class SpawnSystem {
 
   constructor(
     scene: Phaser.Scene,
+    private readonly spawnIntervalMs: number,
+    private readonly maxAlive: number,
     private readonly countAlive: () => number,
     private readonly getPlayerPosition: () => { x: number; y: number },
     private readonly spawnHunter: (spawnX: number, spawnY: number, arrivalX: number, arrivalY: number) => void,
   ) {
     this.timer = scene.time.addEvent({
-      delay: HUNTER.spawnIntervalMs,
+      delay: this.spawnIntervalMs,
       loop: true,
       callback: () => this.trySpawn(),
     });
@@ -30,7 +32,7 @@ export class SpawnSystem {
   }
 
   private trySpawn(): void {
-    if (this.countAlive() >= HUNTER.maxAlive) return;
+    if (this.countAlive() >= this.maxAlive) return;
 
     const player = this.getPlayerPosition();
     for (let attempt = 0; attempt < 8; attempt++) {

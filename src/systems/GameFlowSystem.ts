@@ -58,8 +58,12 @@ export class GameFlowSystem {
 
   addBlood(amount: number): void {
     if (this.ended) return;
+    const wasFull = this.isBloodFull;
     this.blood += amount;
     this.emitter.emit(EVENTS.BLOOD_CHANGED, this.blood, this.bloodTarget);
+    if (!wasFull && this.isBloodFull && !this.bossSpawned) {
+      this.emitter.emit(EVENTS.BOSS_SPAWN_REQUESTED);
+    }
     this.refreshCoffinState();
   }
 
