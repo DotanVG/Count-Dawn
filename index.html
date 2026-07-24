@@ -130,11 +130,13 @@
         background: #c9a7ff;
         opacity: 0.85;
       }
-      #rotate-overlay .arrow {
-        font-size: 18vw;
-        line-height: 1;
+      #rotate-overlay .arrow-svg {
+        width: 20vw;
+        max-width: 96px;
+        height: auto;
         color: #e0364a;
         animation: cd-pulse 1.6s ease-in-out infinite;
+        transform-origin: center;
       }
       #rotate-overlay h2 {
         font-size: 7vw;
@@ -169,7 +171,10 @@
       <span class="fs-corner br" aria-hidden="true"></span>
     </button>
     <div id="rotate-overlay" aria-hidden="true">
-      <div class="arrow">↻</div>
+      <svg class="arrow-svg" viewBox="0 0 100 60" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <path d="M 78 27 A 38 38 0 0 0 24 27" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" />
+        <path d="M 12 34 L 30 20 L 28 40 Z" fill="currentColor" />
+      </svg>
       <div class="phone"></div>
       <h2>Rotate your device</h2>
       <p>Count Dawn plays best in landscape 🦇</p>

@@ -58,11 +58,19 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   /**
    * Called by CombatSystem the moment an attack fires. The body only holds the
    * attack pose briefly so walk/run resumes between swings — the Count can
-   * strike on the move (the swish arc carries the attack read either way).
+   * strike on the move. The sprite itself pops bigger for the swing (instead
+   * of a separate overlay effect) so the small attack frames read as impact.
    */
   playAttackAnim(): void {
     this.attackAnimUntil = this.scene.time.now + 160;
     this.play(animKey('vampire', 'attack', this.facing), true);
+
+    this.scene.tweens.add({
+      targets: this,
+      scale: { from: PLAYER.spriteScale * 1.22, to: PLAYER.spriteScale },
+      duration: 180,
+      ease: 'Quad.easeOut',
+    });
   }
 
   playDeathAnim(): void {

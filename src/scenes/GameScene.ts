@@ -20,6 +20,7 @@ import { Coffin } from '../entities/Coffin';
 import { InputController } from '../systems/InputController';
 import { CombatSystem } from '../systems/CombatSystem';
 import { SpawnSystem } from '../systems/SpawnSystem';
+import { offCanvasSpawnPoint } from '../systems/entrance';
 import { CountdownSystem } from '../systems/CountdownSystem';
 import { GameFlowSystem } from '../systems/GameFlowSystem';
 import { AudioSystem } from '../systems/AudioSystem';
@@ -30,7 +31,7 @@ import { TouchControls } from '../ui/TouchControls';
 import { TEXTURES, AUDIO } from '../utils/assetKeys';
 import type { EndCause, RunSummary } from '../types/game';
 
-type Phase = 'menu' | 'intro' | 'playing' | 'ended';
+type Phase = 'menu' | 'intro' | 'playing' | 'transition' | 'ended';
 
 interface GameSceneData {
   /** Skip the menu (used by the restart buttons) and rise straight from the coffin. */
@@ -46,15 +47,18 @@ const PLAYER_SPAWN = {
 };
 
 /**
- * One night in the castle. The scene doubles as the main menu: the hall,
- * sky and torches are always alive; pressing START opens the coffin, the
- * Count spirals out across the hall and lands in the middle, the HUD
- * appears and the countdown begins. Victory reverses it — he spirals back
- * into the coffin and his spent blood refills his health.
+ * One castle hall, played as an endless sequence of nights. The scene
+ * doubles as the main menu: the hall, sky and torches are always alive;
+ * pressing START opens the coffin and the Count spirals out to the hall
+ * center. Successfully returning to the coffin doesn't end the game — it
+ * plays the blood/HP transfer, fast-forwards dusk back into a fresh night
+ * (moon rising), and flies him back out for the next round, with no screen
+ * in between. Dawn or death are the only ways a run truly ends.
  */
 export class GameScene extends Phaser.Scene {
   private phase: Phase = 'menu';
   private isTouch = false;
+  private night = 1;
   private emitter!: Phaser.Events.EventEmitter;
   private flow!: GameFlowSystem;
   private countdown: CountdownSystem | null = null;
@@ -83,6 +87,7 @@ export class GameScene extends Phaser.Scene {
   create(data: GameSceneData): void {
     this.phase = 'menu';
     this.isTouch = isTouchDevice();
+    this.night = 1;
     this.boss = null;
     this.countdown = null;
     this.spawner = null;
@@ -138,7 +143,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(_time: number, delta: number): void {
-    this.sky.update(this.countdown?.progress ?? 0);
+    // During 'transition' the day/night cycle tween drives the sky directly
+    // (see playNightCycle) — the automatic call here would fight it using a
+    // stale countdown.progress, so it's skipped for that phase only.
+    if (this.phase !== 'transition') {
+      this.sky.update(this.countdown?.progress ?? 0);
+    }
 
     if (this.phase !== 'playing' || !this.countdown) return;
 
@@ -173,6 +183,7 @@ export class GameScene extends Phaser.Scene {
       if (mv.x !== 0 || mv.y !== 0) {
         this.player.aimAt(this.player.x + mv.x * 100, this.player.y + mv.y * 100);
       }
+      this.drawAimArc();
       if (this.touch.isAutoAttackHeld()) {
         this.autoAttackNearest();
       }
@@ -193,17 +204,54 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Desktop aim cursor: a faint quarter-circle around the Count, facing the mouse. */
+  /**
+   * Aim reticle around the Count, facing the mouse (desktop) or the current
+   * travel/strike direction (mobile): a thin outer arc, a small fan of tick
+   * marks, and a chevron tip — an eighth of a circle, not a plain line.
+   */
   private drawAimArc(): void {
     if (!this.aimArc) return;
     const g = this.aimArc;
-    const quarter = Math.PI / 4; // 90° total, centered on the aim
+    const halfAngle = Math.PI / 8; // 45° total — an eighth of a circle
+    const radius = 130;
+    const aim = this.player.aimAngle;
     g.clear();
     g.setPosition(this.player.x, this.player.y);
-    g.lineStyle(5, COLORS.attackArc, 0.35);
+
+    // Outer arc.
+    g.lineStyle(3, COLORS.attackArc, 0.3);
     g.beginPath();
-    g.arc(0, 0, 82, this.player.aimAngle - quarter, this.player.aimAngle + quarter, false);
+    g.arc(0, 0, radius, aim - halfAngle, aim + halfAngle, false);
     g.strokePath();
+
+    // Radial tick marks fanning across the arc, brightest at dead-center.
+    const ticks = 5;
+    for (let i = 0; i < ticks; i++) {
+      const t = i / (ticks - 1);
+      const angle = aim - halfAngle + t * (2 * halfAngle);
+      const alpha = 0.15 + 0.45 * (1 - Math.abs(t - 0.5) * 2);
+      g.lineStyle(2, COLORS.attackArc, alpha);
+      g.beginPath();
+      g.moveTo(Math.cos(angle) * (radius - 9), Math.sin(angle) * (radius - 9));
+      g.lineTo(Math.cos(angle) * (radius + 7), Math.sin(angle) * (radius + 7));
+      g.strokePath();
+    }
+
+    // Chevron tip at the exact aim angle, pointing outward.
+    const tipR = radius + 16;
+    const cx = Math.cos(aim) * tipR;
+    const cy = Math.sin(aim) * tipR;
+    const backA = aim + Math.PI * 0.82;
+    const backB = aim - Math.PI * 0.82;
+    g.fillStyle(COLORS.attackArc, 0.65);
+    g.fillTriangle(
+      cx,
+      cy,
+      cx + Math.cos(backA) * 12,
+      cy + Math.sin(backA) * 12,
+      cx + Math.cos(backB) * 12,
+      cy + Math.sin(backB) * 12,
+    );
   }
 
   /** Space / ⚔ button: turn toward the nearest living hunter and strike. */
@@ -318,7 +366,16 @@ export class GameScene extends Phaser.Scene {
       this.tweens.add({ targets: ui, alpha: 0, duration: 300, onComplete: () => ui.destroy() });
     }
 
-    // The coffin creaks open and the Count rises out of it, small…
+    this.riseFromCoffin(() => this.startPlaying());
+  }
+
+  /**
+   * The coffin creaks open, the Count rises out small, then sweeps around
+   * the hall in a shrinking spiral, growing to full boss size, and lands
+   * dead center. Shared by the very first rise (from the menu) and every
+   * subsequent night's fly-out in the seamless loop.
+   */
+  private riseFromCoffin(onComplete: () => void): void {
     this.coffin.setOpen(true);
     this.player
       .setVisible(true)
@@ -327,20 +384,18 @@ export class GameScene extends Phaser.Scene {
       .setAlpha(0.55);
     this.setBatForm(true);
 
-    // …then sweeps around the hall in a shrinking spiral, growing to full
-    // boss size, and lands dead center.
-    this.time.delayedCall(350, () => {
+    this.time.delayedCall(300, () => {
       this.flightSpiral({
         center: PLAYER_SPAWN,
         from: { x: this.player.x, y: this.player.y },
-        duration: 1700,
+        duration: 1600,
         toScale: PLAYER.spriteScale,
         toAlpha: 1,
         squash: 0.42,
         onComplete: () => {
           this.setBatForm(false);
           this.coffin.setOpen(false);
-          this.startPlaying();
+          onComplete();
         },
       });
     });
@@ -361,8 +416,8 @@ export class GameScene extends Phaser.Scene {
   /**
    * Fly the player along a spiral that starts at `from` and converges on
    * `center` (radius shrinking to zero over 1.5 turns). Used forward for the
-   * intro (coffin → hall center) and with a coffin-centered spiral for the
-   * victory outro (hall → coffin).
+   * coffin rise (coffin → hall center) and with a coffin-centered spiral for
+   * the victory outro (hall → coffin).
    */
   private flightSpiral(opts: {
     center: { x: number; y: number };
@@ -401,6 +456,7 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  /** First-ever round start (from the menu): builds the HUD/touch UI that persist for the whole scene. */
   private startPlaying(): void {
     this.phase = 'playing';
     this.setPlayerDormant(false);
@@ -424,6 +480,13 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
+    this.beginRoundSystems();
+  }
+
+  /** (Re)creates the per-round simulation: flow, countdown, spawner. Reused every night. */
+  private beginRoundSystems(): void {
+    this.boss = null;
+    this.flow = new GameFlowSystem(this.emitter, BLOOD.target);
     this.countdown = new CountdownSystem(
       this.emitter,
       NIGHT.durationSeconds,
@@ -431,17 +494,21 @@ export class GameScene extends Phaser.Scene {
       NIGHT.finalWarningSeconds,
     );
 
+    this.spawner?.stop();
     this.spawner = new SpawnSystem(
       this,
       () => this.hunters.countActive(true),
       () => ({ x: this.player.x, y: this.player.y }),
-      (x, y) => this.hunters.add(this.createHunter(x, y)),
+      (sx, sy, ax, ay) => this.hunters.add(this.createHunter(sx, sy, ax, ay)),
     );
+
+    this.hud?.setNight(this.night);
   }
 
   /** Sword swings damage the player when they land (invulnerability still applies). */
-  private createHunter(x: number, y: number): Hunter {
-    const hunter = new Hunter(this, x, y);
+  private createHunter(spawnX: number, spawnY: number, arrivalX: number, arrivalY: number): Hunter {
+    const hunter = new Hunter(this, spawnX, spawnY);
+    hunter.beginEntrance(arrivalX, arrivalY);
     hunter.onStrikeHit = () => {
       if (this.phase === 'playing') this.player.takeDamage(hunter.contactDamage);
     };
@@ -477,6 +544,10 @@ export class GameScene extends Phaser.Scene {
       if (this.flow.tryEnterCoffin()) return;
       this.coffin.showRequirementHint(this.coffinHintMessage());
     });
+
+    // Solid body: hunters (and the Captain, same group) walk around the
+    // coffin instead of through it.
+    this.physics.add.collider(this.hunters, this.coffin);
   }
 
   /** Fly the bloodlet up to the blood bar; it counts on arrival, in a red burst. */
@@ -533,19 +604,21 @@ export class GameScene extends Phaser.Scene {
 
   private spawnBoss(): void {
     if (this.boss) return;
-    const pos = this.bossSpawnPosition();
-    this.boss = new HunterCaptain(this, pos.x, pos.y, this.emitter);
+    const arrival = this.bossArrivalPosition();
+    const spawn = offCanvasSpawnPoint(arrival);
+    this.boss = new HunterCaptain(this, spawn.x, spawn.y, this.emitter);
+    this.boss.beginEntrance(arrival.x, arrival.y);
+    this.boss.onEntranceArrived = () => this.boss?.playEntrance();
     this.boss.onStrikeHit = () => {
       if (this.phase === 'playing' && this.boss) this.player.takeDamage(this.boss.contactDamage);
     };
     this.hunters.add(this.boss);
-    this.boss.playEntrance();
     this.flow.notifyBossSpawned();
     this.audioFx.play(AUDIO.bossAppear);
   }
 
-  /** Arena-edge midpoint farthest from the player. */
-  private bossSpawnPosition(): { x: number; y: number } {
+  /** Arena-edge midpoint farthest from the player — where the Captain arrives. */
+  private bossArrivalPosition(): { x: number; y: number } {
     const cx = (ARENA.left + ARENA.right) / 2;
     const cy = (ARENA.top + ARENA.bottom) / 2;
     const inset = 70;
@@ -604,31 +677,33 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onGameEnded(cause: EndCause): void {
-    this.phase = 'ended';
     this.spawner?.stop();
     this.physics.pause();
+    this.aimArc?.clear();
 
-    const summary: RunSummary = {
+    if (cause === 'victory') {
+      this.phase = 'transition';
+      this.playVictoryOutro();
+    } else if (cause === 'dawn') {
+      this.phase = 'ended';
+      this.playDawnBurn(this.buildSummary(cause));
+    } else {
+      this.phase = 'ended';
+      // Death by hunters: the death animation already played in takeDamage.
+      this.time.delayedCall(900, () => {
+        this.scene.start(SCENES.gameOver, this.buildSummary(cause));
+      });
+    }
+  }
+
+  private buildSummary(cause: EndCause): RunSummary {
+    return {
       cause,
       bloodCollected: this.flow.currentBlood,
       bloodTarget: this.flow.bloodTarget,
       timeSurvivedSeconds: Math.round(this.countdown?.elapsedSeconds ?? 0),
       timeRemainingSeconds: this.countdown?.remainingSeconds ?? 0,
     };
-
-    this.audioFx.play(cause === 'victory' ? AUDIO.victory : AUDIO.defeat);
-    this.aimArc?.clear();
-
-    if (cause === 'victory') {
-      this.playVictoryOutro(summary);
-    } else if (cause === 'dawn') {
-      this.playDawnBurn(summary);
-    } else {
-      // Death by hunters: the death animation already played in takeDamage.
-      this.time.delayedCall(900, () => {
-        this.scene.start(SCENES.gameOver, summary);
-      });
-    }
   }
 
   /**
@@ -681,9 +756,14 @@ export class GameScene extends Phaser.Scene {
   /**
    * Victory: the coffin opens, the Count spirals back into it (the reverse
    * of his entrance), the lid closes, and his collected blood drains into
-   * his health bar before the victory screen.
+   * his health bar — then the night cycle fast-forwards and the next round
+   * begins. No screen shown; see playNightCycle / startNewRound.
    */
-  private playVictoryOutro(summary: RunSummary): void {
+  private playVictoryOutro(): void {
+    // Clear the field immediately so the hall reads clean through the outro.
+    this.hunters.clear(true, true);
+    this.pickups.clear(true, true);
+
     this.coffin.setOpen(true);
     this.setBatForm(true); // BAT PLACEHOLDER: he flies back as a bat too
 
@@ -702,7 +782,39 @@ export class GameScene extends Phaser.Scene {
         const bloodRatio = Phaser.Math.Clamp(this.flow.currentBlood / this.flow.bloodTarget, 0, 1);
         const healthRatio = Phaser.Math.Clamp(this.player.health / PLAYER.maxHealth, 0, 1);
         this.hud?.playCoffinTransfer(bloodRatio, healthRatio, () => {
-          this.time.delayedCall(350, () => this.scene.start(SCENES.victory, summary));
+          this.time.delayedCall(300, () => this.playNightCycle());
+        });
+      },
+    });
+  }
+
+  /**
+   * Fast-forwards the sky from wherever the night ended back to full dark —
+   * sunset finishing fast, night falling, the moon rising again — then
+   * starts the next round's fly-out from the coffin.
+   */
+  private playNightCycle(): void {
+    const startProgress = this.countdown?.progress ?? 0.5;
+
+    this.tweens.addCounter({
+      from: startProgress,
+      to: 0,
+      duration: 1600,
+      ease: 'Sine.easeInOut',
+      onUpdate: (tween) => {
+        const v = tween.getValue() ?? 0;
+        this.sky.update(v);
+        this.nightOverlay.setAlpha(0.42 * (1 - v * v));
+        this.dawnOverlay.setAlpha(v * v * 0.18);
+      },
+      onComplete: () => {
+        this.night++;
+        this.hud?.resetForNewRound();
+        this.riseFromCoffin(() => {
+          this.physics.resume();
+          this.phase = 'playing';
+          this.cameras.main.shake(120, 0.004);
+          this.beginRoundSystems();
         });
       },
     });

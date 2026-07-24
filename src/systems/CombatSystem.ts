@@ -1,12 +1,13 @@
 import Phaser from 'phaser';
 import { PLAYER } from '../data/balance';
-import { COLORS, DEPTHS } from '../game/constants';
 import type { Player } from '../entities/Player';
 import { Hunter } from '../entities/Hunter';
 
 /**
- * The player's directional melee strike: cooldown, arc hit detection against
- * all living hunters (boss included), and a short-lived arc visualization.
+ * The player's directional melee strike: cooldown and arc hit detection
+ * against all living hunters (boss included). No separate visual effect —
+ * the attack sprite itself pops bigger (Player.playAttackAnim) so the small
+ * pixel-art frames read clearly instead of being hidden under an overlay.
  */
 export class CombatSystem {
   private nextAttackAt = 0;
@@ -33,7 +34,6 @@ export class CombatSystem {
 
     this.player.playAttackAnim();
     this.onAttack();
-    this.drawArc();
 
     const halfArc = Phaser.Math.DegToRad(PLAYER.attackArcHalfAngleDeg);
     for (const hunter of targets) {
@@ -50,43 +50,5 @@ export class CombatSystem {
         this.onKill(hunter);
       }
     }
-  }
-
-  /**
-   * Swish: the red arc sweeps across the strike zone (leading edge racing
-   * from one side of the arc to the other) instead of appearing all at once,
-   * then fades. Same effect on desktop and mobile.
-   */
-  private drawArc(): void {
-    const halfArc = Phaser.Math.DegToRad(PLAYER.attackArcHalfAngleDeg);
-    const aim = this.player.aimAngle;
-    const startAngle = aim - halfArc;
-    const g = this.scene.add.graphics({ x: this.player.x, y: this.player.y }).setDepth(DEPTHS.attackFx);
-
-    this.scene.tweens.addCounter({
-      from: 0,
-      to: 1,
-      duration: 110,
-      ease: 'Quad.easeOut',
-      onUpdate: (tween) => {
-        const t = tween.getValue() ?? 0;
-        g.clear();
-        // Faint full-zone hint plus the solid swept part behind the leading edge.
-        g.fillStyle(COLORS.attackArc, 0.12);
-        g.slice(0, 0, PLAYER.attackRange, startAngle, startAngle + 2 * halfArc);
-        g.fillPath();
-        g.fillStyle(COLORS.attackArc, 0.4);
-        g.slice(0, 0, PLAYER.attackRange, startAngle, startAngle + 2 * halfArc * t);
-        g.fillPath();
-      },
-      onComplete: () => {
-        this.scene.tweens.add({
-          targets: g,
-          alpha: 0,
-          duration: 90,
-          onComplete: () => g.destroy(),
-        });
-      },
-    });
   }
 }

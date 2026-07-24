@@ -33,6 +33,7 @@ export class HUD {
   private bloodBarFill: Phaser.GameObjects.Rectangle;
   private bloodText: Phaser.GameObjects.Text;
   private objectiveText: Phaser.GameObjects.Text;
+  private nightText: Phaser.GameObjects.Text;
   private vignette: Phaser.GameObjects.Rectangle;
   private bossBar: BossHealthBar;
   private hpParticles: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -95,6 +96,16 @@ export class HUD {
       .setOrigin(0.5)
       .setDepth(DEPTHS.hud);
 
+    // Night counter, tucked just above the objective line.
+    this.nightText = scene.add
+      .text(GAME_WIDTH / 2, 184, 'Night 1', {
+        fontFamily: FONT,
+        fontSize: '15px',
+        color: '#9d8bbf',
+      })
+      .setOrigin(0.5)
+      .setDepth(DEPTHS.hud);
+
     // Red panic vignette for the final seconds.
     this.vignette = scene.add
       .rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, BLOOD_RED, 0)
@@ -135,6 +146,7 @@ export class HUD {
       this.bloodBarFill,
       this.bloodText,
       this.objectiveText,
+      this.nightText,
     ];
 
     emitter.on(EVENTS.COUNTDOWN_TICK, this.onTick, this);
@@ -166,6 +178,28 @@ export class HUD {
   /** Red burst where a bloodlet reaches the blood bar. */
   burstAtBloodBar(): void {
     this.bloodParticles.explode(8, HUD_ANCHORS.bloodBar.x, HUD_ANCHORS.bloodBar.y);
+  }
+
+  setNight(n: number): void {
+    this.nightText.setText(`Night ${n}`);
+  }
+
+  /**
+   * Called between rounds in the seamless day/night loop: clears any panic
+   * styling left over from a previous night's final seconds and snaps the
+   * bars back to a fresh-round look (the coffin transfer already set the
+   * numbers; this just resets cosmetic state — color, size, jitter, vignette).
+   */
+  resetForNewRound(): void {
+    this.panic = false;
+    this.timerText.setColor('#e8ddff');
+    this.timerText.setFontSize('58px');
+    this.timerText.setScale(1);
+    this.timerText.setAngle(0);
+    this.timerText.setPosition(this.timerHome.x, this.timerHome.y);
+    this.vignette.setAlpha(0);
+    this.setHealth(PLAYER.maxHealth, PLAYER.maxHealth);
+    this.setBlood(0, BLOOD.target);
   }
 
   /**

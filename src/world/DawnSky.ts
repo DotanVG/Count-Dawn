@@ -45,6 +45,7 @@ export class DawnSky {
   private gradient: Phaser.GameObjects.Graphics;
   private stars: Phaser.GameObjects.Rectangle[] = [];
   private sun: Phaser.GameObjects.Container;
+  private moon: Phaser.GameObjects.Container;
   private lastBucket = -1;
 
   constructor(scene: Phaser.Scene) {
@@ -73,10 +74,20 @@ export class DawnSky {
     const core = scene.add.circle(0, 0, 18, 0xffe08a, 1);
     const hot = scene.add.circle(0, 0, 10, 0xfff6d8, 1);
     this.sun = scene.add.container(GAME_WIDTH / 2, SKY_HEIGHT + 80, [halo, core, hot]).setDepth(DEPTHS.sky + 2);
+
+    // Pale pixel moon: up and framed at night start, sets before the sun rises.
+    const moonHalo = scene.add.circle(0, 0, 24, 0xcfd8ff, 0.22);
+    const moonBody = scene.add.circle(0, 0, 14, 0xe9edff, 1);
+    const moonShade = scene.add.circle(5, -3, 11, 0x0d0716, 0.9); // crescent bite
+    this.moon = scene.add
+      .container(GAME_WIDTH / 2, 44, [moonHalo, moonBody, moonShade])
+      .setDepth(DEPTHS.sky + 2);
   }
 
   /** progress: 0 at night start, 1 at dawn. Cheap; called every frame. */
   update(progress: number): void {
+    progress = Phaser.Math.Clamp(progress, 0, 1);
+
     // Redraw the gradient only when its colors would visibly change.
     const bucket = Math.round(progress * 200);
     if (bucket !== this.lastBucket) {
@@ -94,6 +105,13 @@ export class DawnSky {
     this.sun.y = SKY_HEIGHT + 80 - eased * (SKY_HEIGHT + 80 - 92);
     this.sun.x = GAME_WIDTH / 2;
     this.sun.setScale(0.8 + eased * 0.4);
+
+    // The moon is up and visible at night start, then sinks and fades out
+    // well before the sun begins its own rise (which starts at 70%).
+    const moonSet = Phaser.Math.Clamp(progress / 0.55, 0, 1);
+    const moonEase = moonSet * moonSet;
+    this.moon.y = 44 + moonEase * (SKY_HEIGHT + 50);
+    this.moon.setAlpha(1 - moonSet);
   }
 
   private drawGradient(progress: number): void {

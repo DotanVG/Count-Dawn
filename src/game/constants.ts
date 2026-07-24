@@ -56,7 +56,10 @@ export const COLORS = {
 /** Render depths, back to front. */
 export const DEPTHS = {
   sky: -10,
-  map: 0,
+  floor: -6,
+  /** Hunters walking in from off-screen: hidden behind the wall layer, above the floor. */
+  enteringHunter: -4,
+  wall: -2,
   torch: 2,
   coffinGlow: 3,
   coffin: 4,

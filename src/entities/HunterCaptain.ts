@@ -22,7 +22,7 @@ export class HunterCaptain extends Hunter {
   ) {
     super(scene, x, y, BOSS);
     this.setScale(BOSS.spriteScale);
-    this.setDepth(DEPTHS.boss);
+    this.normalDepth = DEPTHS.boss;
     this.applyBaseTint();
   }
 
@@ -40,14 +40,17 @@ export class HunterCaptain extends Hunter {
     return killed;
   }
 
-  /** Entrance flourish: bursts up from the floor with a camera shake. */
+  /**
+   * Arrival flourish once he's walked in from off-screen and reached his
+   * spot (called via Hunter.onEntranceArrived): a stomping scale-bounce and
+   * a bigger camera shake than a regular hunter's entrance gets.
+   */
   playEntrance(): void {
     const targetScale = this.scaleX;
-    this.setScale(0.5);
     this.scene.tweens.add({
       targets: this,
-      scale: targetScale,
-      duration: 450,
+      scale: { from: targetScale * 1.18, to: targetScale },
+      duration: 260,
       ease: 'Back.easeOut',
     });
     this.scene.cameras.main.shake(250, 0.006);

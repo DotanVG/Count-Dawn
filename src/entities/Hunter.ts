@@ -21,8 +21,14 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   facing: Dir4 = 'down';
   /** Set by GameScene: called when a sword swing actually connects. */
   onStrikeHit: (() => void) | null = null;
+  /** Set by GameScene for the boss: called once the walk-in entrance finishes. */
+  onEntranceArrived: (() => void) | null = null;
+  /** Depth once the entrance finishes (below the wall band while entering). */
+  protected normalDepth: number = DEPTHS.hunter;
   private nextSwingAt = 0;
   private lastTargetDist = Infinity;
+  private entering = false;
+  private arrivalPoint: { x: number; y: number } | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -46,9 +52,33 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     return this.health > 0;
   }
 
+  /**
+   * Start a walk-in entrance: this hunter is expected to already be
+   * positioned off-screen (see entrance.ts's offCanvasSpawnPoint). Until it
+   * reaches `(arrivalX, arrivalY)`, pursue() ignores the player and beelines
+   * there instead, hidden behind the wall layer the whole way in.
+   */
+  beginEntrance(arrivalX: number, arrivalY: number): void {
+    this.arrivalPoint = { x: arrivalX, y: arrivalY };
+    this.entering = true;
+    this.setDepth(DEPTHS.enteringHunter);
+  }
+
   /** Direct pursuit — intentionally no steering or pathfinding. */
   pursue(targetX: number, targetY: number): void {
     if (!this.isAlive) return;
+
+    if (this.entering && this.arrivalPoint) {
+      this.walkToward(this.arrivalPoint.x, this.arrivalPoint.y);
+      if (Phaser.Math.Distance.Between(this.x, this.y, this.arrivalPoint.x, this.arrivalPoint.y) < 10) {
+        this.entering = false;
+        this.arrivalPoint = null;
+        this.setDepth(this.normalDepth);
+        this.onEntranceArrived?.();
+      }
+      return;
+    }
+
     const angle = Phaser.Math.Angle.Between(this.x, this.y, targetX, targetY);
     const dir = angleToDir4(angle);
     this.facing = dir;
@@ -84,6 +114,15 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     if (!swinging) {
       this.play(animKey('hunter', 'walk', dir), true);
     }
+  }
+
+  private walkToward(targetX: number, targetY: number): void {
+    const angle = Phaser.Math.Angle.Between(this.x, this.y, targetX, targetY);
+    const dir = angleToDir4(angle);
+    this.facing = dir;
+    this.setVelocity(Math.cos(angle) * this.moveSpeed, Math.sin(angle) * this.moveSpeed);
+    const key = animKey('hunter', 'walk', dir);
+    if (this.anims.currentAnim?.key !== key) this.play(key, true);
   }
 
   /** Returns true if this hit killed the hunter. Caller handles drops/removal. */
