@@ -573,9 +573,13 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(
       this.hunters,
       this.coffin,
-      (hunterObj) => {
+      (object1, object2) => {
+        // Phaser may reverse group-vs-static callback arguments internally.
+        const hunter =
+          object1 instanceof Hunter ? object1 : object2 instanceof Hunter ? object2 : null;
+        if (!hunter) return;
         const body = this.coffin.body as Phaser.Physics.Arcade.StaticBody;
-        (hunterObj as Hunter).avoidCoffin(
+        hunter.avoidCoffin(
           this.coffin.x,
           this.coffin.y,
           body.width / 2,
@@ -583,7 +587,11 @@ export class GameScene extends Phaser.Scene {
           this.player.x,
         );
       },
-      (hunterObj) => !(hunterObj as Hunter).isEntering,
+      (object1, object2) => {
+        const hunter =
+          object1 instanceof Hunter ? object1 : object2 instanceof Hunter ? object2 : null;
+        return hunter !== null && !hunter.isEntering;
+      },
       this,
     );
   }

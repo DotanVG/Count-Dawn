@@ -66,7 +66,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    */
   playAttackAnim(): void {
     this.attackAnimUntil = this.scene.time.now + VAMPIRE_ATTACK_DURATION_MS;
-    this.play(animKey('vampire', 'attack', this.facing), true);
+    // Held input can fire again before the previous animation finishes.
+    // Force each accepted attack to restart instead of leaving the sprite
+    // parked on the completed animation's final frame between strikes.
+    this.play(animKey('vampire', 'attack', this.facing), false);
 
     this.scene.tweens.add({
       targets: this,
