@@ -35,3 +35,4 @@ Thumbs.db
 coverage/
 .cache/
 .agents/
+.claude/scheduled_tasks.lock
