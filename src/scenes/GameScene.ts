@@ -396,11 +396,8 @@ export class GameScene extends Phaser.Scene {
    */
   private riseFromCoffin(onComplete: () => void): void {
     this.coffin.setOpen(true);
-    this.player
-      .setVisible(true)
-      .setPosition(COFFIN_POS.x, COFFIN_POS.y - 20)
-      .setScale(0.9)
-      .setAlpha(0.55);
+    this.player.setVisible(true).setPosition(COFFIN_POS.x, COFFIN_POS.y - 20).setAlpha(0.55);
+    this.player.setBaseScale(0.9);
     this.setBatForm(true);
 
     this.time.delayedCall(300, () => {
@@ -421,9 +418,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * BAT PLACEHOLDER lives on Player.setBatForm — shared by the coffin
-   * fly-in/fly-out and the dash, so the bat sheet only has to be wired in
-   * once when it lands.
+   * The transformation itself lives on Player.setBatForm — shared by the
+   * coffin fly-in/fly-out and the dash, so the bat sheet and its *poof* are
+   * wired in exactly once.
    */
   private setBatForm(active: boolean): void {
     this.player.setBatForm(active);
@@ -449,8 +446,11 @@ export class GameScene extends Phaser.Scene {
     const dy = opts.from.y - opts.center.y;
     const r0 = Math.hypot(dx, dy);
     const a0 = Math.atan2(dy, dx);
-    const fromScale = this.player.scale;
+    // Base scale, not the rendered one: he flies this as a bat, and the bat
+    // renders at a fraction of it (see Player.setBaseScale).
+    const fromScale = this.player.displayBaseScale;
     const fromAlpha = this.player.alpha;
+    let lastX = opts.from.x;
 
     this.tweens.addCounter({
       from: 0,
@@ -461,11 +461,12 @@ export class GameScene extends Phaser.Scene {
         const t = tween.getValue() ?? 0;
         const angle = a0 + t * Math.PI * 3; // 1.5 loops
         const r = r0 * (1 - t);
-        this.player.setPosition(
-          opts.center.x + Math.cos(angle) * r,
-          opts.center.y + Math.sin(angle) * r * opts.squash,
-        );
-        this.player.setScale(Phaser.Math.Linear(fromScale, opts.toScale, t));
+        const x = opts.center.x + Math.cos(angle) * r;
+        this.player.setPosition(x, opts.center.y + Math.sin(angle) * r * opts.squash);
+        // Mirror the bat into the turn so he never flies backwards round the spiral.
+        this.player.faceBatTowards(x - lastX);
+        lastX = x;
+        this.player.setBaseScale(Phaser.Math.Linear(fromScale, opts.toScale, t));
         this.player.setAlpha(Phaser.Math.Linear(fromAlpha, opts.toAlpha, t));
       },
       onComplete: opts.onComplete,
@@ -918,7 +919,7 @@ export class GameScene extends Phaser.Scene {
     this.garlics.clear(true, true);
 
     this.coffin.setOpen(true);
-    this.setBatForm(true); // BAT PLACEHOLDER: he flies back as a bat too
+    this.setBatForm(true); // he flies back to the coffin as a bat too
 
     this.flightSpiral({
       center: { x: COFFIN_POS.x, y: COFFIN_POS.y - 10 },

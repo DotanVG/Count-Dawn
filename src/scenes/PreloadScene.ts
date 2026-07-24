@@ -41,6 +41,9 @@ export class PreloadScene extends Phaser.Scene {
     this.load.spritesheet(TEXTURES.throwerHurt, 'assets/characters/humans/thrower_hurt.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.throwerDeath, 'assets/characters/humans/thrower_death.png', CHAR_FRAME);
 
+    // Bat form (Romi's art) — 2 frames, right-facing, mirrored in code for left.
+    this.load.spritesheet(TEXTURES.bat, 'assets/characters/bat/bat_fly.png', CHAR_FRAME);
+
     // Menu / itch cover art.
     this.load.image(TEXTURES.cover, 'assets/ui/count_dawn_cover.jpeg');
 

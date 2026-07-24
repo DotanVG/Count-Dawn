@@ -8,7 +8,7 @@ A reverse horde survival game for the **"Countdown"** game jam theme.
 - **Production (main):** https://count-dawn.vercel.app
 - **Staging (staging branch):** https://count-dawn-git-staging-dotanvgs-projects.vercel.app
 
-> **Asset status:** the vampire, hunters, garlic throwers, Captain and castle use licensed free pixel-art packs from CraftPix (see Credits). Romi created the coffin, garlic, and cover art. Ouzana composed the original main-title soundtrack; gameplay SFX and additional level music are planned. The blood droplet is still a runtime-generated placeholder. No AI-generated art or audio is used.
+> **Asset status:** the vampire, hunters, garlic throwers, Captain and castle use licensed free pixel-art packs from CraftPix (see Credits). Romi created the coffin, garlic, bat and cover art. Ouzana composed the original main-title soundtrack; gameplay SFX and additional level music are planned. The blood droplet is still a runtime-generated placeholder. No AI-generated art or audio is used.
 
 ## Prototype state
 
@@ -27,6 +27,7 @@ The complete core loop is playable end to end:
 - ✅ Garlic throwers: unarmed hunters who walk in visibly carrying a garlic bulb, hold a standoff, paint a green glowing crosshair that crawls from their feet onto the Count, and lob the bulb at the spot it locks onto — dodgeable by moving or dashing. Capped at one per night number (1 on night 1, 2 on night 2…), so ranged pressure ramps while the rest of the growing spawn budget stays melee
 - ✅ Flat damage economy: every regular hit — sword or garlic — costs 5 HP; the Hunter Captain hits for 10
 - ✅ Bat dash (Shift / 🦇): a short invulnerable burst with after-images and a HUD charge strip — the escape from a crowd and the counter to a lock
+- ✅ Bat form (Romi's art): the Count *poofs* into a bat for the dash and for both coffin flights, mirrored to whichever way he is travelling
 - ✅ Dead hunters drop blood pickups; Night 1 targets 50 blood, increasing by 15 each new night
 - ✅ Filling the round's Blood Meter immediately summons the Hunter Captain: entrance effect, dedicated health bar, heavier contact damage
 - ✅ Coffin activates only when blood is full **and** the Captain is dead (pulsing glow, hint messages if approached early)
@@ -37,7 +38,7 @@ The complete core loop is playable end to end:
 - ✅ Original main-title music
 - ⬜ Gameplay SFX and additional level music
 - ⬜ Real blood-pickup art
-- ⬜ Bat spritesheet — the dash and the coffin flights are wired to a single placeholder (`Player.setBatForm`) waiting on the art
+- ⬜ Summonable bat minions that pull hunter aggro — the sprite is in (see below), the summon is not
 - ⬜ Boss phases — intentionally out of scope for now
 
 Full loop details in [docs/GAME_LOOP.md](docs/GAME_LOOP.md).
@@ -114,7 +115,7 @@ Suggested flow: feature branches → `staging` (playtest on the test URL) → me
 ## Credits
 
 - **Dotan** — _(role TBD)_
-- **Romi** — coffin and garlic art; cover art
+- **Romi** — coffin, garlic and bat art; cover art
 - **Ouzana** — original soundtrack (main-title theme; gameplay SFX and more level music planned)
 - **Noam** — _(role TBD)_
 - **Abed** — _(role TBD)_
@@ -127,8 +128,10 @@ Character & environment art from [CraftPix](https://craftpix.net) under the [Cra
 - **Free Base 4-Direction Male Character Pixel Art** — hunters & Hunter Captain (sword variant, incl. swing attack); garlic throwers (unarmed variant)
 - **Free 2D Top-Down Pixel Dungeon Asset Pack** — castle tiles & torch flames
 
-Original art by **Romi**: the cover art, coffin (closed/half/open), and garlic (thrown at the Count by the garlic throwers).
+Original art by **Romi**: the cover art, coffin (closed/half/open), garlic (thrown at the Count by the garlic throwers), and the bat (the Count's dash and coffin-flight form).
+
+Romi's bat arrived as two 240x240 JPEG frames painted on black. `tools/build_bat_sheet.py` turns them into the shipped `assets/characters/bat/bat_fly.png` — keying the background out to alpha, lifting the wing strokes so they read against the castle floor, registering both frames on the eyes so only the wings move, and laying them out as a 2-frame 64x64 sheet. Re-run it if the source frames are ever repainted.
 
 Original music by **Ouzana**: the main-title theme. Gameplay SFX and additional level music are planned.
 
-The blood droplet is a runtime-generated placeholder. A bat sprite is planned for the coffin fly-in/out and summonable bat minions — see the `setBatForm` / `TEXTURES.bat` placeholders in the code. No AI-generated art or audio.
+The blood droplet is a runtime-generated placeholder. Summonable bat minions are still planned; they will reuse `TEXTURES.bat` / `ANIMS.batFly`, already shipping for the dash and the coffin flights. No AI-generated art or audio.

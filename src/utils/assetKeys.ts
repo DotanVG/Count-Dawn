@@ -38,9 +38,13 @@ export const TEXTURES = {
   /** Thrown by the garlic thrower once his target locks onto the Count. */
   garlic: 'garlic',
   /**
-   * BAT PLACEHOLDER: future bat spritesheet. Will replace the vampire sprite
-   * during the coffin fly-in/fly-out (see GameScene.setBatForm) and power the
-   * summonable bat minions that draw hunter aggro.
+   * Bat form (Romi's art) — a 2-frame 64x64 flap. Replaces the vampire sprite
+   * for the dash and the coffin fly-in/fly-out (see Player.setBatForm), and is
+   * the sheet the future summonable bat minions will use too.
+   *
+   * Drawn facing RIGHT with no directional rows: mirror with flipX for left,
+   * which is why there is no animKey('bat', ...) family — one animation,
+   * ANIMS.batFly, covers every direction.
    */
   bat: 'bat',
   // Still runtime-generated placeholders
@@ -66,8 +70,8 @@ export const ANIMS = {
   /** One-shot magic burst spawned at a hunter's position when a strike lands. */
   hitMagic: 'hit-magic-burst',
   /**
-   * BAT PLACEHOLDER: register from the bat sheet when it lands. Used by
-   * Player.setBatForm for BOTH the coffin fly-in/out and the dash.
+   * The bat's wing flap. Used by Player.setBatForm for BOTH the coffin
+   * fly-in/out and the dash — and by the bat minions when they land.
    */
   batFly: 'bat-fly',
 } as const;

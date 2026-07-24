@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { BAT } from '../data/balance';
 import { TEXTURES, ANIMS, animKey, type CharacterKey, type Dir4 } from './assetKeys';
 
 /**
@@ -67,6 +68,19 @@ export function createCharacterAnimations(scene: Phaser.Scene): void {
   registerSheets(scene, 'vampire', VAMPIRE_SHEETS, VAMPIRE_ROWS);
   registerSheets(scene, 'hunter', HUNTER_SHEETS, HUNTER_ROWS);
   registerSheets(scene, 'thrower', THROWER_SHEETS, THROWER_ROWS);
+
+  // Bat form: Romi's two hand-painted frames, wings up then wings spread,
+  // registered on the eyes so only the wings move. Unlike every character
+  // sheet above there are no directional rows — the bat is drawn facing RIGHT
+  // and Player mirrors it with flipX, so one animation serves all directions.
+  if (!scene.anims.exists(ANIMS.batFly)) {
+    scene.anims.create({
+      key: ANIMS.batFly,
+      frames: scene.anims.generateFrameNumbers(TEXTURES.bat, { start: 0, end: BAT.flapFrames - 1 }),
+      frameRate: BAT.flapFrameRate,
+      repeat: -1,
+    });
+  }
 
   // Wall torch: fire_animation.png is a 4-column grid (44x48 frames) where
   // each COLUMN is one prop and each row is the next flame frame.

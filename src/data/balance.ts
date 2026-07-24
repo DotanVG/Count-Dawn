@@ -43,6 +43,21 @@ export const DASH = {
 } as const;
 
 /**
+ * Bat form — the shape the Count wears for the dash and the coffin flights,
+ * and (later) for the summonable minions. Romi's frames are drawn nearly
+ * frame-filling, so the sprite renders at a fraction of whatever scale the
+ * Count is currently at rather than at his full size; see Player.setBaseScale.
+ */
+export const BAT = {
+  /** Multiplier on the Count's display scale while he is a bat. */
+  scaleFactor: 0.6,
+  flapFrames: 2,
+  flapFrameRate: 12,
+  /** Smoke motes in the *poof* burst on each transformation. */
+  puffParticles: 18,
+} as const;
+
+/**
  * Knockback applied to whatever the Count hits, so a landed strike visibly
  * shoves the target instead of only flashing it white.
  */

@@ -2,105 +2,227 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Count Dawn</title>
 <style>
+  /*
+    This page is the itch.io "warp": itch serves it inside its own iframe at
+    the project's declared viewport, and it in turn frames the live Vercel
+    build. So every size here has to survive being squeezed into an embed of
+    ANY shape — itch scales the embed to the page column on desktop and to the
+    device width on mobile — which is why nothing below is a fixed pixel size.
+  */
+  :root {
+    color-scheme: dark;
+    /* dvh tracks the mobile URL bar; vh is the fallback for older browsers. */
+    --app-height: 100vh;
+    --app-height: 100dvh;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
-    margin: 0;
-    padding: 0;
     width: 100%;
-    height: 100%;
+    height: var(--app-height);
     overflow: hidden;
     background: linear-gradient(160deg, #0d0716 0%, #1a1226 55%, #3a215c 100%);
+    color: #e8ddff;
     font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior: none;
   }
   #welcome {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: clamp(0.6rem, 2.5vh, 1.4rem);
     width: 100%;
     height: 100%;
+    padding: clamp(0.75rem, 3vmin, 2rem);
     text-align: center;
-    color: #e8ddff;
   }
   #cover {
-    width: min(40vh, 280px);
-    height: min(40vh, 280px);
+    /* Shrinks against BOTH axes, so a wide-and-short embed can't push the
+       button off the bottom — the classic itch embed failure. */
+    width: min(38vh, 38vw, 280px);
+    height: auto;
+    aspect-ratio: 1;
+    min-height: 0;
+    object-fit: cover;
     image-rendering: pixelated;
     border-radius: 12px;
     box-shadow: 0 10px 40px rgba(196, 30, 47, 0.35);
-    margin-bottom: 1.2em;
   }
-  #welcome p {
-    font-size: 1.1rem;
-    margin: 0 0 1.5em;
+  #tagline {
+    font-size: clamp(0.85rem, 2.6vmin, 1.1rem);
     opacity: 0.85;
+    max-width: 32ch;
   }
   #playBtn {
-    font-size: 1.4rem;
+    font-size: clamp(1rem, 3.2vmin, 1.4rem);
     font-weight: bold;
-    padding: 0.75em 2em;
+    padding: 0.7em 2em;
     border: none;
     border-radius: 999px;
     background: #c41e2f;
     color: #fff;
     cursor: pointer;
-    box-shadow: 0 6px 0 #7a1220, 0 8px 12px rgba(0,0,0,0.4);
+    box-shadow: 0 6px 0 #7a1220, 0 8px 12px rgba(0, 0, 0, 0.4);
     transition: transform 0.1s ease;
+    touch-action: manipulation;
   }
   #playBtn:hover { transform: translateY(-2px); }
   #playBtn:active {
     transform: translateY(4px);
-    box-shadow: 0 2px 0 #7a1220, 0 4px 8px rgba(0,0,0,0.4);
+    box-shadow: 0 2px 0 #7a1220, 0 4px 8px rgba(0, 0, 0, 0.4);
+  }
+  #playBtn[disabled] { opacity: 0.65; cursor: progress; transform: none; }
+  /* Short and wide (a squashed itch embed, or a phone in landscape): put the
+     cover beside the text instead of stacking, so nothing gets clipped. */
+  @media (max-height: 420px) and (min-aspect-ratio: 1/1) {
+    #welcome {
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: clamp(1rem, 4vw, 2.5rem);
+    }
+    #cover { width: min(70vh, 30vw, 220px); }
+    #copy {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: clamp(0.6rem, 3vh, 1.2rem);
+    }
   }
   #gameFrame {
     display: none;
     width: 100%;
     height: 100%;
-    border: none;
+    border: 0;
   }
-  #errorMsg {
-    margin-top: 1em;
-    color: #ff8a8a;
-    font-size: 0.9rem;
+  /* Escape hatch, shown over the game frame if the warp never reports back.
+     Deliberately a small toast rather than a takeover: a false alarm must
+     never rip a game that IS running out from under the player. */
+  #escape {
     display: none;
+    position: fixed;
+    left: 50%;
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    max-width: min(92vw, 34rem);
+    padding: 0.6em 1em;
+    border-radius: 999px;
+    background: rgba(13, 7, 22, 0.92);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+    font-size: clamp(0.75rem, 2.2vmin, 0.9rem);
+    text-align: center;
+    z-index: 10;
+  }
+  #escape.is-shown { display: block; }
+  #escape a { color: #ff8a8a; }
+  #escape button {
+    margin-left: 0.6em;
+    border: 0;
+    background: none;
+    color: #8d7fa8;
+    font: inherit;
+    cursor: pointer;
   }
 </style>
 </head>
 <body>
   <div id="welcome">
-    <img id="cover" src="COUNT_DAWN.jpeg" alt="Count Dawn" />
-    <p>Hunt the hunters. Fill your veins. Beat the sunrise.</p>
-    <button id="playBtn">Click to PLAY</button>
-    <div id="errorMsg">Fullscreen unavailable — launching in windowed mode.</div>
+    <img id="cover" src="COUNT_DAWN.jpeg" alt="Count Dawn cover art" />
+    <div id="copy">
+      <p id="tagline">Hunt the hunters. Fill your veins. Beat the sunrise.</p>
+      <button id="playBtn" type="button">Click to PLAY</button>
+    </div>
   </div>
-  <iframe id="gameFrame" allow="fullscreen; autoplay" allowfullscreen></iframe>
+  <iframe
+    id="gameFrame"
+    title="Count Dawn"
+    allow="fullscreen; autoplay; gamepad"
+    allowfullscreen
+  ></iframe>
+  <div id="escape">
+    Taking a while?
+    <a id="escapeLink" href="#" target="_blank" rel="noopener">Open the game in a new tab</a>
+    <button id="escapeDismiss" type="button" aria-label="Dismiss">✕</button>
+  </div>
 
   <script>
     var LIVE_URL = 'https://count-dawn.vercel.app/?embed=1';
+    /* Generous: this has to cover a cold Vercel edge plus the whole Phaser
+       bundle on a phone, or players on slow connections get told the game is
+       broken while it is merely still downloading. */
+    var LOAD_TIMEOUT_MS = 15000;
 
-    document.getElementById('playBtn').addEventListener('click', function () {
-      var launch = function () {
-        var welcome = document.getElementById('welcome');
-        var frame = document.getElementById('gameFrame');
-        frame.src = LIVE_URL;
-        welcome.style.display = 'none';
-        frame.style.display = 'block';
-      };
+    /* None of these are named `status`, `name`, `top` or `length`: a global
+       `var status` silently aliases window.status, a legacy property that
+       only stores STRINGS, so the element reference is coerced away and the
+       first .classList call throws — killing the click handler before it ever
+       launches, with nothing in the console to show for it. */
+    var welcome = document.getElementById('welcome');
+    var frame = document.getElementById('gameFrame');
+    var button = document.getElementById('playBtn');
+    var escapeBox = document.getElementById('escape');
+    var ready = false;
+
+    document.getElementById('escapeLink').href = LIVE_URL;
+    document.getElementById('escapeDismiss').addEventListener('click', function () {
+      escapeBox.classList.remove('is-shown');
+    });
+
+    /* The only trustworthy "it worked" signal. A refused frame — CSP, an ad
+       blocker, a dead deploy — still fires `load` for its own error page, so
+       the game itself says hello instead (see src/game/main.ts). */
+    window.addEventListener('message', function (event) {
+      if (event.data !== 'count-dawn:ready') return;
+      ready = true;
+      escapeBox.classList.remove('is-shown');
+    });
+
+    function launch() {
+      frame.src = LIVE_URL;
+      welcome.style.display = 'none';
+      frame.style.display = 'block';
+
+      window.setTimeout(function () {
+        if (ready) return;
+        // Offer a way out WITHOUT tearing the frame down: if the game did come
+        // up and only the handshake went missing, a takeover here would throw
+        // the player out of a perfectly good session.
+        escapeBox.classList.add('is-shown');
+      }, LOAD_TIMEOUT_MS);
+    }
+
+    button.addEventListener('click', function () {
+      button.disabled = true;
+      button.textContent = 'Waking the Count…';
 
       var el = document.documentElement;
-      var requestFs = el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+      var requestFs =
+        el.requestFullscreen ||
+        el.webkitRequestFullscreen ||
+        el.mozRequestFullScreen ||
+        el.msRequestFullscreen;
 
-      if (requestFs) {
-        Promise.resolve(requestFs.call(el)).then(launch).catch(function () {
-          document.getElementById('errorMsg').style.display = 'block';
-          launch();
-        });
-      } else {
-        document.getElementById('errorMsg').style.display = 'block';
+      /* Fullscreen is a bonus, never a gate. Nested iframes reject it outright
+         on some browsers (iOS Safari has no element fullscreen at all), and
+         Safari throws SYNCHRONOUSLY rather than rejecting — which used to kill
+         this whole handler and leave the PLAY button doing nothing at all. */
+      if (!requestFs) {
         launch();
+        return;
       }
+
+      var pending;
+      try {
+        pending = requestFs.call(el);
+      } catch (err) {
+        launch();
+        return;
+      }
+
+      Promise.resolve(pending).then(launch, launch);
     });
   </script>
 </body>
