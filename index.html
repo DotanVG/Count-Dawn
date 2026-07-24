@@ -35,6 +35,13 @@
         user-select: none;
         overscroll-behavior: none;
       }
+      @media (pointer: fine) {
+        html,
+        body,
+        body * {
+          cursor: none !important;
+        }
+      }
       #game-root {
         position: fixed;
         inset: 0;
@@ -46,7 +53,59 @@
       #game-root canvas {
         image-rendering: pixelated;
         image-rendering: crisp-edges;
-        cursor: none;
+      }
+      #vampire-cursor {
+        --jaw-width: 30px;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 0;
+        height: 0;
+        z-index: 10000;
+        opacity: 0;
+        pointer-events: none;
+        will-change: transform;
+        transition: opacity 80ms linear;
+      }
+      #vampire-cursor.is-visible {
+        opacity: 1;
+      }
+      .vampire-cursor__jaw {
+        position: absolute;
+        left: calc(var(--jaw-width) / -2);
+        width: var(--jaw-width);
+        height: auto;
+        max-width: none;
+        user-select: none;
+        will-change: transform;
+        filter: drop-shadow(0 2px 2px rgba(8, 2, 15, 0.75));
+      }
+      .vampire-cursor__jaw--upper {
+        bottom: 3px;
+        transform-origin: 50% 100%;
+      }
+      .vampire-cursor__jaw--lower {
+        top: 3px;
+        transform-origin: 50% 0%;
+      }
+      #vampire-cursor.is-biting .vampire-cursor__jaw--upper {
+        animation: vampire-bite-upper 350ms ease-in-out infinite;
+      }
+      #vampire-cursor.is-biting .vampire-cursor__jaw--lower {
+        animation: vampire-bite-lower 350ms ease-in-out infinite;
+      }
+      @keyframes vampire-bite-upper {
+        0%, 100% { transform: translateY(0); }
+        40%, 62% { transform: translateY(5px); }
+      }
+      @keyframes vampire-bite-lower {
+        0%, 100% { transform: translateY(0); }
+        40%, 62% { transform: translateY(-5px); }
+      }
+      @media (pointer: coarse) {
+        #vampire-cursor {
+          display: none;
+        }
       }
       #boot-loader {
         position: absolute;
