@@ -32,6 +32,7 @@ import { CombatSystem } from '../systems/CombatSystem';
 import { SpawnSystem } from '../systems/SpawnSystem';
 import { offCanvasSpawnPoint } from '../systems/entrance';
 import { CountdownSystem } from '../systems/CountdownSystem';
+import { COLD_OPEN, coldOpenSkyProgress, coldOpenTimerSeconds } from '../systems/coldOpen';
 import { GameFlowSystem } from '../systems/GameFlowSystem';
 import { AudioSystem } from '../systems/AudioSystem';
 import { CastleMap } from '../world/CastleMap';
@@ -54,9 +55,7 @@ const COFFIN_POS = { x: 150, y: 430 };
 /** The state the Count comes home in during the opening cinematic. */
 const CINEMATIC = {
   /** Low enough to sit in the red band, so the bar is flashing as he flies in. */
-  startHealth: 18,
-  /** Blood he is short of a full meter - one hunter's worth. */
-  bloodShortfall: 4,
+  startHealth: 12,
 } as const;
 /** The vampire's landing spot: the center of the hall. */
 const PLAYER_SPAWN = {
@@ -99,6 +98,8 @@ export class GameScene extends Phaser.Scene {
   private taglineTimer: Phaser.Time.TimerEvent | null = null;
   /** The opening cinematic plays once, from the menu - restarts skip it. */
   private playCinematic = true;
+  /** Drives the cold open's scripted clock; see systems/coldOpen.ts. */
+  private coldOpenClock: Phaser.Time.TimerEvent | null = null;
 
   constructor() {
     super(SCENES.game);
@@ -396,12 +397,40 @@ export class GameScene extends Phaser.Scene {
     this.hud = new HUD(this, this.emitter);
     this.hud.animateIn();
 
+    const bloodTarget = bloodTargetForNight(1);
+    let blood = bloodTarget - COLD_OPEN.bloodlets;
+
     // Held until animateIn's alpha tween is done: the low-health flash drives
     // the same alpha, and starting both at once leaves them fighting over it.
-    const bloodTarget = bloodTargetForNight(1);
     this.time.delayedCall(600, () => {
       this.emitter.emit(EVENTS.PLAYER_DAMAGED, CINEMATIC.startHealth, PLAYER.maxHealth);
-      this.emitter.emit(EVENTS.BLOOD_CHANGED, bloodTarget - CINEMATIC.bloodShortfall, bloodTarget);
+      this.emitter.emit(EVENTS.BLOOD_CHANGED, blood, bloodTarget);
+    });
+
+    // The clock is already inside its final ten seconds when the scene opens,
+    // which is what puts the whole sequence under the gun. FINAL_TEN_SECONDS
+    // is what dresses the timer for panic; the ticks come from the cold open's
+    // own clock rather than a CountdownSystem, so the arithmetic is guaranteed
+    // to land on one second left exactly as the lid shuts (see coldOpen.ts).
+    this.emitter.emit(EVENTS.FINAL_TEN_SECONDS);
+    const openedAt = this.time.now;
+    let lastShown = -1;
+    this.coldOpenClock = this.time.addEvent({
+      delay: 50,
+      loop: true,
+      callback: () => {
+        const elapsed = this.time.now - openedAt;
+        const seconds = coldOpenTimerSeconds(elapsed);
+        if (seconds !== lastShown) {
+          lastShown = seconds;
+          this.emitter.emit(EVENTS.COUNTDOWN_TICK, seconds);
+        }
+        // Night racing toward a sunrise it never quite reaches.
+        const p = coldOpenSkyProgress(elapsed);
+        this.sky.update(p);
+        this.nightOverlay.setAlpha(0.42 * (1 - p * p));
+        this.dawnOverlay.setAlpha(p * p * 0.18);
+      },
     });
 
     // Enter as a bat through the middle window, high and small.
@@ -414,107 +443,167 @@ export class GameScene extends Phaser.Scene {
     this.tweens.addCounter({
       from: 0,
       to: 1,
-      duration: 1300,
+      duration: COLD_OPEN.flyInMs,
       ease: 'Sine.easeInOut',
       onUpdate: (tween) => {
         const t = tween.getValue() ?? 0;
         // A shallow swoop in, not a straight drop.
         const x = GAME_WIDTH / 2 + Math.sin(t * Math.PI) * 150;
-        this.player.setPosition(x, Phaser.Math.Linear(70, PLAYER_SPAWN.y, t));
         this.player.faceBatTowards(x - this.player.x);
+        this.player.setPosition(x, Phaser.Math.Linear(70, PLAYER_SPAWN.y, t));
         this.player.setBaseScale(Phaser.Math.Linear(0.7, PLAYER.spriteScale, t));
       },
       onComplete: () => {
         this.setBatForm(false);
         this.cameras.main.shake(120, 0.003);
-        this.time.delayedCall(250, () => this.cinematicFeed(bloodTarget));
       },
     });
+
+    this.time.delayedCall(COLD_OPEN.lineStartMs, () => this.cinematicLine());
+    this.time.delayedCall(COLD_OPEN.huntersInMs, () => this.cinematicSurround());
+    this.time.delayedCall(COLD_OPEN.strikeMs, () =>
+      this.cinematicStrike(bloodTarget, () => ++blood),
+    );
+    this.time.delayedCall(COLD_OPEN.toCoffinMs, () => this.cinematicRetire());
   }
 
-  /** Beat two: a hunter walks in from the right and the Count drinks him dry. */
-  private cinematicFeed(bloodTarget: number): void {
-    let blood = bloodTarget - CINEMATIC.bloodShortfall;
-    const arrival = { x: this.player.x + 130, y: this.player.y + 10 };
-    // Just outside the arena so he is hidden by the wall band for his first
-    // strides and walks into frame, rather than popping into the open hall.
-    const spawnX = ARENA.right + 30;
-    const hunter = new Hunter(this, spawnX, arrival.y);
-    this.hunters.add(hunter);
-    hunter.beginEntrance(arrival.x, arrival.y);
+  /** "Need... Blood..." typed out over the hall while the hunters close in. */
+  private cinematicLine(): void {
+    const line = 'Need... Blood...';
+    const text = this.add
+      .text(GAME_WIDTH / 2, PLAYER_SPAWN.y - 120, '', {
+        fontFamily: FONT,
+        fontSize: '30px',
+        color: '#e8ddff',
+        fontStyle: 'bold',
+        stroke: '#0d0716',
+        strokeThickness: 6,
+      })
+      .setOrigin(0.5)
+      .setDepth(DEPTHS.hud);
 
-    // Timed off his actual walking speed rather than a guessed constant - a
-    // fixed delay had the Count swinging at a hunter still off-screen.
-    const walkMs = ((spawnX - arrival.x) / HUNTER.moveSpeed) * 1000 + 250;
-
-    this.time.delayedCall(walkMs, () => {
-      if (!hunter.active) return;
-      this.player.aimAt(hunter.x, hunter.y);
-      this.player.playAttackAnim();
-      this.cameras.main.shake(160, 0.005);
-
-      this.time.delayedCall(220, () => {
-        const corpseX = hunter.x;
-        const corpseY = hunter.y;
-        hunter.spawnCorpse();
-        this.hunters.remove(hunter, true, true);
-        this.audioFx.play(AUDIO.hunterDeath);
-
-        // The blood he was short of, flying home one mouthful at a time.
-        for (let i = 0; i < CINEMATIC.bloodShortfall; i++) {
-          this.time.delayedCall(i * 110, () => {
-            const droplet = this.add
-              .image(corpseX, corpseY, TEXTURES.blood)
-              .setDepth(DEPTHS.hud + 1);
-            this.tweens.add({
-              targets: droplet,
-              x: HUD_ANCHORS.bloodBar.x,
-              y: HUD_ANCHORS.bloodBar.y,
-              scale: 0.6,
-              duration: 430,
-              ease: 'Quad.easeIn',
-              onComplete: () => {
-                droplet.destroy();
-                blood++;
-                this.emitter.emit(EVENTS.BLOOD_CHANGED, blood, bloodTarget);
-                this.hud?.burstAtBloodBar();
-                if (blood >= bloodTarget) this.cinematicRetire();
-              },
-            });
-          });
-        }
-      });
+    let shown = 0;
+    const typer = this.time.addEvent({
+      delay: 90,
+      loop: true,
+      callback: () => {
+        text.setText(line.slice(0, ++shown));
+        if (shown < line.length) return;
+        typer.remove();
+        this.tweens.add({ targets: text, alpha: 0, delay: 700, duration: 500 });
+      },
+    });
+    // Whatever state the typing is in, the line is gone before the strike.
+    this.time.delayedCall(COLD_OPEN.strikeMs - COLD_OPEN.lineStartMs, () => {
+      typer.remove();
+      text.destroy();
     });
   }
 
-  /** Beat three: back to the coffin, sleep off a full day, wake to night one. */
-  private cinematicRetire(): void {
-    this.time.delayedCall(300, () => {
-      this.coffin.setOpen(true);
-      this.setBatForm(true);
+  /** Ten hunters walk in from every side and close into a ring around him. */
+  private cinematicSurround(): void {
+    const radius = 165;
+    for (let i = 0; i < COLD_OPEN.hunterCount; i++) {
+      const angle = (Math.PI * 2 * i) / COLD_OPEN.hunterCount - Math.PI / 2;
+      const arrival = {
+        x: Phaser.Math.Clamp(
+          this.player.x + Math.cos(angle) * radius,
+          ARENA.left + 30,
+          ARENA.right - 30,
+        ),
+        y: Phaser.Math.Clamp(
+          this.player.y + Math.sin(angle) * radius * 0.7,
+          ARENA.top + 30,
+          ARENA.bottom - 30,
+        ),
+      };
+      const spawn = offCanvasSpawnPoint(arrival);
+      const hunter = new Hunter(this, spawn.x, spawn.y);
+      this.hunters.add(hunter);
+      hunter.beginEntrance(arrival.x, arrival.y);
+    }
+  }
 
-      this.flightSpiral({
-        center: { x: COFFIN_POS.x, y: COFFIN_POS.y - 10 },
-        from: { x: this.player.x, y: this.player.y },
-        duration: 1200,
-        toScale: 0.9,
-        toAlpha: 0.55,
-        squash: 0.6,
-        onComplete: () => {
-          this.setBatForm(false);
-          this.player.setVisible(false);
-          this.coffin.setOpen(false);
+  /** One strike takes the whole ring, and their blood runs to the meter. */
+  private cinematicStrike(bloodTarget: number, nextBlood: () => number): void {
+    const victims = this.getAttackTargets();
+    if (victims.length > 0) {
+      this.player.aimAt(victims[0].x, victims[0].y);
+    }
+    this.player.playAttackAnim();
+    this.cameras.main.shake(220, 0.008);
+    this.cameras.main.flash(180, 196, 30, 47);
 
-          // He sleeps: health refills, the blood is spent, the clock winds
-          // back up to a full night - the same beat every night ends on.
-          this.hud?.playCoffinTransfer(1, CINEMATIC.startHealth / PLAYER.maxHealth, 0, () => {
-            this.playDayCycle(1800, () => {
-              this.hud?.resetForNewRound(bloodTargetForNight(this.night));
-              this.riseFromCoffin(() => this.startPlaying());
-            });
-          });
-        },
+    const corpses: { x: number; y: number }[] = [];
+    for (const hunter of victims) {
+      corpses.push({ x: hunter.x, y: hunter.y });
+      hunter.spawnCorpse();
+      this.hunters.remove(hunter, true, true);
+    }
+    this.audioFx.play(AUDIO.hunterDeath);
+
+    // Every drop he is short of a full meter, flying home at once.
+    const delay = COLD_OPEN.bloodStartMs - COLD_OPEN.strikeMs;
+    for (let i = 0; i < COLD_OPEN.bloodlets; i++) {
+      const origin = corpses.length > 0 ? corpses[i % corpses.length] : PLAYER_SPAWN;
+      this.time.delayedCall(delay + i * COLD_OPEN.bloodletStaggerMs, () => {
+        const droplet = this.add
+          .image(
+            origin.x + Phaser.Math.Between(-18, 18),
+            origin.y + Phaser.Math.Between(-18, 18),
+            TEXTURES.blood,
+          )
+          .setDepth(DEPTHS.hud + 1);
+        this.tweens.add({
+          targets: droplet,
+          x: HUD_ANCHORS.bloodBar.x,
+          y: HUD_ANCHORS.bloodBar.y,
+          scale: 0.6,
+          duration: COLD_OPEN.bloodletFlightMs,
+          ease: 'Quad.easeIn',
+          onComplete: () => {
+            droplet.destroy();
+            this.emitter.emit(EVENTS.BLOOD_CHANGED, nextBlood(), bloodTarget);
+            this.hud?.burstAtBloodBar();
+          },
+        });
       });
+    }
+  }
+
+  /** Beat four: into the coffin with a second to spare, then sleep off a day. */
+  private cinematicRetire(): void {
+    this.coffin.setOpen(true);
+    this.setBatForm(true);
+
+    this.flightSpiral({
+      center: { x: COFFIN_POS.x, y: COFFIN_POS.y - 10 },
+      from: { x: this.player.x, y: this.player.y },
+      duration: COLD_OPEN.coffinFlightMs,
+      toScale: 0.9,
+      toAlpha: 0.55,
+      squash: 0.6,
+      onComplete: () => {
+        this.setBatForm(false);
+        this.player.setVisible(false);
+        this.coffin.setOpen(false);
+
+        // The cold open's clock runs right through the flight - that is what
+        // puts one second on it as the lid shuts - and stops here, before the
+        // refill takes the timer over. Leaving it running would let a stale
+        // tick repaint the text mid-wind-up.
+        this.coldOpenClock?.remove();
+        this.coldOpenClock = null;
+
+        // He sleeps: health refills, the blood is spent, the clock winds
+        // back up to a full night - the same beat every night ends on.
+        this.hud?.playCoffinTransfer(1, CINEMATIC.startHealth / PLAYER.maxHealth, 0, () => {
+          this.playDayCycle(1800, () => {
+            this.hud?.resetForNewRound(bloodTargetForNight(this.night));
+            this.riseFromCoffin(() => this.startPlaying());
+          });
+        });
+      },
     });
   }
 
@@ -856,25 +945,61 @@ export class GameScene extends Phaser.Scene {
    * only flies the droplet and cashes it in on arrival.
    */
   private hopBloodToHealth(bloodAmount: number): void {
-    const droplet = this.add
-      .image(HUD_ANCHORS.bloodBar.x, HUD_ANCHORS.bloodBar.y, TEXTURES.blood)
-      .setDepth(DEPTHS.hud + 3)
-      .setScale(0.8);
+    const from = HUD_ANCHORS.bloodBar;
+    const to = HUD_ANCHORS.healthBar;
+    const duration = 700;
 
-    this.tweens.add({
-      targets: droplet,
-      x: HUD_ANCHORS.healthBar.x,
-      y: HUD_ANCHORS.healthBar.y,
-      scale: 0.5,
-      duration: 480,
-      ease: 'Sine.easeInOut',
-      onComplete: () => {
-        droplet.destroy();
-        // heal() emits PLAYER_HEALED, which is what repaints the bar and
-        // fires the puff in whichever colour the bar has just become.
-        this.player.heal(bloodAmount * BLOOD.overflowHealPerBlood);
-      },
-    });
+    // A visible ribbon of blood crossing the top of the screen, not a lone
+    // dot: three strands on their own swirl phases, each trailing particles,
+    // so it reads unmistakably as the blood meter feeding the health bar.
+    const trail = this.add
+      .particles(0, 0, TEXTURES.particle, {
+        speed: { min: 10, max: 50 },
+        lifespan: { min: 260, max: 520 },
+        scale: { start: 0.9, end: 0 },
+        tint: [0xc41e2f, 0xff4d4d, 0xff8f9a],
+        emitting: false,
+      })
+      .setDepth(DEPTHS.hud + 2);
+
+    const strands = 3;
+    let finished = 0;
+
+    for (let s = 0; s < strands; s++) {
+      const phase = (s / strands) * Math.PI * 2;
+      const swirl = 26 + s * 10;
+      const droplet = this.add
+        .image(from.x, from.y, TEXTURES.blood)
+        .setDepth(DEPTHS.hud + 3)
+        .setScale(0.8);
+
+      this.tweens.addCounter({
+        from: 0,
+        to: 1,
+        duration,
+        delay: s * 70,
+        ease: 'Sine.easeInOut',
+        onUpdate: (tween) => {
+          const t = tween.getValue() ?? 0;
+          // Straight line from bar to bar, plus a corkscrew around it that
+          // fades out at both ends so the strands converge where they land.
+          const taper = Math.sin(t * Math.PI);
+          const x = Phaser.Math.Linear(from.x, to.x, t);
+          const y =
+            Phaser.Math.Linear(from.y, to.y, t) + Math.sin(t * Math.PI * 3 + phase) * swirl * taper;
+          droplet.setPosition(x, y).setScale(0.8 - 0.3 * t);
+          trail.emitParticleAt(x, y, 2);
+        },
+        onComplete: () => {
+          droplet.destroy();
+          if (++finished < strands) return;
+          this.time.delayedCall(600, () => trail.destroy());
+          // heal() emits PLAYER_HEALED, which is what repaints the bar and
+          // fires the puff in whichever colour the bar has just become.
+          this.player.heal(bloodAmount * BLOOD.overflowHealPerBlood);
+        },
+      });
+    }
   }
 
   private coffinHintMessage(): string {
@@ -1175,6 +1300,7 @@ export class GameScene extends Phaser.Scene {
     this.hud?.destroy();
     this.spawner?.stop();
     this.taglineTimer?.remove();
+    this.coldOpenClock?.remove();
     this.input.keyboard?.off('keydown-ESC', this.requestPause, this);
     this.input.keyboard?.off('keydown-P', this.requestPause, this);
   }

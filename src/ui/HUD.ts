@@ -22,9 +22,12 @@ const BLOOD_FULL_GLOW = 0xff6b7a;
 const DASH_PURPLE = 0x9d6bff;
 const BAR_W = 216;
 
-/** Health ratio at or below which the bar turns orange, then red. */
-const HP_WARN_RATIO = 0.6;
-const HP_DANGER_RATIO = 0.3;
+/**
+ * Health ratio at or below which the bar turns orange, then red - even
+ * thirds, so each colour owns the same slice of the bar.
+ */
+const HP_WARN_RATIO = 2 / 3;
+const HP_DANGER_RATIO = 1 / 3;
 /** Seconds left when the timer starts blinking white on top of the red panic. */
 const BLINK_SECONDS = 5;
 
@@ -289,6 +292,15 @@ export class HUD {
   ): void {
     const duration = 1300;
 
+    // He made it, so the clock stops panicking the moment the lid shuts: the
+    // night winding back up reads white and calm, not red and doomed.
+    this.panic = false;
+    this.timerText.setColor('#e8ddff');
+    this.timerText.setFontSize('58px');
+    this.timerText.setAngle(0);
+    this.timerText.setPosition(this.timerHome.x, this.timerHome.y);
+    this.scene.tweens.add({ targets: this.vignette, alpha: 0, duration: 300 });
+
     // The health puffs are re-tinted every burst rather than once up front:
     // the bar climbs through red into orange into green over this tween, and
     // a fixed tint would have left red motes landing on a green bar.
@@ -392,9 +404,13 @@ export class HUD {
     if (this.panic) {
       const blinking = secondsRemaining <= BLINK_SECONDS;
       if (blinking) {
-        // White flash on the beat, decaying back to the panic red.
+        // White flash on the beat, decaying back to the panic red - unless
+        // panic ended in between, e.g. he reached the coffin on this very
+        // tick, in which case the red must not come back.
         this.timerText.setColor('#ffffff');
-        this.scene.time.delayedCall(160, () => this.timerText.setColor('#ff4d4d'));
+        this.scene.time.delayedCall(160, () => {
+          if (this.panic) this.timerText.setColor('#ff4d4d');
+        });
       } else {
         this.timerText.setColor(secondsRemaining % 2 === 0 ? '#ff4d4d' : '#ffd76b');
       }
@@ -442,7 +458,9 @@ export class HUD {
     this.healthRatio = ratio;
     this.healthBarFill.width = BAR_W * ratio;
     this.healthBarFill.setFillStyle(healthColor(ratio));
-    this.healthText.setText(`HP ${current}/${max}`);
+    // Overflow healing restores half a point per blood, so health is not
+    // necessarily whole - the readout rounds, the bar uses the real value.
+    this.healthText.setText(`HP ${Math.round(current)}/${max}`);
     this.setLowHealthFlash(ratio <= HP_DANGER_RATIO && current > 0);
   }
 

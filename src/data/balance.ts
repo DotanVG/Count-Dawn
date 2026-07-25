@@ -166,9 +166,11 @@ export const BLOOD = {
   dropletValue: 1,
   /**
    * HP restored per unit of blood collected after the meter is already full.
-   * Drinking past the quota tops the Count up instead of being thrown away.
+   * Drinking past the quota tops the Count up instead of being thrown away -
+   * deliberately less than a point each, so topping off a health bar takes a
+   * real pile of corpses rather than one unlucky hunter.
    */
-  overflowHealPerBlood: 3,
+  overflowHealPerBlood: 0.5,
 } as const;
 
 export function bloodTargetForNight(night: number): number {

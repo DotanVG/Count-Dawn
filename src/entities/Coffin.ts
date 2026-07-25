@@ -43,8 +43,12 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
     body.updateCenter();
     this.setDepth(DEPTHS.coffin);
 
+    // Romi's coffin is not centred on its own 256px canvas - the painted
+    // shape sits 11.5px right and 7.5px down of the middle - so a glow placed
+    // at the sprite's origin reads as sitting off to the left of the coffin.
+    // These are that measured offset, scaled to match the sprite.
     this.glow = scene.add
-      .circle(x, y, 80, COLORS.coffinActive, 0.22)
+      .circle(x + 11.5 * 0.55, y + 7.5 * 0.55, 80, COLORS.coffinActive, 0.22)
       .setDepth(DEPTHS.coffinGlow)
       .setVisible(false);
   }

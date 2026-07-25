@@ -17,7 +17,37 @@ const SKY_HEIGHT = TILE * 3; // the north wall band
 export const LUNAR_CYCLE_NIGHTS = 30;
 
 const MOON_RADIUS = 14;
-const MOON_HOME_Y = 44;
+
+/**
+ * Both bodies travel one shared arc across the windows, east to west, on a
+ * single 24h clock: `cycle` 0 is the start of the night, 0.5 is sunrise, 1 is
+ * the following nightfall. Night and day are two windows onto the same clock,
+ * which is the whole point - there is exactly one sun and one moon in the
+ * scene, each visible only over its own stretch of the cycle, so no arrangement
+ * of tweens can ever put two of either on screen at once.
+ */
+const HORIZON_Y = SKY_HEIGHT + 40; // below the wall band, out of sight
+const PEAK_Y = 34; // top of the arc, framed in the windows
+const ARC_LEFT = GAME_WIDTH * 0.12;
+const ARC_RIGHT = GAME_WIDTH * 0.88;
+
+/** Cycle span each body is above the horizon for. The sun rises a little before
+ *  the night formally ends, which is what makes dawn dawn. */
+const SUN_UP = { from: 0.44, to: 1.02 };
+/** The moon is up across midnight, so its span wraps past 1 back to 0. */
+const MOON_UP = { from: 0.93, to: 1.5 };
+
+/** Position along a rising-and-setting arc for t in 0..1, plus a visibility fade. */
+function arcPoint(t: number): { x: number; y: number; alpha: number; lift: number } {
+  const lift = Math.sin(Phaser.Math.Clamp(t, 0, 1) * Math.PI);
+  return {
+    x: Phaser.Math.Linear(ARC_LEFT, ARC_RIGHT, t),
+    y: HORIZON_Y - lift * (HORIZON_Y - PEAK_Y),
+    // Fade through the first and last few percent so nothing pops in mid-air.
+    alpha: Phaser.Math.Clamp(Math.min(t, 1 - t) / 0.05, 0, 1),
+    lift,
+  };
+}
 
 // progress 0 → 1 keyframes for the top and bottom of the gradient.
 const TOP_STOPS: [number, number][] = [
@@ -100,7 +130,7 @@ export class DawnSky {
     const halo = scene.add.circle(0, 0, 30, 0xffc46b, 0.35);
     const core = scene.add.circle(0, 0, 18, 0xffe08a, 1);
     const hot = scene.add.circle(0, 0, 10, 0xfff6d8, 1);
-    this.sun = scene.add.container(GAME_WIDTH / 2, SKY_HEIGHT + 80, [halo, core, hot]).setDepth(DEPTHS.sky + 2);
+    this.sun = scene.add.container(ARC_LEFT, HORIZON_Y, [halo, core, hot]).setDepth(DEPTHS.sky + 2);
 
     // The moon is drawn rather than composed from circles: only the sunlit
     // part is ever painted, so the dark limb is genuinely absent instead of
@@ -109,9 +139,10 @@ export class DawnSky {
     this.moonHalo = scene.add.circle(0, 0, 24, 0xcfd8ff, 0.22);
     this.moonLit = scene.add.graphics();
     this.moon = scene.add
-      .container(GAME_WIDTH / 2, MOON_HOME_Y, [this.moonHalo, this.moonLit])
+      .container(ARC_LEFT, HORIZON_Y, [this.moonHalo, this.moonLit])
       .setDepth(DEPTHS.sky + 2);
     this.setNight(this.phaseNight);
+    this.renderCycle(0);
   }
 
   /**
@@ -138,20 +169,8 @@ export class DawnSky {
       for (const star of this.stars) star.setScale(starFade);
     }
 
-    // The sun stays hidden below the wall band until ~70%, then rises into
-    // the windows and sits fully framed at dawn.
-    const rise = Phaser.Math.Clamp((progress - 0.7) / 0.3, 0, 1);
-    const eased = 1 - Math.pow(1 - rise, 2);
-    this.sun.y = SKY_HEIGHT + 80 - eased * (SKY_HEIGHT + 80 - 92);
-    this.sun.x = GAME_WIDTH / 2;
-    this.sun.setScale(0.8 + eased * 0.4);
-
-    // The moon is up and visible at night start, then sinks and fades out
-    // well before the sun begins its own rise (which starts at 70%).
-    const moonSet = Phaser.Math.Clamp(progress / 0.55, 0, 1);
-    const moonEase = moonSet * moonSet;
-    this.moon.y = MOON_HOME_Y + moonEase * (SKY_HEIGHT + 50);
-    this.moon.setAlpha(1 - moonSet);
+    // The night is the first half of the 24h cycle.
+    this.renderCycle(progress * 0.5);
   }
 
   /**
@@ -180,27 +199,42 @@ export class DawnSky {
       for (const star of this.stars) star.setScale(starFade);
     }
 
-    // Sun: enters framed (where dawn left it), arcs across and above the
-    // windows through noon, then drops out of frame on the far side.
-    const arc = Math.sin(t * Math.PI); // 0 at both horizons, 1 at noon
-    this.sun.x = GAME_WIDTH / 2 + (t - 0.5) * GAME_WIDTH * 0.62;
-    this.sun.y = 92 - arc * 34 + (1 - arc) * 70;
-    this.sun.setScale(1.2 - arc * 0.25);
-    this.sun.setAlpha(t > 0.94 ? Phaser.Math.Clamp((1 - t) / 0.06, 0, 1) : 1);
-
-    // Moon: below the wall band all day, rising into frame as night falls.
-    const moonRise = Phaser.Math.Clamp((t - 0.72) / 0.28, 0, 1);
-    const moonEase = moonRise * moonRise;
-    this.moon.y = MOON_HOME_Y + (1 - moonEase) * (SKY_HEIGHT + 50);
-    this.moon.setAlpha(moonEase);
+    // The day is the second half of the same 24h cycle - the sun simply
+    // carries on along the arc it was already climbing at sunrise.
+    this.renderCycle(0.5 + t * 0.5);
   }
 
   /** Puts the sun/moon/stars back to their night-start state after a day cycle. */
   resetToNightStart(): void {
     this.lastBucket = -1;
-    this.sun.setAlpha(1).setScale(0.8).setPosition(GAME_WIDTH / 2, SKY_HEIGHT + 80);
-    this.moon.setAlpha(1).setPosition(GAME_WIDTH / 2, MOON_HOME_Y);
     for (const star of this.stars) star.setScale(1);
+    this.renderCycle(0);
+  }
+
+  /**
+   * Places both bodies for a point on the 24h clock. This is the ONLY code
+   * that positions the sun or the moon; night and day both route through it,
+   * so the two can never disagree about where either one is.
+   */
+  private renderCycle(cycle: number): void {
+    const sunT = (cycle - SUN_UP.from) / (SUN_UP.to - SUN_UP.from);
+    const sunUp = sunT >= 0 && sunT <= 1;
+    this.sun.setVisible(sunUp);
+    if (sunUp) {
+      const p = arcPoint(sunT);
+      this.sun.setPosition(p.x, p.y).setAlpha(p.alpha).setScale(1.15 - p.lift * 0.3);
+    }
+
+    // The moon's window wraps past the end of the cycle, so a point early in
+    // the night is also a point late in the previous day's span.
+    const wrapped = cycle < MOON_UP.to - 1 ? cycle + 1 : cycle;
+    const moonT = (wrapped - MOON_UP.from) / (MOON_UP.to - MOON_UP.from);
+    const moonUp = moonT >= 0 && moonT <= 1;
+    this.moon.setVisible(moonUp);
+    if (moonUp) {
+      const p = arcPoint(moonT);
+      this.moon.setPosition(p.x, p.y).setAlpha(p.alpha);
+    }
   }
 
   /**
