@@ -88,7 +88,6 @@ export class GameScene extends Phaser.Scene {
   private nightOverlay!: Phaser.GameObjects.Rectangle;
   private menuUi: Phaser.GameObjects.Container | null = null;
   private taglineTimer: Phaser.Time.TimerEvent | null = null;
-  private aimArc: Phaser.GameObjects.Graphics | null = null;
 
   constructor() {
     super(SCENES.game);
@@ -196,7 +195,6 @@ export class GameScene extends Phaser.Scene {
       }
       if (this.touch.consumeDashPressed()) this.player.tryDash(mv.x, mv.y);
       this.player.move(mv.x, mv.y);
-      this.drawAimArc();
       if (this.touch.isAutoAttackHeld()) {
         this.autoAttackNearest();
       }
@@ -210,63 +208,12 @@ export class GameScene extends Phaser.Scene {
     // Dash first: it takes over the velocity that move() would otherwise set.
     if (this.inputController.isDashJustPressed()) this.player.tryDash(move.x, move.y);
     this.player.move(move.x, move.y);
-    this.drawAimArc();
 
     if (this.inputController.isMouseAttackDown()) {
       this.combat.tryAttack(this.getAttackTargets());
     } else if (this.inputController.isAutoAttackDown()) {
       this.autoAttackNearest();
     }
-  }
-
-  /**
-   * Aim reticle around the Count, facing the mouse (desktop) or the current
-   * travel/strike direction (mobile): a thin outer arc, a small fan of tick
-   * marks, and a chevron tip — an eighth of a circle, not a plain line.
-   */
-  private drawAimArc(): void {
-    if (!this.aimArc) return;
-    const g = this.aimArc;
-    const halfAngle = Math.PI / 8; // 45° total — an eighth of a circle
-    const radius = 130;
-    const aim = this.player.aimAngle;
-    g.clear();
-    g.setPosition(this.player.x, this.player.y);
-
-    // Outer arc.
-    g.lineStyle(3, COLORS.attackArc, 0.3);
-    g.beginPath();
-    g.arc(0, 0, radius, aim - halfAngle, aim + halfAngle, false);
-    g.strokePath();
-
-    // Radial tick marks fanning across the arc, brightest at dead-center.
-    const ticks = 5;
-    for (let i = 0; i < ticks; i++) {
-      const t = i / (ticks - 1);
-      const angle = aim - halfAngle + t * (2 * halfAngle);
-      const alpha = 0.15 + 0.45 * (1 - Math.abs(t - 0.5) * 2);
-      g.lineStyle(2, COLORS.attackArc, alpha);
-      g.beginPath();
-      g.moveTo(Math.cos(angle) * (radius - 9), Math.sin(angle) * (radius - 9));
-      g.lineTo(Math.cos(angle) * (radius + 7), Math.sin(angle) * (radius + 7));
-      g.strokePath();
-    }
-
-    // Chevron tip at the exact aim angle, pointing outward.
-    const tipR = radius + 16;
-    const cx = Math.cos(aim) * tipR;
-    const cy = Math.sin(aim) * tipR;
-    const backA = aim + Math.PI * 0.82;
-    const backB = aim - Math.PI * 0.82;
-    g.fillStyle(COLORS.attackArc, 0.65);
-    g.fillTriangle(
-      cx,
-      cy,
-      cx + Math.cos(backA) * 12,
-      cy + Math.sin(backA) * 12,
-      cx + Math.cos(backB) * 12,
-      cy + Math.sin(backB) * 12,
-    );
   }
 
   /** Space / ⚔ button: turn toward the nearest living hunter and strike. */
@@ -481,10 +428,6 @@ export class GameScene extends Phaser.Scene {
 
     this.hud = new HUD(this, this.emitter);
     this.hud.animateIn();
-
-    if (!this.isTouch) {
-      this.aimArc = this.add.graphics().setDepth(DEPTHS.player - 1);
-    }
 
     if (this.isTouch) {
       this.touch = new TouchControls(this, {
@@ -825,7 +768,6 @@ export class GameScene extends Phaser.Scene {
   private onGameEnded(cause: EndCause): void {
     this.spawner?.stop();
     this.physics.pause();
-    this.aimArc?.clear();
 
     // Nothing is aiming at a Count who has already lost (or won) the night.
     this.garlics.clear(true, true);

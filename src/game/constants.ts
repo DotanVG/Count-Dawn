@@ -49,7 +49,6 @@ export const COLORS = {
   coffin: 0x241830,
   coffinOutline: 0x6b4d8f,
   coffinActive: 0xc9a7ff,
-  attackArc: 0xff5f7a,
   dawn: 0xff9a3d,
 } as const;
 
