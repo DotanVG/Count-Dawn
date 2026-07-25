@@ -26,10 +26,19 @@ const MOON_RADIUS = 14;
  * scene, each visible only over its own stretch of the cycle, so no arrangement
  * of tweens can ever put two of either on screen at once.
  */
-const HORIZON_Y = SKY_HEIGHT + 40; // below the wall band, out of sight
-const PEAK_Y = 34; // top of the arc, framed in the windows
-const ARC_LEFT = GAME_WIDTH * 0.12;
-const ARC_RIGHT = GAME_WIDTH * 0.88;
+/**
+ * The arc is cut to the three windows rather than to the canvas. CastleMap
+ * puts them at tile columns 3, 9 and 15, two tiles wide, so their world-x
+ * centres are 256, 640 and 1024: a body rises inside the LEFT window, crosses
+ * the MIDDLE one at the top of its arc, and sets inside the RIGHT one. The
+ * arc is deliberately shallow - peaking above the windows would hide the
+ * middle of every crossing behind the wall stone, which is exactly what a
+ * canvas-width arc did.
+ */
+const ARC_LEFT = 210; // inside the left window's 192..320 span
+const ARC_RIGHT = 1070; // inside the right window's 960..1088 span
+const HORIZON_Y = 178; // bottom of the window openings
+const PEAK_Y = 88; // clear of the arch stone at the top
 
 /** Cycle span each body is above the horizon for. The sun rises a little before
  *  the night formally ends, which is what makes dawn dawn. */

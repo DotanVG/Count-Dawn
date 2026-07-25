@@ -31,6 +31,12 @@ const HP_DANGER_RATIO = 1 / 3;
 /** Seconds left when the timer starts blinking white on top of the red panic. */
 const BLINK_SECONDS = 5;
 
+/** Where a night/objective announcement pops, and where it settles afterwards. */
+const BANNER_CENTER = { x: GAME_WIDTH / 2, y: 315 };
+const BANNER_CORNER = { x: 172, y: 218, scale: 0.55 };
+/** How long the announcement holds centre-screen before flying to the corner. */
+const BANNER_HOLD_MS = 900;
+
 /**
  * The bar's colour for a given health ratio - green down to HP_WARN_RATIO,
  * orange down to HP_DANGER_RATIO, red below it. Particles are tinted from the
@@ -58,8 +64,14 @@ export class HUD {
   private dashLabel: Phaser.GameObjects.Text;
   private bloodBarFill: Phaser.GameObjects.Rectangle;
   private bloodText: Phaser.GameObjects.Text;
-  private objectiveText: Phaser.GameObjects.Text;
-  private nightText: Phaser.GameObjects.Text;
+  /** The announcement that pops centre-screen, then flies to the corner. */
+  private bannerPop: Phaser.GameObjects.Text;
+  /** The copy that rests in the corner between announcements. */
+  private bannerCorner: Phaser.GameObjects.Text;
+  private bannerEnabled = false;
+  private bannerQueued = false;
+  private night = 1;
+  private objective: Objective = 'collect-blood';
   private vignette: Phaser.GameObjects.Rectangle;
   private bossBar: BossHealthBar;
   private hpParticles: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -140,27 +152,37 @@ export class HUD {
       .setDepth(DEPTHS.hud + 2)
       .setVisible(false);
 
-    // Objective, just under the wall band.
-    this.objectiveText = scene.add
-      .text(GAME_WIDTH / 2, 208, OBJECTIVE_TEXT['collect-blood'], {
+    // Night + objective. Two texts for one piece of information: the banner
+    // announces a change big and centred, then flies into the corner slot and
+    // hands off to the resting copy that lives there between announcements.
+    this.bannerPop = scene.add
+      .text(BANNER_CENTER.x, BANNER_CENTER.y, '', {
         fontFamily: FONT,
-        fontSize: '19px',
-        color: '#c9a7ff',
+        fontSize: '30px',
+        color: '#e8ddff',
+        align: 'center',
+        lineSpacing: 8,
         stroke: '#0d0716',
-        strokeThickness: 4,
+        strokeThickness: 6,
       })
       .setOrigin(0.5)
-      .setDepth(DEPTHS.hud);
+      .setDepth(DEPTHS.hud + 3)
+      .setAlpha(0);
 
-    // Night counter, tucked just above the objective line.
-    this.nightText = scene.add
-      .text(GAME_WIDTH / 2, 184, 'Night 1', {
+    this.bannerCorner = scene.add
+      .text(BANNER_CORNER.x, BANNER_CORNER.y, '', {
         fontFamily: FONT,
-        fontSize: '15px',
-        color: '#9d8bbf',
+        fontSize: '30px',
+        color: '#c9a7ff',
+        align: 'center',
+        lineSpacing: 8,
+        stroke: '#0d0716',
+        strokeThickness: 6,
       })
       .setOrigin(0.5)
-      .setDepth(DEPTHS.hud);
+      .setScale(BANNER_CORNER.scale)
+      .setDepth(DEPTHS.hud)
+      .setAlpha(0);
 
     // Red panic vignette for the final seconds.
     this.vignette = scene.add
@@ -204,8 +226,6 @@ export class HUD {
       bloodBg,
       this.bloodBarFill,
       this.bloodText,
-      this.objectiveText,
-      this.nightText,
     ];
 
     emitter.on(EVENTS.COUNTDOWN_TICK, this.onTick, this);
@@ -252,7 +272,71 @@ export class HUD {
   }
 
   setNight(n: number): void {
-    this.nightText.setText(`Night ${n}`);
+    this.night = n;
+    this.announce();
+  }
+
+  /**
+   * Turns the night/objective announcements on. They stay off through the
+   * opening cinematic: "Night 1 - collect blood before sunrise" is an
+   * instruction for a round that has not started, and it stepped on the
+   * cold open's own storytelling.
+   */
+  enableBanner(): void {
+    if (this.bannerEnabled) return;
+    this.bannerEnabled = true;
+    this.announce();
+  }
+
+  /**
+   * Announces the current night and objective: it pops big in the middle of
+   * the screen, holds for a beat, then shrinks and flies into the corner,
+   * replacing whatever was resting there.
+   *
+   * Announcements coalesce over a frame. A new round changes the night AND the
+   * objective, which would otherwise fire two banners that raced each other
+   * across the screen.
+   */
+  private announce(): void {
+    if (!this.bannerEnabled || this.bannerQueued) return;
+    this.bannerQueued = true;
+
+    this.scene.time.delayedCall(20, () => {
+      this.bannerQueued = false;
+      const content = `Night ${this.night}\n${OBJECTIVE_TEXT[this.objective]}`;
+
+      this.scene.tweens.killTweensOf(this.bannerPop);
+      this.bannerPop
+        .setText(content)
+        .setPosition(BANNER_CENTER.x, BANNER_CENTER.y)
+        .setScale(1.35)
+        .setAlpha(0);
+
+      this.scene.tweens.add({
+        targets: this.bannerPop,
+        alpha: 1,
+        scale: 1,
+        duration: 260,
+        ease: 'Back.easeOut',
+        onComplete: () => {
+          this.scene.tweens.add({
+            targets: this.bannerPop,
+            x: BANNER_CORNER.x,
+            y: BANNER_CORNER.y,
+            scale: BANNER_CORNER.scale,
+            delay: BANNER_HOLD_MS,
+            duration: 450,
+            ease: 'Quad.easeInOut',
+            onComplete: () => {
+              // Hand off to the resting copy so the next announcement is free
+              // to start from the middle again.
+              this.bannerCorner.setText(content).setAlpha(1);
+              this.bannerPop.setAlpha(0);
+            },
+          });
+        },
+      });
+    });
   }
 
   /**
@@ -273,11 +357,11 @@ export class HUD {
     this.setBloodFullGlow(false);
     this.setHealth(PLAYER.maxHealth, PLAYER.maxHealth);
     this.setBlood(0, bloodTarget);
-    // Without this the objective line kept showing "Return to your coffin"
-    // (the previous round's final state) until the new round's first
+    // Without this the objective kept reading "Return to your coffin" (the
+    // previous round's final state) until the new round's first
     // OBJECTIVE_CHANGED event — GameFlowSystem only emits on state changes,
     // not on construction, so nothing would correct it otherwise.
-    this.objectiveText.setText(OBJECTIVE_TEXT['collect-blood']);
+    this.objective = 'collect-blood';
   }
 
   /**
@@ -521,6 +605,8 @@ export class HUD {
   }
 
   private onObjective(objective: Objective): void {
-    this.objectiveText.setText(OBJECTIVE_TEXT[objective]);
+    if (this.objective === objective) return;
+    this.objective = objective;
+    this.announce();
   }
 }

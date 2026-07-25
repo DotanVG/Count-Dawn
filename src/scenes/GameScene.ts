@@ -32,7 +32,14 @@ import { CombatSystem } from '../systems/CombatSystem';
 import { SpawnSystem } from '../systems/SpawnSystem';
 import { offCanvasSpawnPoint } from '../systems/entrance';
 import { CountdownSystem } from '../systems/CountdownSystem';
-import { COLD_OPEN, coldOpenSkyProgress, coldOpenTimerSeconds } from '../systems/coldOpen';
+import {
+  COLD_OPEN,
+  COLD_OPEN_GROUP,
+  COLD_OPEN_STRIKE_SPOT,
+  coldOpenHunterSlot,
+  coldOpenSkyProgress,
+  coldOpenTimerSeconds,
+} from '../systems/coldOpen';
 import { GameFlowSystem } from '../systems/GameFlowSystem';
 import { AudioSystem } from '../systems/AudioSystem';
 import { CastleMap } from '../world/CastleMap';
@@ -40,6 +47,7 @@ import { DawnSky } from '../world/DawnSky';
 import { HUD } from '../ui/HUD';
 import { TouchControls } from '../ui/TouchControls';
 import { TEXTURES, AUDIO } from '../utils/assetKeys';
+import { VAMPIRE_ATTACK_DURATION_MS } from '../utils/animations';
 import type { EndCause, RunSummary } from '../types/game';
 
 type Phase = 'menu' | 'intro' | 'playing' | 'transition' | 'ended';
@@ -57,6 +65,7 @@ const CINEMATIC = {
   /** Low enough to sit in the red band, so the bar is flashing as he flies in. */
   startHealth: 12,
 } as const;
+
 /** The vampire's landing spot: the center of the hall. */
 const PLAYER_SPAWN = {
   x: (ARENA.left + ARENA.right) / 2,
@@ -459,8 +468,9 @@ export class GameScene extends Phaser.Scene {
       },
     });
 
-    this.time.delayedCall(COLD_OPEN.lineStartMs, () => this.cinematicLine());
     this.time.delayedCall(COLD_OPEN.huntersInMs, () => this.cinematicSurround());
+    this.time.delayedCall(COLD_OPEN.lineStartMs, () => this.cinematicLine());
+    this.time.delayedCall(COLD_OPEN.toGroupMs, () => this.cinematicCrossToGroup());
     this.time.delayedCall(COLD_OPEN.strikeMs, () =>
       this.cinematicStrike(bloodTarget, () => ++blood),
     );
@@ -500,28 +510,43 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  /** Ten hunters walk in from every side and close into a ring around him. */
+  /**
+   * Ten hunters walk in and mass on the right side of the hall. They come in
+   * from the right edge specifically - it is the shortest walk to where they
+   * need to be standing, and the scene has seconds, not minutes.
+   */
   private cinematicSurround(): void {
-    const radius = 165;
     for (let i = 0; i < COLD_OPEN.hunterCount; i++) {
-      const angle = (Math.PI * 2 * i) / COLD_OPEN.hunterCount - Math.PI / 2;
-      const arrival = {
-        x: Phaser.Math.Clamp(
-          this.player.x + Math.cos(angle) * radius,
-          ARENA.left + 30,
-          ARENA.right - 30,
-        ),
-        y: Phaser.Math.Clamp(
-          this.player.y + Math.sin(angle) * radius * 0.7,
-          ARENA.top + 30,
-          ARENA.bottom - 30,
-        ),
-      };
-      const spawn = offCanvasSpawnPoint(arrival);
+      const { spawn, arrival } = coldOpenHunterSlot(i);
       const hunter = new Hunter(this, spawn.x, spawn.y);
       this.hunters.add(hunter);
       hunter.beginEntrance(arrival.x, arrival.y);
     }
+  }
+
+  /** He turns bat and crosses the hall to stand right on top of the group. */
+  private cinematicCrossToGroup(): void {
+    const from = { x: this.player.x, y: this.player.y };
+    const to = COLD_OPEN_STRIKE_SPOT;
+    this.setBatForm(true);
+
+    this.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: COLD_OPEN.groupFlightMs,
+      ease: 'Sine.easeInOut',
+      onUpdate: (tween) => {
+        const t = tween.getValue() ?? 0;
+        const x = Phaser.Math.Linear(from.x, to.x, t);
+        this.player.faceBatTowards(x - this.player.x);
+        // A little lift through the middle so it reads as flight, not a slide.
+        this.player.setPosition(x, Phaser.Math.Linear(from.y, to.y, t) - Math.sin(t * Math.PI) * 40);
+      },
+      onComplete: () => {
+        this.setBatForm(false);
+        this.player.aimAt(COLD_OPEN_GROUP.x, COLD_OPEN_GROUP.y);
+      },
+    });
   }
 
   /** One strike takes the whole ring, and their blood runs to the meter. */
@@ -532,7 +557,10 @@ export class GameScene extends Phaser.Scene {
     }
     this.player.playAttackAnim();
     this.cameras.main.shake(220, 0.008);
-    this.cameras.main.flash(180, 196, 30, 47);
+    this.cameras.main.flash(220, 255, 255, 255);
+    // Nothing drives updateAnimation during a cutscene, so the swing has to be
+    // walked back to idle by hand or he stands there frozen mid-strike.
+    this.time.delayedCall(VAMPIRE_ATTACK_DURATION_MS, () => this.player.playIdleAnim());
 
     const corpses: { x: number; y: number }[] = [];
     for (const hunter of victims) {
@@ -595,13 +623,13 @@ export class GameScene extends Phaser.Scene {
         this.coldOpenClock?.remove();
         this.coldOpenClock = null;
 
-        // He sleeps: health refills, the blood is spent, the clock winds
-        // back up to a full night - the same beat every night ends on.
-        this.hud?.playCoffinTransfer(1, CINEMATIC.startHealth / PLAYER.maxHealth, 0, () => {
-          this.playDayCycle(1800, () => {
-            this.hud?.resetForNewRound(bloodTargetForNight(this.night));
-            this.riseFromCoffin(() => this.startPlaying());
-          });
+        // He sleeps: health refills, the blood is spent, the clock winds back
+        // up to a full night - all of it WHILE the day passes overhead, not
+        // queued up behind it.
+        this.hud?.playCoffinTransfer(1, CINEMATIC.startHealth / PLAYER.maxHealth, 0, () => {});
+        this.playDayCycle(2200, () => {
+          this.hud?.resetForNewRound(bloodTargetForNight(this.night));
+          this.riseFromCoffin(() => this.startPlaying());
         });
       },
     });
@@ -704,6 +732,10 @@ export class GameScene extends Phaser.Scene {
       this.hud = new HUD(this, this.emitter);
       this.hud.animateIn();
     }
+
+    // The round is really starting now, so the night/objective announcements
+    // come alive. Before beginRoundSystems, which is what raises the first one.
+    this.hud.enableBanner();
 
     if (this.isTouch) {
       this.touch = new TouchControls(this, {
@@ -1219,9 +1251,11 @@ export class GameScene extends Phaser.Scene {
         const bloodRatio = Phaser.Math.Clamp(this.flow.currentBlood / this.flow.bloodTarget, 0, 1);
         const healthRatio = Phaser.Math.Clamp(this.player.health / PLAYER.maxHealth, 0, 1);
         const secondsLeft = this.countdown?.remainingSeconds ?? 0;
-        this.hud?.playCoffinTransfer(bloodRatio, healthRatio, secondsLeft, () => {
-          this.time.delayedCall(300, () => this.playNightCycle());
-        });
+        // He heals WHILE the sky turns, not before it: the sleep and the day
+        // passing are one beat, so they run together and the cycle owns the
+        // handoff into the next night.
+        this.hud?.playCoffinTransfer(bloodRatio, healthRatio, secondsLeft, () => {});
+        this.playNightCycle();
       },
     });
   }

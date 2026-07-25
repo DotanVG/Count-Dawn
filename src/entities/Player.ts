@@ -256,6 +256,18 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     });
   }
 
+  /**
+   * Drops back to the idle pose. Cutscenes need this explicitly: nothing is
+   * calling updateAnimation for them, so a strike would otherwise leave the
+   * Count frozen on the attack animation's final frame for the rest of the
+   * scene.
+   */
+  playIdleAnim(): void {
+    if (this.batForm) return;
+    this.attackAnimUntil = 0;
+    this.play(animKey('vampire', 'idle', this.facing), true);
+  }
+
   playDeathAnim(): void {
     this.play(animKey('vampire', 'death', this.facing), true);
   }

@@ -1,7 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { COLD_OPEN, coldOpenTimerSeconds, coldOpenSkyProgress } from '../src/systems/coldOpen.ts';
+import {
+  COLD_OPEN,
+  COLD_OPEN_GROUP,
+  COLD_OPEN_STRIKE_SPOT,
+  coldOpenHunterSlot,
+  coldOpenTimerSeconds,
+  coldOpenSkyProgress,
+} from '../src/systems/coldOpen.ts';
+import { HUNTER } from '../src/data/balance.ts';
+import { ARENA } from '../src/game/constants.ts';
 
 test('the cold open clock opens on the full ten seconds', () => {
   assert.equal(coldOpenTimerSeconds(0), COLD_OPEN.startSeconds);
@@ -35,30 +44,37 @@ test('the clock only ever counts down', () => {
   }
 });
 
-test('every beat lands before the lid shuts, in staging order', () => {
-  const beats = [
-    COLD_OPEN.flyInMs,
-    COLD_OPEN.lineStartMs,
-    COLD_OPEN.huntersInMs,
-    COLD_OPEN.strikeMs,
-    COLD_OPEN.bloodStartMs,
-    COLD_OPEN.toCoffinMs,
-  ];
-  for (let i = 1; i < beats.length; i++) {
-    assert.ok(beats[i] >= beats[i - 1], `beat ${i} runs before the one before it`);
-  }
-  assert.ok(beats[beats.length - 1] < COLD_OPEN.coffinShutMs);
+test('the beats stage in the order the scene needs them', () => {
+  // He is on his feet before he speaks, and the hunters are already on their
+  // way in by then - they have the longest walk of anything in the scene.
+  assert.ok(COLD_OPEN.huntersInMs < COLD_OPEN.lineStartMs);
+  assert.ok(COLD_OPEN.flyInMs <= COLD_OPEN.lineStartMs);
 
-  // The last bloodlet has to land before he leaves for the coffin, or the
+  // He crosses to the group and has LANDED before he swings at it.
+  assert.ok(COLD_OPEN.lineStartMs < COLD_OPEN.toGroupMs);
+  assert.ok(
+    COLD_OPEN.toGroupMs + COLD_OPEN.groupFlightMs <= COLD_OPEN.strikeMs,
+    'the strike lands while he is still crossing the hall',
+  );
+
+  // The last bloodlet has to arrive before he leaves for the coffin, or the
   // meter would still be filling while he is already asleep.
   const lastBloodletAt =
     COLD_OPEN.bloodStartMs +
     (COLD_OPEN.bloodlets - 1) * COLD_OPEN.bloodletStaggerMs +
     COLD_OPEN.bloodletFlightMs;
+  assert.ok(COLD_OPEN.strikeMs <= COLD_OPEN.bloodStartMs);
   assert.ok(lastBloodletAt <= COLD_OPEN.toCoffinMs, `bloodlets still arriving at ${lastBloodletAt}ms`);
 
   // And the flight has to actually be over when the lid shuts.
   assert.equal(COLD_OPEN.toCoffinMs + COLD_OPEN.coffinFlightMs, COLD_OPEN.coffinShutMs);
+});
+
+test('the whole cold open fits inside its ten seconds', () => {
+  assert.ok(
+    COLD_OPEN.coffinShutMs <= COLD_OPEN.startSeconds * 1000,
+    `cold open runs ${COLD_OPEN.coffinShutMs}ms against a ${COLD_OPEN.startSeconds}s clock`,
+  );
 });
 
 test('the sky reaches the edge of sunrise but never dawn', () => {
@@ -70,4 +86,36 @@ test('the sky reaches the edge of sunrise but never dawn', () => {
   assert.ok(coldOpenSkyProgress(COLD_OPEN.coffinShutMs) > 0.9);
   // Clamped past the end, same as the clock.
   assert.ok(coldOpenSkyProgress(999_999) < 1);
+});
+
+test('every hunter is standing in place before the strike lands', () => {
+  // They walk in at an ordinary hunter's pace and the strike does not wait.
+  // This margin is thin by design - the scene has ten seconds - so it is
+  // asserted rather than eyeballed.
+  for (let i = 0; i < COLD_OPEN.hunterCount; i++) {
+    const { spawn, arrival } = coldOpenHunterSlot(i);
+    const distance = Math.hypot(spawn.x - arrival.x, spawn.y - arrival.y);
+    const inPlaceAt = COLD_OPEN.huntersInMs + (distance / HUNTER.moveSpeed) * 1000;
+    assert.ok(
+      inPlaceAt <= COLD_OPEN.strikeMs,
+      `hunter ${i} is still walking at the strike (in place at ${Math.round(inPlaceAt)}ms)`,
+    );
+  }
+});
+
+test('the hunters stand inside the hall, and enter from behind the wall', () => {
+  for (let i = 0; i < COLD_OPEN.hunterCount; i++) {
+    const { spawn, arrival } = coldOpenHunterSlot(i);
+    assert.ok(arrival.x > ARENA.left && arrival.x < ARENA.right, `hunter ${i} stands outside the hall`);
+    assert.ok(arrival.y > ARENA.top && arrival.y < ARENA.bottom, `hunter ${i} stands outside the hall`);
+    // Off the playfield to start, so they walk into view instead of appearing.
+    assert.ok(spawn.x > ARENA.right, `hunter ${i} pops into the open hall`);
+  }
+});
+
+test('the Count strikes from beside the group, not on top of it', () => {
+  const gap = COLD_OPEN_GROUP.x - COLD_OPEN_STRIKE_SPOT.x;
+  assert.ok(gap > 0, 'he lands on the wrong side of the group');
+  assert.ok(gap < 260, 'he lands too far away for the strike to read');
+  assert.ok(COLD_OPEN_STRIKE_SPOT.x > ARENA.left);
 });
