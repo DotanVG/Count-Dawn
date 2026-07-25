@@ -70,7 +70,8 @@ export class GarlicTarget {
     const blinkOn = Math.floor((time / 1000) * LOCK_BLINK_HZ) % 2 === 0;
     const color = this.locked && blinkOn ? LOCK_WHITE : GREEN;
     const strength = this.locked ? (blinkOn ? 1 : 0.55) : 0.75;
-    const radius = this.locked ? THROWER.lockRadius * 0.62 : THROWER.lockRadius * 0.8;
+    const drawn = THROWER.lockRadius * THROWER.targetDrawScale;
+    const radius = this.locked ? drawn * 0.62 : drawn * 0.8;
 
     // Soft glow pool underneath, breathing while it hunts.
     const pulse = 1 + Math.sin(time / 140) * 0.06;

@@ -50,7 +50,7 @@ export const DASH = {
  */
 export const BAT = {
   /** Multiplier on the Count's display scale while he is a bat. */
-  scaleFactor: 0.2,
+  scaleFactor: 0.3,
   flapFrames: 2,
   flapFrameRate: 12,
   /** Smoke motes in the *poof* burst on each transformation. */
@@ -98,8 +98,14 @@ export const THROWER = {
   aimCooldownMs: 2200,
   /** How fast the painted target crawls toward the player, world units/sec. */
   targetSpeed: 300,
-  /** The target counts as "on" the player within this radius — also its drawn size. */
+  /** The target counts as "on" the player within this radius. */
   lockRadius: 34,
+  /**
+   * Shrinks the drawn crosshair without touching lockRadius, so the target
+   * reads as less of a blot on screen while the throw stays exactly as hard
+   * to dodge as it was.
+   */
+  targetDrawScale: 0.8,
   /** Uninterrupted time the target must stay on the player to lock. */
   lockHoldMs: 500,
   /** Give up and reset if no lock happens within this long. */
