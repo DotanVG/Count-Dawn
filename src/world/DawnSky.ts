@@ -3,14 +3,21 @@ import { DEPTHS, GAME_WIDTH, TILE } from '../game/constants';
 
 /**
  * The sky visible through the north-wall windows: a color-lerped night→dawn
- * gradient, stars that fade out, and a pixel sun that physically rises into
- * the window openings near the end of the night.
+ * gradient, stars that fade out, a pixel sun that physically rises into the
+ * window openings near the end of the night, and a moon that carries a real
+ * lunar phase which advances one night at a time.
  *
  * Everything renders BEHIND the tilemap layer; the arch-window tiles have
  * transparent interiors, so the sky only shows through them.
  */
 
 const SKY_HEIGHT = TILE * 3; // the north wall band
+
+/** Nights in one full lunar cycle - full, waning to new, waxing back to full. */
+export const LUNAR_CYCLE_NIGHTS = 30;
+
+const MOON_RADIUS = 14;
+const MOON_HOME_Y = 44;
 
 // progress 0 → 1 keyframes for the top and bottom of the gradient.
 const TOP_STOPS: [number, number][] = [
@@ -24,6 +31,23 @@ const BOTTOM_STOPS: [number, number][] = [
   [0.55, 0x241645],
   [0.8, 0x8a3a55], // first light
   [1.0, 0xff9a3d], // sunrise
+];
+
+// The daytime half of the cycle, played only between nights: dawn climbs to
+// a bright noon sky, then falls back through sunset into the new night.
+const DAY_TOP_STOPS: [number, number][] = [
+  [0.0, 0x7a3f6d], // dawn, where the night's gradient left off
+  [0.3, 0x4a8fd0],
+  [0.5, 0x63b3ff], // noon
+  [0.7, 0x9a5a8a],
+  [1.0, 0x07051a], // back to deep night
+];
+const DAY_BOTTOM_STOPS: [number, number][] = [
+  [0.0, 0xff9a3d], // sunrise
+  [0.3, 0x9fd0f0],
+  [0.5, 0xcfe9ff], // noon haze
+  [0.7, 0xff7a3d], // sunset
+  [1.0, 0x141033],
 ];
 
 function sampleStops(stops: [number, number][], t: number): number {
@@ -46,7 +70,10 @@ export class DawnSky {
   private stars: Phaser.GameObjects.Rectangle[] = [];
   private sun: Phaser.GameObjects.Container;
   private moon: Phaser.GameObjects.Container;
+  private moonLit: Phaser.GameObjects.Graphics;
+  private moonHalo: Phaser.GameObjects.Arc;
   private lastBucket = -1;
+  private phaseNight = 1;
 
   constructor(scene: Phaser.Scene) {
     this.gradient = scene.add.graphics().setDepth(DEPTHS.sky);
@@ -75,13 +102,26 @@ export class DawnSky {
     const hot = scene.add.circle(0, 0, 10, 0xfff6d8, 1);
     this.sun = scene.add.container(GAME_WIDTH / 2, SKY_HEIGHT + 80, [halo, core, hot]).setDepth(DEPTHS.sky + 2);
 
-    // Pale pixel moon: up and framed at night start, sets before the sun rises.
-    const moonHalo = scene.add.circle(0, 0, 24, 0xcfd8ff, 0.22);
-    const moonBody = scene.add.circle(0, 0, 14, 0xe9edff, 1);
-    const moonShade = scene.add.circle(5, -3, 11, 0x0d0716, 0.9); // crescent bite
+    // The moon is drawn rather than composed from circles: only the sunlit
+    // part is ever painted, so the dark limb is genuinely absent instead of
+    // being a dark disc pasted over the sky (which is what the old crescent
+    // "bite" circle was, and why it only ever produced one fixed shape).
+    this.moonHalo = scene.add.circle(0, 0, 24, 0xcfd8ff, 0.22);
+    this.moonLit = scene.add.graphics();
     this.moon = scene.add
-      .container(GAME_WIDTH / 2, 44, [moonHalo, moonBody, moonShade])
+      .container(GAME_WIDTH / 2, MOON_HOME_Y, [this.moonHalo, this.moonLit])
       .setDepth(DEPTHS.sky + 2);
+    this.setNight(this.phaseNight);
+  }
+
+  /**
+   * Sets which night's moon to show. Night 1 is full; the moon then wanes to
+   * new around night 15 and waxes back to full over LUNAR_CYCLE_NIGHTS, so
+   * every night in the cycle gets its own distinct shape and lit side.
+   */
+  setNight(night: number): void {
+    this.phaseNight = night;
+    this.drawMoonPhase(night);
   }
 
   /** progress: 0 at night start, 1 at dawn. Cheap; called every frame. */
@@ -110,8 +150,105 @@ export class DawnSky {
     // well before the sun begins its own rise (which starts at 70%).
     const moonSet = Phaser.Math.Clamp(progress / 0.55, 0, 1);
     const moonEase = moonSet * moonSet;
-    this.moon.y = 44 + moonEase * (SKY_HEIGHT + 50);
+    this.moon.y = MOON_HOME_Y + moonEase * (SKY_HEIGHT + 50);
     this.moon.setAlpha(1 - moonSet);
+  }
+
+  /**
+   * The daylight half of the cycle, played between nights: t runs 0 at the
+   * dawn the night ended on, through noon at 0.5, to full dark at 1. The sun
+   * crosses the windows west-ward and sets; the moon then rises on the other
+   * side wearing the NEXT night's phase.
+   *
+   * Callers drive this instead of update() for the whole transition - the two
+   * would otherwise fight over the same gradient and sun.
+   */
+  updateDayCycle(t: number): void {
+    t = Phaser.Math.Clamp(t, 0, 1);
+
+    const bucket = 1000 + Math.round(t * 200);
+    if (bucket !== this.lastBucket) {
+      this.lastBucket = bucket;
+      const top = sampleStops(DAY_TOP_STOPS, t);
+      const bottom = sampleStops(DAY_BOTTOM_STOPS, t);
+      this.gradient.clear();
+      this.gradient.fillGradientStyle(top, top, bottom, bottom, 1);
+      this.gradient.fillRect(0, 0, GAME_WIDTH, SKY_HEIGHT);
+
+      // Stars are washed out all day and come back with the dark.
+      const starFade = Phaser.Math.Clamp((t - 0.78) / 0.22, 0, 1);
+      for (const star of this.stars) star.setScale(starFade);
+    }
+
+    // Sun: enters framed (where dawn left it), arcs across and above the
+    // windows through noon, then drops out of frame on the far side.
+    const arc = Math.sin(t * Math.PI); // 0 at both horizons, 1 at noon
+    this.sun.x = GAME_WIDTH / 2 + (t - 0.5) * GAME_WIDTH * 0.62;
+    this.sun.y = 92 - arc * 34 + (1 - arc) * 70;
+    this.sun.setScale(1.2 - arc * 0.25);
+    this.sun.setAlpha(t > 0.94 ? Phaser.Math.Clamp((1 - t) / 0.06, 0, 1) : 1);
+
+    // Moon: below the wall band all day, rising into frame as night falls.
+    const moonRise = Phaser.Math.Clamp((t - 0.72) / 0.28, 0, 1);
+    const moonEase = moonRise * moonRise;
+    this.moon.y = MOON_HOME_Y + (1 - moonEase) * (SKY_HEIGHT + 50);
+    this.moon.setAlpha(moonEase);
+  }
+
+  /** Puts the sun/moon/stars back to their night-start state after a day cycle. */
+  resetToNightStart(): void {
+    this.lastBucket = -1;
+    this.sun.setAlpha(1).setScale(0.8).setPosition(GAME_WIDTH / 2, SKY_HEIGHT + 80);
+    this.moon.setAlpha(1).setPosition(GAME_WIDTH / 2, MOON_HOME_Y);
+    for (const star of this.stars) star.setScale(1);
+  }
+
+  /**
+   * Paints only the sunlit sliver of the moon for the given night.
+   *
+   * The lit region is bounded by two curves that share their end points at
+   * the poles: the outer limb (a half circle on the lit side) and the
+   * terminator (a half ellipse whose x-radius is R * (1 - 2k) for
+   * illuminated fraction k). When that radius is positive the terminator
+   * bows toward the lit side and the result is a crescent; when it is
+   * negative it bows away and the result is gibbous; at k = 0.5 it is a
+   * straight line and the moon reads as a clean half. That is the same
+   * construction the real terminator follows, which is why the shapes look
+   * right rather than like a disc with a bite taken out of it.
+   *
+   * Lit side follows the northern-hemisphere convention: waning moons are
+   * lit on the left, waxing moons on the right.
+   */
+  private drawMoonPhase(night: number): void {
+    const index = ((night - 1) % LUNAR_CYCLE_NIGHTS + LUNAR_CYCLE_NIGHTS) % LUNAR_CYCLE_NIGHTS;
+    const phaseAngle = (index / LUNAR_CYCLE_NIGHTS) * Math.PI * 2; // 0 = full
+    const illuminated = (1 + Math.cos(phaseAngle)) / 2;
+    // First half of the cycle is waning (lit on the left), second half waxing.
+    const litSide = phaseAngle <= Math.PI ? -1 : 1;
+    const terminatorX = MOON_RADIUS * (1 - 2 * illuminated) * litSide;
+
+    this.moonHalo.setAlpha(0.06 + 0.2 * illuminated);
+
+    this.moonLit.clear();
+    if (illuminated < 0.02) return; // new moon: nothing is lit
+
+    const steps = 48;
+    const points: Phaser.Math.Vector2[] = [];
+    // Outer limb, pole to pole down the lit side.
+    for (let i = 0; i <= steps; i++) {
+      const a = -Math.PI / 2 + (i / steps) * Math.PI;
+      points.push(
+        new Phaser.Math.Vector2(litSide * MOON_RADIUS * Math.cos(a), MOON_RADIUS * Math.sin(a)),
+      );
+    }
+    // Terminator, back up to where we started.
+    for (let i = steps; i >= 0; i--) {
+      const a = -Math.PI / 2 + (i / steps) * Math.PI;
+      points.push(new Phaser.Math.Vector2(terminatorX * Math.cos(a), MOON_RADIUS * Math.sin(a)));
+    }
+
+    this.moonLit.fillStyle(0xe9edff, 1);
+    this.moonLit.fillPoints(points, true);
   }
 
   private drawGradient(progress: number): void {

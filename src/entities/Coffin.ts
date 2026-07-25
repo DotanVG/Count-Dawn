@@ -12,6 +12,8 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
   private activated = false;
   private opened = false;
   private pulseTween: Phaser.Tweens.Tween | null = null;
+  /** Scale "breathing" on the coffin itself, running until the Count climbs in. */
+  private breathTween: Phaser.Tweens.Tween | null = null;
   private glow: Phaser.GameObjects.Arc;
   private hintText: Phaser.GameObjects.Text | null = null;
   private hintCooldownUntil = 0;
@@ -59,6 +61,9 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
   setOpen(open: boolean): void {
     if (this.opened === open) return;
     this.opened = open;
+    // The lid pop tweens scale too; the breath has to let go of it first or
+    // the two fight and the coffin never settles back to its resting size.
+    this.stopBreathing();
     this.setTexture(TEXTURES.coffinHalf);
     this.scene.time.delayedCall(130, () => {
       if (!this.active) return;
@@ -89,6 +94,34 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
       yoyo: true,
       repeat: -1,
     });
+
+    this.startBreathing();
+  }
+
+  /**
+   * The coffin swells and settles, over and over, from the moment it is ready
+   * until the Count actually climbs in. The glow alone was easy to lose
+   * against a hall full of effects; movement catches the eye even in the
+   * corner of the screen, which is the whole point - the player has a sunrise
+   * to beat and needs to notice where to go.
+   */
+  private startBreathing(): void {
+    if (this.breathTween) return;
+    this.breathTween = this.scene.tweens.add({
+      targets: this,
+      scaleX: { from: 0.55, to: 0.6 },
+      scaleY: { from: 0.55, to: 0.605 },
+      duration: 620,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+  }
+
+  private stopBreathing(): void {
+    this.breathTween?.stop();
+    this.breathTween = null;
+    this.setScale(0.55);
   }
 
   /**
@@ -101,6 +134,7 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
     this.activated = false;
     this.pulseTween?.stop();
     this.pulseTween = null;
+    this.stopBreathing();
     this.glow.setVisible(false).setAlpha(0.22).setScale(1);
   }
 
@@ -135,6 +169,7 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
   }
 
   override destroy(fromScene?: boolean): void {
+    this.breathTween?.stop();
     this.pulseTween?.stop();
     this.glow.destroy();
     this.hideHint();

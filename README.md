@@ -54,6 +54,8 @@ Full loop details in [docs/GAME_LOOP.md](docs/GAME_LOOP.md).
 | Pause          | Esc / P            | ⏸ button                    |
 | Restart        | R (on end screens) | Tap the button              |
 
+The bat dash is a short invulnerable burst in the direction you are moving (or aiming, when standing still), on a cooldown shown by the charge strip under the health bar. It is how you break out of a crowd and how you dodge a garlic thrower's lock.
+
 Mobile requires landscape; a rotate prompt appears in portrait.
 
 ## Tech

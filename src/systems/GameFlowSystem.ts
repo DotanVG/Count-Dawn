@@ -56,13 +56,29 @@ export class GameFlowSystem {
     return 'collect-blood';
   }
 
+  /**
+   * Blood collected past the night's target is not wasted: the surplus is
+   * reported as overflow, which GameScene turns into healing. Once the meter
+   * is full it stops climbing entirely, so the boss request and the coffin
+   * check keep firing exactly once each no matter how long the night runs on.
+   * (The single bloodlet that tips the meter over does carry its own remainder
+   * past the target; the HUD clamps the reading, and nothing downstream cares.)
+   */
   addBlood(amount: number): void {
     if (this.ended) return;
     const wasFull = this.isBloodFull;
+    if (wasFull) {
+      this.emitter.emit(EVENTS.BLOOD_OVERFLOWED, amount);
+      return;
+    }
+
     this.blood += amount;
     this.emitter.emit(EVENTS.BLOOD_CHANGED, this.blood, this.bloodTarget);
-    if (!wasFull && this.isBloodFull && !this.bossSpawned) {
-      this.emitter.emit(EVENTS.BOSS_SPAWN_REQUESTED);
+    if (this.isBloodFull) {
+      // Any surplus from the bloodlet that tipped the meter over spills too.
+      const surplus = this.blood - this.bloodTarget;
+      if (surplus > 0) this.emitter.emit(EVENTS.BLOOD_OVERFLOWED, surplus);
+      if (!this.bossSpawned) this.emitter.emit(EVENTS.BOSS_SPAWN_REQUESTED);
     }
     this.refreshCoffinState();
   }

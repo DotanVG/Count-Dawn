@@ -276,6 +276,21 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setAlpha(1);
   }
 
+  /**
+   * Blood drunk past the night's quota goes into the Count instead. Returns
+   * the amount actually restored, so callers can skip the effects when he was
+   * already at full health.
+   */
+  heal(amount: number): number {
+    if (!this.isAlive) return 0;
+    const restored = Math.min(amount, PLAYER.maxHealth - this.health);
+    if (restored <= 0) return 0;
+
+    this.health += restored;
+    this.emitter.emit(EVENTS.PLAYER_HEALED, this.health, PLAYER.maxHealth);
+    return restored;
+  }
+
   takeDamage(amount: number): void {
     if (!this.isAlive || this.isInvulnerable) return;
 

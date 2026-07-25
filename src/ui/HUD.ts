@@ -15,9 +15,29 @@ const OBJECTIVE_TEXT: Record<Objective, string> = {
 
 const FONT = 'Trebuchet MS, sans-serif';
 const HP_GREEN = 0x4caf50;
+const HP_ORANGE = 0xff9a3d;
+const HP_RED = 0xe53935;
 const BLOOD_RED = 0xc41e2f;
+const BLOOD_FULL_GLOW = 0xff6b7a;
 const DASH_PURPLE = 0x9d6bff;
 const BAR_W = 216;
+
+/** Health ratio at or below which the bar turns orange, then red. */
+const HP_WARN_RATIO = 0.6;
+const HP_DANGER_RATIO = 0.3;
+/** Seconds left when the timer starts blinking white on top of the red panic. */
+const BLINK_SECONDS = 5;
+
+/**
+ * The bar's colour for a given health ratio - green down to HP_WARN_RATIO,
+ * orange down to HP_DANGER_RATIO, red below it. Particles are tinted from the
+ * same function so a puff always matches the bar it came off.
+ */
+function healthColor(ratio: number): number {
+  if (ratio > HP_WARN_RATIO) return HP_GREEN;
+  if (ratio > HP_DANGER_RATIO) return HP_ORANGE;
+  return HP_RED;
+}
 
 /**
  * All in-game HUD elements. The sunrise timer is the centerpiece: it sits in
@@ -43,6 +63,13 @@ export class HUD {
   private bloodParticles: Phaser.GameObjects.Particles.ParticleEmitter;
   private appearTargets: Phaser.GameObjects.GameObject[] = [];
   private panic = false;
+  /** Ring around the blood bar, shown only while the meter is full. */
+  private bloodGlow: Phaser.GameObjects.Rectangle;
+  private bloodGlowTween: Phaser.Tweens.Tween | null = null;
+  /** Pulse on the health bar while HP is in the red band - the "you are about to die" tell. */
+  private lowHealthTween: Phaser.Tweens.Tween | null = null;
+  /** Last ratio handed to setHealth, so particle bursts can match the bar. */
+  private healthRatio = 1;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -99,6 +126,16 @@ export class HUD {
     this.bloodText = scene.add
       .text(GAME_WIDTH - 236, 40, '', { fontFamily: FONT, fontSize: '14px', color: '#f0b7bd' })
       .setDepth(DEPTHS.hud + 1);
+
+    // Ring around the blood meter, lit only once the meter is full - the cue
+    // that the Captain is coming and the coffin is the next stop.
+    this.bloodGlow = scene.add
+      .rectangle(GAME_WIDTH - 242, 24, BAR_W + 12, 26)
+      .setOrigin(0, 0.5)
+      .setStrokeStyle(3, BLOOD_FULL_GLOW, 0.9)
+      .setFillStyle(BLOOD_FULL_GLOW, 0)
+      .setDepth(DEPTHS.hud + 2)
+      .setVisible(false);
 
     // Objective, just under the wall band.
     this.objectiveText = scene.add
@@ -171,6 +208,7 @@ export class HUD {
     emitter.on(EVENTS.COUNTDOWN_TICK, this.onTick, this);
     emitter.on(EVENTS.FINAL_TEN_SECONDS, this.onFinalSeconds, this);
     emitter.on(EVENTS.PLAYER_DAMAGED, this.onPlayerDamaged, this);
+    emitter.on(EVENTS.PLAYER_HEALED, this.onPlayerHealed, this);
     emitter.on(EVENTS.BLOOD_CHANGED, this.onBloodChanged, this);
     emitter.on(EVENTS.OBJECTIVE_CHANGED, this.onObjective, this);
   }
@@ -228,6 +266,8 @@ export class HUD {
     this.timerText.setAngle(0);
     this.timerText.setPosition(this.timerHome.x, this.timerHome.y);
     this.vignette.setAlpha(0);
+    this.setLowHealthFlash(false);
+    this.setBloodFullGlow(false);
     this.setHealth(PLAYER.maxHealth, PLAYER.maxHealth);
     this.setBlood(0, bloodTarget);
     // Without this the objective line kept showing "Return to your coffin"
@@ -241,11 +281,22 @@ export class HUD {
    * Victory beat: the blood meter drains into the health bar — HP fills as
    * blood empties, green/red particles streaming at each bar.
    */
-  playCoffinTransfer(bloodRatio: number, healthRatio: number, onComplete: () => void): void {
+  playCoffinTransfer(
+    bloodRatio: number,
+    healthRatio: number,
+    fromSeconds: number,
+    onComplete: () => void,
+  ): void {
+    const duration = 1300;
+
+    // The health puffs are re-tinted every burst rather than once up front:
+    // the bar climbs through red into orange into green over this tween, and
+    // a fixed tint would have left red motes landing on a green bar.
     const stream = this.scene.time.addEvent({
       delay: 90,
       loop: true,
       callback: () => {
+        this.hpParticles.setParticleTint(healthColor(this.healthRatio));
         this.hpParticles.explode(5, 22 + this.healthBarFill.width, 24);
         this.bloodParticles.explode(5, GAME_WIDTH - 238 + this.bloodBarFill.width, 24);
       },
@@ -254,27 +305,54 @@ export class HUD {
     this.scene.tweens.addCounter({
       from: 0,
       to: 1,
-      duration: 1300,
+      duration,
       ease: 'Sine.easeInOut',
       onUpdate: (tween) => {
         const t = tween.getValue() ?? 0;
         this.bloodBarFill.width = BAR_W * bloodRatio * (1 - t);
-        this.healthBarFill.width = BAR_W * Phaser.Math.Linear(healthRatio, 1, t);
-        this.healthBarFill.setFillStyle(HP_GREEN);
+        this.healthRatio = Phaser.Math.Linear(healthRatio, 1, t);
+        this.healthBarFill.width = BAR_W * this.healthRatio;
+        this.healthBarFill.setFillStyle(healthColor(this.healthRatio));
+
+        // The night refills as he sleeps: the clock winds back up to a full
+        // night, popping as it climbs, alongside the two bars.
+        const seconds = Math.round(Phaser.Math.Linear(fromSeconds, NIGHT.durationSeconds, t));
+        this.timerText.setText(this.format(seconds));
+        this.timerText.setScale(1 + 0.14 * Math.abs(Math.sin(t * Math.PI * 5)));
       },
       onComplete: () => {
         stream.remove();
+        this.setLowHealthFlash(false);
+        this.setBloodFullGlow(false);
         this.healthText.setText(`HP ${PLAYER.maxHealth}/${PLAYER.maxHealth}`);
         this.bloodText.setText('Blood spent');
+        this.timerText.setText(this.format(NIGHT.durationSeconds));
+        // One last big pop as the clock lands on a full night.
+        this.scene.tweens.add({
+          targets: this.timerText,
+          scale: { from: 1.6, to: 1 },
+          duration: 420,
+          ease: 'Back.easeOut',
+        });
         onComplete();
       },
     });
+  }
+
+  /**
+   * A bloodlet collected while the meter is already full: it lands on the
+   * blood bar as usual, then carries on to the health bar as a heal. Called
+   * by GameScene once the pickup's second hop arrives.
+   */
+  burstAtBloodBarOverflow(): void {
+    this.bloodParticles.explode(6, HUD_ANCHORS.bloodBar.x, HUD_ANCHORS.bloodBar.y);
   }
 
   destroy(): void {
     this.emitter.off(EVENTS.COUNTDOWN_TICK, this.onTick, this);
     this.emitter.off(EVENTS.FINAL_TEN_SECONDS, this.onFinalSeconds, this);
     this.emitter.off(EVENTS.PLAYER_DAMAGED, this.onPlayerDamaged, this);
+    this.emitter.off(EVENTS.PLAYER_HEALED, this.onPlayerHealed, this);
     this.emitter.off(EVENTS.BLOOD_CHANGED, this.onBloodChanged, this);
     this.emitter.off(EVENTS.OBJECTIVE_CHANGED, this.onObjective, this);
     this.bossBar.destroy();
@@ -286,36 +364,42 @@ export class HUD {
     return `${m}:${s.toString().padStart(2, '0')}`;
   }
 
+  /**
+   * One tick of the clock. The timer stays PUT - it pops in place and never
+   * wanders off its anchor. The final ten seconds pop hard (a full second's
+   * worth of scale, settling back to normal before the next tick) instead of
+   * jittering around the sky window, and the last five blink white on top of
+   * the red so the very end reads differently from the merely urgent part.
+   */
   private onTick(secondsRemaining: number): void {
     this.timerText.setText(this.format(secondsRemaining));
 
-    // Tension ramp: 0 while relaxed → 1 at the final seconds.
+    // Tension ramp: 0 while relaxed -> 1 at the final seconds.
     const tension = Phaser.Math.Clamp(
       1 - (secondsRemaining - NIGHT.finalWarningSeconds) / 20,
       0,
       1,
     );
+    const pop = this.panic ? 1.75 : 1 + 0.08 + tension * 0.22;
 
     this.scene.tweens.add({
       targets: this.timerText,
-      scale: { from: 1 + 0.08 + tension * 0.22, to: 1 },
-      duration: 220,
-      ease: 'Quad.easeOut',
+      scale: { from: pop, to: 1 },
+      duration: this.panic ? 520 : 220,
+      ease: this.panic ? 'Back.easeOut' : 'Quad.easeOut',
     });
 
-    if (tension > 0) {
-      const shake = 2 + tension * 6;
-      this.timerText.setPosition(
-        this.timerHome.x + Phaser.Math.Between(-shake, shake),
-        this.timerHome.y + Phaser.Math.Between(-shake, shake),
-      );
-      this.timerText.setAngle(Phaser.Math.FloatBetween(-tension * 4, tension * 4));
-    }
-
     if (this.panic) {
-      this.timerText.setColor(secondsRemaining % 2 === 0 ? '#ff4d4d' : '#ffd76b');
+      const blinking = secondsRemaining <= BLINK_SECONDS;
+      if (blinking) {
+        // White flash on the beat, decaying back to the panic red.
+        this.timerText.setColor('#ffffff');
+        this.scene.time.delayedCall(160, () => this.timerText.setColor('#ff4d4d'));
+      } else {
+        this.timerText.setColor(secondsRemaining % 2 === 0 ? '#ff4d4d' : '#ffd76b');
+      }
       this.scene.cameras.main.shake(60, 0.0015 + 0.002 * (1 - secondsRemaining / 10));
-      this.vignette.setAlpha(0.16);
+      this.vignette.setAlpha(blinking ? 0.24 : 0.16);
       this.scene.tweens.add({ targets: this.vignette, alpha: 0.05, duration: 420 });
     }
   }
@@ -333,8 +417,20 @@ export class HUD {
 
   private onPlayerDamaged(current: number, max: number): void {
     this.setHealth(current, max);
-    // Green motes falling away from the end of the health bar — HP lost.
-    this.hpParticles.explode(10, 22 + this.healthBarFill.width, 24);
+    // Motes falling away from the end of the bar, tinted to the band the
+    // Count just dropped into - green, then orange, then red.
+    this.burstAtHealthBar(10);
+  }
+
+  private onPlayerHealed(current: number, max: number): void {
+    this.setHealth(current, max);
+    this.burstAtHealthBar(8);
+  }
+
+  /** Puff at the live end of the health bar, in the bar's current colour. */
+  private burstAtHealthBar(count: number): void {
+    this.hpParticles.setParticleTint(healthColor(this.healthRatio));
+    this.hpParticles.explode(count, 22 + this.healthBarFill.width, 24);
   }
 
   private onBloodChanged(current: number, target: number): void {
@@ -343,15 +439,67 @@ export class HUD {
 
   private setHealth(current: number, max: number): void {
     const ratio = Phaser.Math.Clamp(current / max, 0, 1);
+    this.healthRatio = ratio;
     this.healthBarFill.width = BAR_W * ratio;
-    this.healthBarFill.setFillStyle(ratio > 0.35 ? HP_GREEN : 0xe53935);
+    this.healthBarFill.setFillStyle(healthColor(ratio));
     this.healthText.setText(`HP ${current}/${max}`);
+    this.setLowHealthFlash(ratio <= HP_DANGER_RATIO && current > 0);
+  }
+
+  /**
+   * Pulses the health bar while HP sits in the red band, so the last hits
+   * before death are impossible to miss. Idempotent - re-setting the same
+   * state leaves the running tween alone rather than restarting it every
+   * time a hit lands.
+   */
+  private setLowHealthFlash(on: boolean): void {
+    if (on === (this.lowHealthTween !== null)) return;
+
+    if (!on) {
+      this.lowHealthTween?.stop();
+      this.lowHealthTween = null;
+      this.healthBarFill.setAlpha(1);
+      return;
+    }
+
+    this.lowHealthTween = this.scene.tweens.add({
+      targets: this.healthBarFill,
+      alpha: { from: 1, to: 0.25 },
+      duration: 300,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
   }
 
   private setBlood(current: number, target: number): void {
     const ratio = Phaser.Math.Clamp(current / target, 0, 1);
     this.bloodBarFill.width = BAR_W * ratio;
     this.bloodText.setText(`Blood ${Math.min(current, target)}/${target}`);
+    this.setBloodFullGlow(ratio >= 1);
+  }
+
+  /** Breathing ring around the blood meter, on only while it reads full. */
+  private setBloodFullGlow(on: boolean): void {
+    if (on === (this.bloodGlowTween !== null)) return;
+
+    if (!on) {
+      this.bloodGlowTween?.stop();
+      this.bloodGlowTween = null;
+      this.bloodGlow.setVisible(false);
+      return;
+    }
+
+    this.bloodGlow.setVisible(true).setAlpha(1).setScale(1);
+    this.bloodGlowTween = this.scene.tweens.add({
+      targets: this.bloodGlow,
+      alpha: { from: 1, to: 0.35 },
+      scaleY: { from: 1, to: 1.18 },
+      duration: 620,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
   }
 
   private onObjective(objective: Objective): void {

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import {
+  BLOOD,
   HUNTER,
   NIGHT,
   PLAYER,
@@ -49,6 +50,14 @@ interface GameSceneData {
 
 const FONT = 'Trebuchet MS, sans-serif';
 const COFFIN_POS = { x: 150, y: 430 };
+
+/** The state the Count comes home in during the opening cinematic. */
+const CINEMATIC = {
+  /** Low enough to sit in the red band, so the bar is flashing as he flies in. */
+  startHealth: 18,
+  /** Blood he is short of a full meter - one hunter's worth. */
+  bloodShortfall: 4,
+} as const;
 /** The vampire's landing spot: the center of the hall. */
 const PLAYER_SPAWN = {
   x: (ARENA.left + ARENA.right) / 2,
@@ -88,6 +97,8 @@ export class GameScene extends Phaser.Scene {
   private nightOverlay!: Phaser.GameObjects.Rectangle;
   private menuUi: Phaser.GameObjects.Container | null = null;
   private taglineTimer: Phaser.Time.TimerEvent | null = null;
+  /** The opening cinematic plays once, from the menu - restarts skip it. */
+  private playCinematic = true;
 
   constructor() {
     super(SCENES.game);
@@ -146,18 +157,31 @@ export class GameScene extends Phaser.Scene {
     // Strict check: Phaser keeps the previous start()'s data when none is
     // passed, so a stale { autostart: true } must not skip the menu.
     if (data?.autostart === true) {
+      // Restart from an end screen: straight back into a night, no cold open.
+      this.playCinematic = false;
       this.startIntro();
     } else {
+      this.playCinematic = true;
       this.buildMenu();
     }
   }
 
   update(_time: number, delta: number): void {
-    // During 'transition' the day/night cycle tween drives the sky directly
-    // (see playNightCycle) — the automatic call here would fight it using a
-    // stale countdown.progress, so it's skipped for that phase only.
-    if (this.phase !== 'transition') {
+    // During 'transition' and 'intro' a cycle tween drives the sky directly
+    // (playNightCycle / playDayCycle) — the automatic call here would fight it
+    // using a stale countdown.progress, so it is skipped for those phases.
+    if (this.phase !== 'transition' && this.phase !== 'intro') {
       this.sky.update(this.countdown?.progress ?? 0);
+    }
+
+    // The opening cinematic has a hunter walking in, and hunters only move
+    // when something pursues them — without this he would stand off-screen
+    // where he spawned and the Count would strike thin air.
+    if (this.phase === 'intro') {
+      for (const hunter of this.getAttackTargets()) {
+        hunter.pursue(this.player.x, this.player.y);
+      }
+      return;
     }
 
     if (this.phase !== 'playing' || !this.countdown) return;
@@ -248,11 +272,25 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5);
     this.startTaglineTyper(tagline);
 
+    // Two lines per device, plain hyphens only - no em or en dashes anywhere
+    // in player-facing copy.
     const instructions = this.isTouch
-      ? 'Joystick — Move   Tap — Strike toward tap   ⚔ — Strike nearest   🦇 — Bat dash   ⏸ — Pause'
-      : 'Move — WASD / Arrows   Aim — Mouse   Attack — Click / Space   Bat dash — Shift   Pause — Esc / P';
+      ? [
+          'Joystick - Move    Tap - Strike toward tap    Sword - Strike nearest',
+          'Bat button - Dash (short invulnerable burst)    Pause - Pause button',
+        ]
+      : [
+          'Move - WASD / Arrows    Aim - Mouse    Attack - Click / Space',
+          'Bat dash - Shift (short invulnerable burst)    Pause - Esc / P',
+        ];
     const controls = this.add
-      .text(cx, 545, instructions, { fontFamily: FONT, fontSize: '17px', color: '#9d8bbf' })
+      .text(cx, 545, instructions, {
+        fontFamily: FONT,
+        fontSize: '17px',
+        color: '#9d8bbf',
+        align: 'center',
+        lineSpacing: 6,
+      })
       .setOrigin(0.5);
 
     const start = this.add
@@ -332,7 +370,152 @@ export class GameScene extends Phaser.Scene {
       this.tweens.add({ targets: ui, alpha: 0, duration: 300, onComplete: () => ui.destroy() });
     }
 
-    this.riseFromCoffin(() => this.startPlaying());
+    if (this.playCinematic) {
+      this.playCinematic = false;
+      this.playOpeningCinematic();
+    } else {
+      this.riseFromCoffin(() => this.startPlaying());
+    }
+  }
+
+  /**
+   * The cold open, played once before the first night of a run: the Count
+   * comes home through the window at the end of a bad night - nearly dead and
+   * a few mouthfuls short - takes a hunter who followed him in, drinks his
+   * fill, and retires to the coffin to sleep off a whole day. It exists to
+   * teach the loop in one wordless pass: the bars are what matter, the coffin
+   * is where you end up, and the clock resets when you make it.
+   *
+   * The HUD is driven by emitting its events directly rather than by moving
+   * real blood and health through GameFlowSystem. Nothing here should be able
+   * to trip a rule - a scripted meter filling up would otherwise summon the
+   * Captain mid-cutscene - and beginRoundSystems builds a fresh flow for the
+   * actual night afterwards regardless.
+   */
+  private playOpeningCinematic(): void {
+    this.hud = new HUD(this, this.emitter);
+    this.hud.animateIn();
+
+    // Held until animateIn's alpha tween is done: the low-health flash drives
+    // the same alpha, and starting both at once leaves them fighting over it.
+    const bloodTarget = bloodTargetForNight(1);
+    this.time.delayedCall(600, () => {
+      this.emitter.emit(EVENTS.PLAYER_DAMAGED, CINEMATIC.startHealth, PLAYER.maxHealth);
+      this.emitter.emit(EVENTS.BLOOD_CHANGED, bloodTarget - CINEMATIC.bloodShortfall, bloodTarget);
+    });
+
+    // Enter as a bat through the middle window, high and small.
+    this.setPlayerDormant(false);
+    this.player.setPosition(GAME_WIDTH / 2, 70).setAlpha(0);
+    this.player.setBaseScale(0.7);
+    this.setBatForm(true);
+
+    this.tweens.add({ targets: this.player, alpha: 1, duration: 400 });
+    this.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: 1300,
+      ease: 'Sine.easeInOut',
+      onUpdate: (tween) => {
+        const t = tween.getValue() ?? 0;
+        // A shallow swoop in, not a straight drop.
+        const x = GAME_WIDTH / 2 + Math.sin(t * Math.PI) * 150;
+        this.player.setPosition(x, Phaser.Math.Linear(70, PLAYER_SPAWN.y, t));
+        this.player.faceBatTowards(x - this.player.x);
+        this.player.setBaseScale(Phaser.Math.Linear(0.7, PLAYER.spriteScale, t));
+      },
+      onComplete: () => {
+        this.setBatForm(false);
+        this.cameras.main.shake(120, 0.003);
+        this.time.delayedCall(250, () => this.cinematicFeed(bloodTarget));
+      },
+    });
+  }
+
+  /** Beat two: a hunter walks in from the right and the Count drinks him dry. */
+  private cinematicFeed(bloodTarget: number): void {
+    let blood = bloodTarget - CINEMATIC.bloodShortfall;
+    const arrival = { x: this.player.x + 130, y: this.player.y + 10 };
+    // Just outside the arena so he is hidden by the wall band for his first
+    // strides and walks into frame, rather than popping into the open hall.
+    const spawnX = ARENA.right + 30;
+    const hunter = new Hunter(this, spawnX, arrival.y);
+    this.hunters.add(hunter);
+    hunter.beginEntrance(arrival.x, arrival.y);
+
+    // Timed off his actual walking speed rather than a guessed constant - a
+    // fixed delay had the Count swinging at a hunter still off-screen.
+    const walkMs = ((spawnX - arrival.x) / HUNTER.moveSpeed) * 1000 + 250;
+
+    this.time.delayedCall(walkMs, () => {
+      if (!hunter.active) return;
+      this.player.aimAt(hunter.x, hunter.y);
+      this.player.playAttackAnim();
+      this.cameras.main.shake(160, 0.005);
+
+      this.time.delayedCall(220, () => {
+        const corpseX = hunter.x;
+        const corpseY = hunter.y;
+        hunter.spawnCorpse();
+        this.hunters.remove(hunter, true, true);
+        this.audioFx.play(AUDIO.hunterDeath);
+
+        // The blood he was short of, flying home one mouthful at a time.
+        for (let i = 0; i < CINEMATIC.bloodShortfall; i++) {
+          this.time.delayedCall(i * 110, () => {
+            const droplet = this.add
+              .image(corpseX, corpseY, TEXTURES.blood)
+              .setDepth(DEPTHS.hud + 1);
+            this.tweens.add({
+              targets: droplet,
+              x: HUD_ANCHORS.bloodBar.x,
+              y: HUD_ANCHORS.bloodBar.y,
+              scale: 0.6,
+              duration: 430,
+              ease: 'Quad.easeIn',
+              onComplete: () => {
+                droplet.destroy();
+                blood++;
+                this.emitter.emit(EVENTS.BLOOD_CHANGED, blood, bloodTarget);
+                this.hud?.burstAtBloodBar();
+                if (blood >= bloodTarget) this.cinematicRetire();
+              },
+            });
+          });
+        }
+      });
+    });
+  }
+
+  /** Beat three: back to the coffin, sleep off a full day, wake to night one. */
+  private cinematicRetire(): void {
+    this.time.delayedCall(300, () => {
+      this.coffin.setOpen(true);
+      this.setBatForm(true);
+
+      this.flightSpiral({
+        center: { x: COFFIN_POS.x, y: COFFIN_POS.y - 10 },
+        from: { x: this.player.x, y: this.player.y },
+        duration: 1200,
+        toScale: 0.9,
+        toAlpha: 0.55,
+        squash: 0.6,
+        onComplete: () => {
+          this.setBatForm(false);
+          this.player.setVisible(false);
+          this.coffin.setOpen(false);
+
+          // He sleeps: health refills, the blood is spent, the clock winds
+          // back up to a full night - the same beat every night ends on.
+          this.hud?.playCoffinTransfer(1, CINEMATIC.startHealth / PLAYER.maxHealth, 0, () => {
+            this.playDayCycle(1800, () => {
+              this.hud?.resetForNewRound(bloodTargetForNight(this.night));
+              this.riseFromCoffin(() => this.startPlaying());
+            });
+          });
+        },
+      });
+    });
   }
 
   /**
@@ -426,8 +609,12 @@ export class GameScene extends Phaser.Scene {
     this.setPlayerDormant(false);
     this.cameras.main.shake(120, 0.004); // landing thump
 
-    this.hud = new HUD(this, this.emitter);
-    this.hud.animateIn();
+    // The opening cinematic builds the HUD early (it needs the bars on screen
+    // to tell its story), so only create one here if it isn't already up.
+    if (!this.hud) {
+      this.hud = new HUD(this, this.emitter);
+      this.hud.animateIn();
+    }
 
     if (this.isTouch) {
       this.touch = new TouchControls(this, {
@@ -662,6 +849,34 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  /**
+   * Second leg of an overflow pickup: the bloodlet has already landed on the
+   * blood meter, found it full, and now carries on to the health bar as a
+   * heal. GameFlowSystem decides that this happened (BLOOD_OVERFLOWED); this
+   * only flies the droplet and cashes it in on arrival.
+   */
+  private hopBloodToHealth(bloodAmount: number): void {
+    const droplet = this.add
+      .image(HUD_ANCHORS.bloodBar.x, HUD_ANCHORS.bloodBar.y, TEXTURES.blood)
+      .setDepth(DEPTHS.hud + 3)
+      .setScale(0.8);
+
+    this.tweens.add({
+      targets: droplet,
+      x: HUD_ANCHORS.healthBar.x,
+      y: HUD_ANCHORS.healthBar.y,
+      scale: 0.5,
+      duration: 480,
+      ease: 'Sine.easeInOut',
+      onComplete: () => {
+        droplet.destroy();
+        // heal() emits PLAYER_HEALED, which is what repaints the bar and
+        // fires the puff in whichever colour the bar has just become.
+        this.player.heal(bloodAmount * BLOOD.overflowHealPerBlood);
+      },
+    });
+  }
+
   private coffinHintMessage(): string {
     const needsBlood = !this.flow.isBloodFull;
     const needsBoss = !this.flow.isBossDefeated;
@@ -675,6 +890,7 @@ export class GameScene extends Phaser.Scene {
     this.emitter.on(EVENTS.DAWN_REACHED, this.onDawnReached, this);
     this.emitter.on(EVENTS.PLAYER_DIED, () => this.flow.notifyPlayerDied());
     this.emitter.on(EVENTS.PLAYER_DAMAGED, () => this.audioFx.play(AUDIO.playerHurt));
+    this.emitter.on(EVENTS.BLOOD_OVERFLOWED, this.hopBloodToHealth, this);
     this.emitter.on(EVENTS.COFFIN_ACTIVATED, () => this.coffin.activate());
     this.emitter.on(EVENTS.FINAL_TEN_SECONDS, () => {
       this.audioFx.play(AUDIO.finalSeconds);
@@ -877,7 +1093,8 @@ export class GameScene extends Phaser.Scene {
 
         const bloodRatio = Phaser.Math.Clamp(this.flow.currentBlood / this.flow.bloodTarget, 0, 1);
         const healthRatio = Phaser.Math.Clamp(this.player.health / PLAYER.maxHealth, 0, 1);
-        this.hud?.playCoffinTransfer(bloodRatio, healthRatio, () => {
+        const secondsLeft = this.countdown?.remainingSeconds ?? 0;
+        this.hud?.playCoffinTransfer(bloodRatio, healthRatio, secondsLeft, () => {
           this.time.delayedCall(300, () => this.playNightCycle());
         });
       },
@@ -885,18 +1102,21 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Fast-forwards the sky from wherever the night ended back to full dark —
-   * sunset finishing fast, night falling, the moon rising again — then
-   * starts the next round's fly-out from the coffin.
+   * The Count sleeps through a whole day. Time runs FORWARD, never backward:
+   * the interrupted night is played out to its sunrise, then the sun crosses
+   * the sky and sets, and only then does the next night's moon rise wearing
+   * its own phase. Rewinding the sky to dusk (which is what this used to do)
+   * read as the night un-happening.
    */
   private playNightCycle(): void {
     const startProgress = this.countdown?.progress ?? 0.5;
 
+    // Leg 1: finish the night he cut short, out to full sunrise.
     this.tweens.addCounter({
       from: startProgress,
-      to: 0,
-      duration: 1600,
-      ease: 'Sine.easeInOut',
+      to: 1,
+      duration: 900,
+      ease: 'Sine.easeIn',
       onUpdate: (tween) => {
         const v = tween.getValue() ?? 0;
         this.sky.update(v);
@@ -904,14 +1124,47 @@ export class GameScene extends Phaser.Scene {
         this.dawnOverlay.setAlpha(v * v * 0.18);
       },
       onComplete: () => {
+        // The moon that rises at the end of this day belongs to the coming night.
         this.night++;
-        this.hud?.resetForNewRound(bloodTargetForNight(this.night));
-        this.riseFromCoffin(() => {
-          this.physics.resume();
-          this.phase = 'playing';
-          this.cameras.main.shake(120, 0.004);
-          this.beginRoundSystems();
+        this.playDayCycle(2600, () => {
+          this.hud?.resetForNewRound(bloodTargetForNight(this.night));
+          this.riseFromCoffin(() => {
+            this.physics.resume();
+            this.phase = 'playing';
+            this.cameras.main.shake(120, 0.004);
+            this.beginRoundSystems();
+          });
         });
+      },
+    });
+  }
+
+  /**
+   * Leg 2: sunrise → noon → sunset → dark, with `this.night`'s moon rising at
+   * the end of it. Shared by the between-nights transition and the opening
+   * cinematic, which plays the same day without advancing the night counter.
+   */
+  private playDayCycle(duration: number, onComplete: () => void): void {
+    this.sky.setNight(this.night);
+
+    this.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration,
+      ease: 'Sine.easeInOut',
+      onUpdate: (tween) => {
+        const t = tween.getValue() ?? 0;
+        this.sky.updateDayCycle(t);
+        // Daylight floods the hall at noon and drains back out by nightfall.
+        const daylight = Math.sin(t * Math.PI);
+        this.nightOverlay.setAlpha(0.42 * (1 - daylight));
+        this.dawnOverlay.setAlpha(daylight * 0.3);
+      },
+      onComplete: () => {
+        this.sky.resetToNightStart();
+        this.nightOverlay.setAlpha(0.42);
+        this.dawnOverlay.setAlpha(0);
+        onComplete();
       },
     });
   }

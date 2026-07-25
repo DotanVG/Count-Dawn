@@ -164,6 +164,11 @@ export const BLOOD = {
   targetIncreasePerNight: 15,
   /** Each collected bloodlet is worth this much. */
   dropletValue: 1,
+  /**
+   * HP restored per unit of blood collected after the meter is already full.
+   * Drinking past the quota tops the Count up instead of being thrown away.
+   */
+  overflowHealPerBlood: 3,
 } as const;
 
 export function bloodTargetForNight(night: number): number {

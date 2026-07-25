@@ -13,6 +13,10 @@ export const EVENTS = {
   BOSS_DEFEATED: 'boss-defeated',
   COFFIN_ACTIVATED: 'coffin-activated',
   PLAYER_DAMAGED: 'player-damaged',
+  /** Blood collected while the meter was already full, spent as healing instead. */
+  PLAYER_HEALED: 'player-healed',
+  /** Same, from the rules side: a bloodlet arrived with nowhere left to go. */
+  BLOOD_OVERFLOWED: 'blood-overflowed',
   PLAYER_DIED: 'player-died',
   OBJECTIVE_CHANGED: 'objective-changed',
   GAME_ENDED: 'game-ended',

@@ -105,3 +105,43 @@ test('objective follows game state', () => {
   flow.addBlood(100);
   assert.equal(flow.objective, 'return-to-coffin');
 });
+
+test('blood past the target overflows instead of inflating the meter', () => {
+  const emitter = createRecorder();
+  const flow = new GameFlowSystem(emitter, 100);
+
+  flow.addBlood(100);
+  assert.equal(flow.currentBlood, 100);
+
+  flow.addBlood(7);
+
+  // The meter stays pinned at the target so "full" keeps one meaning, and
+  // the surplus is reported for GameScene to turn into healing.
+  assert.equal(flow.currentBlood, 100);
+  const overflows = emitter.events.filter((e) => e.name === EVENTS.BLOOD_OVERFLOWED);
+  assert.equal(overflows.length, 1);
+  assert.deepEqual(overflows[0].args, [7]);
+});
+
+test('the bloodlet that tips the meter over spills only its surplus', () => {
+  const emitter = createRecorder();
+  const flow = new GameFlowSystem(emitter, 100);
+
+  flow.addBlood(98);
+  flow.addBlood(5);
+
+  assert.equal(flow.currentBlood, 103);
+  const overflows = emitter.events.filter((e) => e.name === EVENTS.BLOOD_OVERFLOWED);
+  assert.deepEqual(overflows[0].args, [3]);
+});
+
+test('overflow never fires a second boss request', () => {
+  const emitter = createRecorder();
+  const flow = new GameFlowSystem(emitter, 100);
+
+  flow.addBlood(100);
+  flow.addBlood(50);
+  flow.addBlood(50);
+
+  assert.equal(emitter.count(EVENTS.BOSS_SPAWN_REQUESTED), 1);
+});

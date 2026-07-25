@@ -4,7 +4,7 @@
 
 1. From the menu (the castle hall itself), START makes the vampire fly in through the center window; the sunrise countdown begins (60s, or 25s with `FAST_DEV_MODE`).
 2. Human hunters spawn at random arena-edge positions and pursue the player. Night 1 starts at ~1.25s between spawns with max 18 alive; later nights spawn faster and allow more hunters.
-3. The player kites and kills hunters with a mouse-aimed melee arc.
+3. The player kites and kills hunters with a mouse-aimed melee arc, and escapes crowds with the bat dash (see below).
 4. Each dead hunter drops five bloodlets worth 1 blood each. Night 1 targets 50 blood; each later night requires 15 more.
 5. The instant the player fills that round's Blood Meter, the **Hunter Captain** spawns at the arena edge farthest from the player. Captain entrance never depends on remaining time.
 6. When the Blood Meter is full **and** the Captain is dead, the coffin activates (pulsing glow).
@@ -28,10 +28,19 @@ Either way the end screen shows the cause, blood collected, and time survived, w
 
 `GameFlowSystem` emits one boss-spawn request when collected blood first reaches the current round's target. `CountdownSystem` only owns dawn, timer ticks, and the final warning; it has no Captain timing logic.
 
+## Bat dash
+
+Shift on desktop, the bat button on mobile. The Count *poofs* into a bat and bursts `DASH.speed` units/sec in the direction he is moving (or the direction he is aiming, when standing still) for `DASH.durationMs`. He is invulnerable for slightly longer than the burst itself, so a clean dodge reads as clean.
+
+- It is the escape hatch from a crowd of hunters and the counter to a garlic thrower's lock.
+- `DASH.cooldownMs` between dashes, shown as the charge strip under the health bar.
+- All values live in `DASH` / `BAT` in `src/data/balance.ts`.
+
 ## Blood system
 
 - `HUNTER.bloodDroplets` (5) per regular hunter, each worth `BLOOD.dropletValue` (1); the boss drops nothing.
 - Pickups persist until collected and never expire.
+- Blood collected once the meter is already full is not wasted: the meter stays pinned at its target and the surplus flies on to the health bar, healing `BLOOD.overflowHealPerBlood` HP per unit.
 - `GameFlowSystem` owns the meter, coffin activation, and the single end-of-run transition.
 - `bloodTargetForNight()` raises the requirement by `BLOOD.targetIncreasePerNight` each round.
 
@@ -41,6 +50,6 @@ Either way the end screen shows the cause, blood collected, and time survived, w
 
 ## Out of scope (for this prototype)
 
-Procedural maps, multiple levels, permanent progression, upgrades, inventory, dialogue, cutscenes, advanced enemy AI or full pathfinding, multiple enemy types beyond hunter + boss, boss phases, and dash.
+Procedural maps, multiple levels, permanent progression, upgrades, inventory, advanced enemy AI or full pathfinding, multiple enemy types beyond hunter + boss, and boss phases.
 
 Extension points exist for: touch input (`InputController`), audio (`AudioSystem` + keys in `assetKeys.ts`), real sprites (`docs/ASSET_INTEGRATION.md`).

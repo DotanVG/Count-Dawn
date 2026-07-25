@@ -58,7 +58,7 @@ export class VictoryScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-M', () => this.scene.start(SCENES.game, { autostart: false }));
 
     const menuLink = this.add
-      .text(cx, GAME_HEIGHT * 0.78, touch ? 'Back to menu' : 'M — back to menu', {
+      .text(cx, GAME_HEIGHT * 0.78, touch ? 'Back to menu' : 'M - back to menu', {
         fontFamily: FONT,
         fontSize: touch ? '20px' : '16px',
         color: '#9d8bbf',
