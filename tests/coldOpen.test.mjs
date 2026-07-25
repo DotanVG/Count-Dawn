@@ -4,12 +4,15 @@ import assert from 'node:assert/strict';
 import {
   COLD_OPEN,
   COLD_OPEN_GROUP,
+  COLD_OPEN_MARCH_SPEED,
   COLD_OPEN_STRIKE_SPOT,
+  COLD_OPEN_THROWER_STATS,
   coldOpenHunterSlot,
+  coldOpenSlotIsThrower,
   coldOpenTimerSeconds,
   coldOpenSkyProgress,
 } from '../src/systems/coldOpen.ts';
-import { HUNTER } from '../src/data/balance.ts';
+import { HUNTER, THROWER } from '../src/data/balance.ts';
 import { ARENA } from '../src/game/constants.ts';
 
 test('the cold open clock opens on the full ten seconds', () => {
@@ -95,7 +98,7 @@ test('every hunter is standing in place before the strike lands', () => {
   for (let i = 0; i < COLD_OPEN.hunterCount; i++) {
     const { spawn, arrival } = coldOpenHunterSlot(i);
     const distance = Math.hypot(spawn.x - arrival.x, spawn.y - arrival.y);
-    const inPlaceAt = COLD_OPEN.huntersInMs + (distance / HUNTER.moveSpeed) * 1000;
+    const inPlaceAt = COLD_OPEN.huntersInMs + (distance / COLD_OPEN_MARCH_SPEED) * 1000;
     assert.ok(
       inPlaceAt <= COLD_OPEN.strikeMs,
       `hunter ${i} is still walking at the strike (in place at ${Math.round(inPlaceAt)}ms)`,
@@ -111,6 +114,50 @@ test('the hunters stand inside the hall, and enter from behind the wall', () => 
     // Off the playfield to start, so they walk into view instead of appearing.
     assert.ok(spawn.x > ARENA.right, `hunter ${i} pops into the open hall`);
   }
+});
+
+test('the squad is mixed, with the ranged row standing behind the swords', () => {
+  const slots = [...Array(COLD_OPEN.hunterCount).keys()];
+  const throwers = slots.filter(coldOpenSlotIsThrower);
+  const swords = slots.filter((i) => !coldOpenSlotIsThrower(i));
+
+  // Both types actually turn up - a squad of one kind is not a mixed squad.
+  assert.ok(throwers.length > 0, 'no throwers in the cold open');
+  assert.ok(swords.length > 0, 'no swordsmen in the cold open');
+
+  // And every thrower stands further from the Count than every swordsman, so
+  // the ranged row reads as the back of the block rather than salt scattered
+  // through it.
+  const reach = (i) => coldOpenHunterSlot(i).arrival.x - COLD_OPEN_STRIKE_SPOT.x;
+  const nearestThrower = Math.min(...throwers.map(reach));
+  const furthestSword = Math.max(...swords.map(reach));
+  assert.ok(nearestThrower > furthestSword, 'a thrower is standing in the sword line');
+});
+
+test('the whole squad marches at the swordsmen pace, not the throwers own', () => {
+  // The override exists for one reason, so state it: at his own pace a
+  // thrower is still walking when the strike lands.
+  assert.ok(THROWER.moveSpeed < COLD_OPEN_MARCH_SPEED);
+  assert.equal(COLD_OPEN_MARCH_SPEED, HUNTER.moveSpeed);
+  assert.equal(COLD_OPEN_THROWER_STATS.moveSpeed, COLD_OPEN_MARCH_SPEED);
+  // Everything else about him is untouched - this is a cutscene actor, not a
+  // rebalanced enemy.
+  assert.equal(COLD_OPEN_THROWER_STATS.health, THROWER.health);
+  assert.equal(COLD_OPEN_THROWER_STATS.contactDamage, THROWER.contactDamage);
+
+  for (const i of [...Array(COLD_OPEN.hunterCount).keys()].filter(coldOpenSlotIsThrower)) {
+    const { spawn, arrival } = coldOpenHunterSlot(i);
+    const distance = Math.hypot(spawn.x - arrival.x, spawn.y - arrival.y);
+    const atOwnPace = COLD_OPEN.huntersInMs + (distance / THROWER.moveSpeed) * 1000;
+    assert.ok(
+      atOwnPace > COLD_OPEN.strikeMs,
+      `thrower ${i} would have made it anyway - the speed override is dead weight`,
+    );
+  }
+});
+
+test('the block is filled, with no ragged last row', () => {
+  assert.equal(COLD_OPEN.hunterCount % COLD_OPEN.columns, 0);
 });
 
 test('the Count strikes from beside the group, not on top of it', () => {

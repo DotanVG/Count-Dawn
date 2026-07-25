@@ -40,8 +40,10 @@ import {
   COLD_OPEN,
   COLD_OPEN_GROUP,
   COLD_OPEN_STRIKE_SPOT,
+  COLD_OPEN_THROWER_STATS,
   coldOpenHunterSlot,
   coldOpenSkyProgress,
+  coldOpenSlotIsThrower,
   coldOpenTimerSeconds,
 } from '../systems/coldOpen';
 import { GameFlowSystem } from '../systems/GameFlowSystem';
@@ -205,6 +207,11 @@ export class GameScene extends Phaser.Scene {
     // where he spawned and the Count would strike thin air.
     if (this.phase === 'intro') {
       for (const hunter of this.getAttackTargets()) {
+        // Throwers hold the line for the cutscene. Left alone they would start
+        // painting a crosshair the moment they reach their slot - resetting
+        // the aim first (never after: enterReposition dates its cooldown from
+        // now) keeps the back row standing there, armed and silent.
+        if (hunter instanceof GarlicThrower) hunter.abortAim();
         hunter.pursue(this.player.x, this.player.y);
       }
       return;
@@ -547,14 +554,23 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Ten hunters walk in and mass on the right side of the hall. They come in
-   * from the right edge specifically - it is the shortest walk to where they
-   * need to be standing, and the scene has seconds, not minutes.
+   * A squad walks in and masses on the right side of the hall: swordsmen in
+   * the front columns, garlic throwers standing off behind them, so the scene
+   * introduces both halves of what hunts him before the first night does. They
+   * come in from the right edge specifically - it is the shortest walk to
+   * where they need to be standing, and the scene has seconds, not minutes.
+   *
+   * Who stands where is fixed in coldOpen.ts, never rolled: the cutscene has
+   * to play identically every time.
    */
   private cinematicSurround(): void {
     for (let i = 0; i < COLD_OPEN.hunterCount; i++) {
       const { spawn, arrival } = coldOpenHunterSlot(i);
-      const hunter = new Hunter(this, spawn.x, spawn.y);
+      // Deliberately NOT configureThrower'd: these throwers are scenery, and
+      // wiring onThrow would arm a bulb that the scene never wants launched.
+      const hunter = coldOpenSlotIsThrower(i)
+        ? new GarlicThrower(this, spawn.x, spawn.y, { stats: COLD_OPEN_THROWER_STATS })
+        : new Hunter(this, spawn.x, spawn.y);
       this.hunters.add(hunter);
       hunter.beginEntrance(arrival.x, arrival.y);
     }

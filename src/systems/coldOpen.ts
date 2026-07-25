@@ -1,5 +1,6 @@
 // Explicit .ts extensions so Node can run this module directly in unit tests.
 import { ARENA } from '../game/constants.ts';
+import { HUNTER, THROWER } from '../data/balance.ts';
 
 /**
  * The cold open's timeline, in milliseconds from its start, and the clock it
@@ -51,9 +52,41 @@ export const COLD_OPEN = {
    */
   coffinShutMs: 6050,
 
-  hunterCount: 10,
+  /** A full 3-wide, 4-deep block: twelve of them, and no ragged last row. */
+  hunterCount: 12,
+  columns: 3,
   /** One per unit of blood he is short - they fill the meter exactly. */
   bloodlets: 20,
+} as const;
+
+/**
+ * The squad is not all swordsmen: the back column is garlic throwers, so the
+ * scene shows both halves of what hunts him before the first night starts -
+ * the line that closes and the row that stands off behind it.
+ *
+ * Which slot gets which is fixed, never random: a cutscene has to play the
+ * same way every time.
+ */
+export function coldOpenSlotIsThrower(i: number): boolean {
+  return i % COLD_OPEN.columns === COLD_OPEN.columns - 1;
+}
+
+/**
+ * The whole squad marches at the swordsmen's pace.
+ *
+ * A thrower's own moveSpeed is ~30% slower, which is right for a night (he
+ * keeps his distance and is meant to be caught) and wrong for this scene:
+ * walking his slot at THROWER.moveSpeed he is still crossing the floor when
+ * the strike lands, and the strike does not wait. The override is per
+ * cutscene actor and touches nothing about how throwers behave in a night.
+ * The test asserts both halves of that.
+ */
+export const COLD_OPEN_MARCH_SPEED = HUNTER.moveSpeed;
+
+/** A cold-open thrower: his own stats, at the squad's marching pace. */
+export const COLD_OPEN_THROWER_STATS = {
+  ...THROWER,
+  moveSpeed: COLD_OPEN_MARCH_SPEED,
 } as const;
 
 /** Where the cold open's hunters mass, over on the right of the hall. */
@@ -69,9 +102,10 @@ export const COLD_OPEN_STRIKE_SPOT = {
 } as const;
 
 /**
- * Where hunter `i` walks in from and where it stands: a 3-wide block just
- * inside the right wall, entered from behind the right wall so they emerge
- * rather than appear.
+ * Where hunter `i` walks in from and where it stands: a `columns`-wide block
+ * just inside the right wall, entered from behind the right wall so they
+ * emerge rather than appear. Column 0 is the face the Count strikes into;
+ * the last column stands deepest, which is where the throwers go.
  *
  * Out here in the pure module because the walk has to FIT - they cover this
  * ground at an ordinary hunter's pace, and the strike will not wait for
@@ -81,8 +115,8 @@ export function coldOpenHunterSlot(i: number): {
   spawn: { x: number; y: number };
   arrival: { x: number; y: number };
 } {
-  const column = i % 3;
-  const row = Math.floor(i / 3);
+  const column = i % COLD_OPEN.columns;
+  const row = Math.floor(i / COLD_OPEN.columns);
   const y = COLD_OPEN_GROUP.y + (row - 1.5) * 54;
   return {
     spawn: { x: ARENA.right + 60 + column * 40, y },
