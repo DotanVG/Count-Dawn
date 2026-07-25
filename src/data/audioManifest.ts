@@ -68,7 +68,7 @@ export const AUDIO_MANIFEST: readonly AudioAsset[] = [
       'assets/audio/sfx/player-attack-whoosh.ogg',
       'assets/audio/sfx/player-attack-whoosh.mp3',
     ],
-    defaultVolume: 0.4,
+    defaultVolume: 0.32,
     // Fired up to three times a second on a held attack, so one unvaried
     // 0.16s file turns into a rattle fast. Roughly ±2 semitones of pitch,
     // a little level movement, and a third of swings played backwards —

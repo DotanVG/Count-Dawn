@@ -608,6 +608,7 @@ export class GameScene extends Phaser.Scene {
       this.player.aimAt(victims[0].x, victims[0].y);
     }
     this.player.playAttackAnim();
+    this.audio.playSfx(AUDIO.playerAttackWhoosh);
     this.cameras.main.shake(220, 0.008);
     this.cameras.main.flash(220, 255, 255, 255);
     // Nothing drives updateAnimation during a cutscene, so the swing has to be
@@ -644,6 +645,9 @@ export class GameScene extends Phaser.Scene {
           onComplete: () => {
             droplet.destroy();
             this.emitter.emit(EVENTS.BLOOD_CHANGED, nextBlood(), bloodTarget);
+            // Twenty arrivals overlap into one greedy drink. Each copy stays
+            // quiet enough that their sum does not swamp the rest of the scene.
+            this.audio.playSfx(AUDIO.bloodPickup, { volumeScale: 0.12 });
             this.hud?.burstAtBloodBar();
           },
         });

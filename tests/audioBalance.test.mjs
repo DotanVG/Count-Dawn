@@ -169,6 +169,7 @@ test('the attack whoosh actually declares variance, and stays inside sane bounds
   const variance = whoosh.variance;
 
   assert.ok(variance, 'the whoosh is the one sound that repeats fastest');
+  assert.equal(whoosh.defaultVolume, 0.32, 'the whoosh stays tucked under the attack');
   // Wide enough to hear, not so wide the swing changes weapon.
   assert.ok(variance.detuneCents > 0 && variance.detuneCents <= 400);
   assert.ok(variance.volumeJitter > 0 && variance.volumeJitter < 0.5);

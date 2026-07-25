@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import {
   AUDIO_BALANCE_STORAGE_KEY,
+  clamp01,
   effectiveMusicVolume,
   effectiveSfxVolume,
   normalizeBalance,
@@ -25,6 +26,13 @@ export interface SfxOptions {
   loop?: boolean;
   rate?: number;
   detune?: number;
+  /**
+   * Attenuates the balanced level for THIS play only, 0..1. Not a way to set
+   * a volume — the balance still decides how loud the sound is — but a way for
+   * a cue that fires many copies at once (the cold open's twenty-bloodlet
+   * drink) to keep their sum inside the level one of them was tuned at.
+   */
+  volumeScale?: number;
 }
 
 /** Short enough to feel like one gesture, long enough not to click. */
@@ -206,20 +214,33 @@ export class AudioDirector {
   playSfx(key: string, options?: SfxOptions): void {
     if (this.destroyed || !this.exists(key)) return;
 
+    const config = this.sfxConfig(key, options);
     const variance = audioAsset(key)?.variance;
     if (!variance) {
-      this.sound.play(key, { ...options, volume: effectiveSfxVolume(this.balance, key) });
+      this.sound.play(key, config);
       return;
     }
 
     // Independent rolls: pitch, level and direction should not move together,
     // or every "loud" swing is also the high one and the variance reads as a
     // single dial rather than as the sound simply not repeating itself.
-    const volume = variedVolume(effectiveSfxVolume(this.balance, key), variance, Math.random());
-    const detune = (options?.detune ?? 0) + variedDetune(variance, Math.random());
+    config.volume = variedVolume(config.volume ?? 0, variance, Math.random());
+    config.detune = (config.detune ?? 0) + variedDetune(variance, Math.random());
     const playKey = shouldReverse(variance, Math.random()) ? this.reversedKey(key) : key;
 
-    this.sound.play(playKey, { ...options, volume, detune });
+    this.sound.play(playKey, config);
+  }
+
+  /**
+   * The balanced level for one play, plus whatever the caller passed through.
+   * `volumeScale` is consumed here — it is ours, not one of Phaser's fields.
+   */
+  private sfxConfig(key: string, options?: SfxOptions): Phaser.Types.Sound.SoundConfig {
+    const { volumeScale, ...rest } = options ?? {};
+    return {
+      ...rest,
+      volume: clamp01(effectiveSfxVolume(this.balance, key) * clamp01(volumeScale ?? 1)),
+    };
   }
 
   /**
