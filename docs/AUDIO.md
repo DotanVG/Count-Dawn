@@ -58,7 +58,7 @@ public/assets/audio/
     count-dawn-level.ogg    count-dawn-level.mp3
   sfx/
     player-attack-whoosh.ogg  player-attack-whoosh.mp3
-    player-attack-slurp.ogg   player-attack-slurp.mp3
+    blood-pickup-slurp.ogg    blood-pickup-slurp.mp3
     bat-sound-1.mp3
     coffin-open.mp3           coffin-close.mp3
 ```
@@ -113,13 +113,13 @@ accidental leading/trailing digital silence.
 One current export departs from that and is worth knowing about:
 `slurp.wav` arrived as a **20.5 s multi-take session** — its first 0.16 s is a
 bit-identical copy of `Woosh.wav`, followed by fourteen separate slurp takes
-separated by silence. Shipping it whole would play every take on every attack.
+separated by silence. Shipping it whole would play every take on every drink.
 The runtime file is therefore a straight cut of the single strongest, cleanly
 isolated take, `3.39 s → 4.17 s`, with no processing of any kind:
 
 ```powershell
 ffmpeg -y -ss 3.39 -to 4.17 -i "slurp.wav" -map_metadata -1 -ar 44100 `
-  -c:a libvorbis -q:a 4 ".\public\assets\audio\sfx\player-attack-slurp.ogg"
+  -c:a libvorbis -q:a 4 ".\public\assets\audio\sfx\blood-pickup-slurp.ogg"
 ```
 
 To audition a different take, re-run with different `-ss`/`-to` values. The
@@ -232,19 +232,14 @@ the state machine ignores a repeat, so the swap cannot fire twice.
 
 ---
 
-## 4. Attack SFX layering
+## 4. The swing and the drink
 
-A single accepted attack plays **two separate files on two separate keys, in
-the same frame**:
+Noam's two effects sit at opposite ends of the same beat. They stay two files
+on two keys so each keeps its own level in the editor.
 
-```ts
-audio.playSfxStack(PLAYER_ATTACK_SFX); // [playerAttackWhoosh, playerAttackSlurp]
-```
+**WOOSH — `AUDIO.playerAttackWhoosh`, on the swing.**
 
-They are deliberately not merged into one file, so each keeps its own level in
-the balance editor.
-
-The cue is wired as `CombatSystem`'s `onAttack` callback, which fires only
+Wired as `CombatSystem`'s `onAttack` callback, which fires only
 **after** the cooldown check and the alive check pass. Consequences, all
 intentional:
 
@@ -255,6 +250,25 @@ intentional:
 - the menu and the cold open never trigger it (the cinematic drives
   `player.playAttackAnim()` directly, bypassing `CombatSystem`);
 - a dead Count makes no sound (`CombatSystem` checks `player.isAlive`).
+
+**SLURP — `AUDIO.bloodPickup`, on the blood arriving.**
+
+Fired from `GameScene.collectPickup()`, in the tween's `onComplete` — the frame
+a bloodlet lands on the blood meter and `flow.addBlood()` counts it. The Count
+is heard drinking exactly as the meter takes the blood in, not when he swings.
+
+It is **one slurp per bloodlet**, and a killed hunter scatters
+`HUNTER.bloodDroplets` of them (5 today), so a single kill is up to five drinks
+as the droplets are vacuumed in. The slurp is 0.78 s long, so they overlap. If
+that reads as too much, the **Blood Pickup SLURP** slider is the first thing to
+reach for — not `bloodDroplets`, which is gameplay balance, not audio.
+
+Blood that arrives during the cold open (the scripted bloodlets in
+`cinematicStrike`) is silent: that path emits `BLOOD_CHANGED` directly instead
+of going through `collectPickup`.
+
+`playSfxStack(keys, options)` stays on the director for future layered cues;
+nothing uses it at the moment.
 
 ---
 

@@ -93,12 +93,15 @@ export const AUDIO = {
   batDashSound: 'sfx-bat-dash',
   coffinOpen: 'sfx-coffin-open',
   coffinClose: 'sfx-coffin-close',
-  /** Noam's attack layer 1 — the swing through the air. */
+  /** Noam's swing through the air. The whole sound of an attack. */
   playerAttackWhoosh: 'sfx-player-attack-whoosh',
-  /** Noam's attack layer 2 — the drink. Always fired together with the whoosh. */
-  playerAttackSlurp: 'sfx-player-attack-slurp',
   playerHurt: 'sfx-player-hurt',
   hunterDeath: 'sfx-hunter-death',
+  /**
+   * Noam's slurp — the Count drinking. Fires when a bloodlet lands on the
+   * blood meter and counts, NOT when he swings: the swing is the whoosh, the
+   * drink is the blood arriving.
+   */
   bloodPickup: 'sfx-blood-pickup',
   bossAppear: 'sfx-boss-appear',
   finalSeconds: 'sfx-final-seconds',

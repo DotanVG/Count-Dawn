@@ -8,7 +8,6 @@ import {
 } from '../data/audioBalance';
 import { MusicStateMachine, musicKeyForState, musicStateForKey } from './MusicStateMachine';
 import type { MusicState } from './MusicStateMachine';
-import { AUDIO } from '../utils/assetKeys';
 
 /**
  * Phaser's BaseSound type does not declare `volume`, but every concrete
@@ -416,9 +415,3 @@ export function getAudioDirector(scene: Phaser.Scene): AudioDirector {
   const director = scene.registry.get(AudioDirector.REGISTRY_KEY) as AudioDirector | undefined;
   return director ?? installAudioDirector(scene.game);
 }
-
-/** The layered cue for one accepted player attack: swing plus drink. */
-export const PLAYER_ATTACK_SFX: readonly string[] = [
-  AUDIO.playerAttackWhoosh,
-  AUDIO.playerAttackSlurp,
-];

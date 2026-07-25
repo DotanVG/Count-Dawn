@@ -36,7 +36,7 @@ test('the two groups are independent — music sliders never touch sfx', () => {
   const config = balance({ master: 1, music: 0, sfx: 1 });
 
   assert.equal(effectiveMusicVolume(config, AUDIO.levelMusic), 0);
-  assert.ok(effectiveSfxVolume(config, AUDIO.playerAttackSlurp) > 0);
+  assert.ok(effectiveSfxVolume(config, AUDIO.bloodPickup) > 0);
 });
 
 test('effectiveVolume routes each key through its own group', () => {

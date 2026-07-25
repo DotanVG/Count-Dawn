@@ -52,14 +52,13 @@ export const AUDIO_MANIFEST: readonly AudioAsset[] = [
     defaultVolume: 0.6,
   },
   {
-    key: AUDIO.playerAttackSlurp,
-    label: 'Player Attack SLURP',
+    key: AUDIO.bloodPickup,
+    label: 'Blood Pickup SLURP',
     group: 'sfx',
-    files: [
-      'assets/audio/sfx/player-attack-slurp.ogg',
-      'assets/audio/sfx/player-attack-slurp.mp3',
-    ],
-    // The drink is the payoff of the swing, so it sits above the whoosh.
+    files: ['assets/audio/sfx/blood-pickup-slurp.ogg', 'assets/audio/sfx/blood-pickup-slurp.mp3'],
+    // Carried over from the balancing pass this sound had as an attack layer.
+    // It now fires per bloodlet rather than per swing, so it is the first
+    // slider to reach for if a five-droplet kill reads as too much.
     defaultVolume: 1,
   },
   {
@@ -94,7 +93,6 @@ export const AUDIO_MANIFEST: readonly AudioAsset[] = [
   // Reserved keys — the call sites already exist, the sounds do not yet.
   { key: AUDIO.playerHurt, label: 'Player Hurt', group: 'sfx', files: [], defaultVolume: 0.8 },
   { key: AUDIO.hunterDeath, label: 'Hunter Death', group: 'sfx', files: [], defaultVolume: 0.7 },
-  { key: AUDIO.bloodPickup, label: 'Blood Pickup', group: 'sfx', files: [], defaultVolume: 0.6 },
   { key: AUDIO.bossAppear, label: 'Boss Appearance', group: 'sfx', files: [], defaultVolume: 0.8 },
   { key: AUDIO.finalSeconds, label: 'Final Seconds', group: 'sfx', files: [], defaultVolume: 0.8 },
   { key: AUDIO.dawn, label: 'Dawn', group: 'sfx', files: [], defaultVolume: 0.8 },

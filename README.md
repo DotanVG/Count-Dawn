@@ -119,7 +119,7 @@ Suggested flow: feature branches → `staging` (playtest on the test URL) → me
 
 - **Dotan** — _(role TBD)_
 - **Romi** — coffin, garlic and bat art; cover art
-- **Noam** — original music (Main Title, Level Music) and gameplay SFX (attack WOOSH and SLURP)
+- **Noam** — original music (Main Title, Level Music) and gameplay SFX (attack WOOSH, blood-drinking SLURP)
 - **Abed** — _(role TBD)_
 
 ### Third-party assets
@@ -134,6 +134,6 @@ Original art by **Romi**: the cover art, coffin (closed/half/open), garlic (thro
 
 Romi's bat arrived as two 240x240 JPEG frames painted on black. `tools/build_bat_sheet.py` turns them into the shipped `assets/characters/bat/bat_fly.png` — keying the background out to alpha, lifting the wing strokes so they read against the castle floor, registering both frames on the eyes so only the wings move, and laying them out as a 2-frame 64x64 sheet. Re-run it if the source frames are ever repainted.
 
-Original music and sound effects by **Noam**: the Main Title theme, the Level Music that plays through every night, and the two-layer player attack (WOOSH + SLURP). Each ships as an OGG with an MP3 fallback under one Phaser key; the WAV masters stay out of the repo. See [docs/AUDIO.md](docs/AUDIO.md) for the workflow, the music state flow and the in-game audio balance editor.
+Original music and sound effects by **Noam**: the Main Title theme, the Level Music that plays through every night, the WOOSH of the Count's swing, and the SLURP of him drinking as collected blood lands on the meter. Each ships as an OGG with an MP3 fallback under one Phaser key; the WAV masters stay out of the repo. See [docs/AUDIO.md](docs/AUDIO.md) for the workflow, the music state flow and the in-game audio balance editor.
 
 The blood droplet is a runtime-generated placeholder. Summonable bat minions are still planned; they will reuse `TEXTURES.bat` / `ANIMS.batFly`, already shipping for the dash and the coffin flights. No AI-generated art or audio.

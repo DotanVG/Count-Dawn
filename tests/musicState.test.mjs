@@ -101,5 +101,5 @@ test('states and keys map both ways', () => {
 
   assert.equal(musicStateForKey(AUDIO.mainTitle), 'main-title');
   assert.equal(musicStateForKey(AUDIO.levelMusic), 'level');
-  assert.equal(musicStateForKey(AUDIO.playerAttackSlurp), 'none');
+  assert.equal(musicStateForKey(AUDIO.bloodPickup), 'none');
 });

@@ -45,7 +45,7 @@ import {
   coldOpenTimerSeconds,
 } from '../systems/coldOpen';
 import { GameFlowSystem } from '../systems/GameFlowSystem';
-import { AudioDirector, getAudioDirector, PLAYER_ATTACK_SFX } from '../systems/AudioDirector';
+import { AudioDirector, getAudioDirector } from '../systems/AudioDirector';
 import { CastleMap } from '../world/CastleMap';
 import { DawnSky } from '../world/DawnSky';
 import { HUD } from '../ui/HUD';
@@ -153,10 +153,10 @@ export class GameScene extends Phaser.Scene {
       (hunter) => this.onHunterKilled(hunter),
       // Fired by CombatSystem only once an attack has actually been accepted
       // (cooldown clear, Count alive) — never per frame while the button is
-      // held, and never for a rejected swing. The two layers are separate
-      // files on separate keys and start in the same frame, so they read as
-      // one attack sound while each keeps its own level.
-      () => this.audio.playSfxStack(PLAYER_ATTACK_SFX),
+      // held, and never for a rejected swing. The swing is the whole sound of
+      // an attack; the drink belongs to the blood arriving, not to the strike
+      // (see collectPickup).
+      () => this.audio.playSfx(AUDIO.playerAttackWhoosh),
     );
 
     // Cold ambient darkness that lifts as the night passes…
@@ -1029,6 +1029,9 @@ export class GameScene extends Phaser.Scene {
       onComplete: () => {
         if (!this.flow.hasEnded) {
           this.flow.addBlood(pickup.amount);
+          // Noam's slurp, on arrival rather than on the swing: the Count is
+          // heard drinking exactly as the meter takes the blood in. One per
+          // bloodlet, so a five-droplet kill is five drinks.
           this.audio.playSfx(AUDIO.bloodPickup);
           this.hud?.burstAtBloodBar();
         }
