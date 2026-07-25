@@ -1,16 +1,17 @@
 """
 Builds public/assets/characters/bat/bat_fly.png from Romi's two bat frames.
 
-The source frames arrive as 240x240 JPEGs: dark-purple wing strokes plus gold
-eyes and white fangs, painted on a solid black background. JPEG has no alpha
-and the black is background (not a silhouette — there is no membrane fill), so
-this script:
+The source frames arrive as 240x240 JPEGs: a solid bat — filled wings and body,
+near-black with purple shading, gold eyes and white fangs — painted on a chroma
+green background. JPEG has no alpha, so this script:
 
-  1. keys the black out by luminance, with a ramp across the JPEG ringing band
-     that hugs every stroke (ringing tops out ~20, the strokes sit ~56),
-  2. brightens ONLY the wing strokes so they read against the castle floor —
-     the raw #38213A is all but invisible on the dark tiles. Hue is preserved;
-     eyes and fangs are already bright and are left exactly as painted,
+  1. keys the green out by greenness (g - max(r, b)), with a ramp across the
+     JPEG ringing band that hugs every edge,
+  2. colorises the body onto a purple ramp so it reads against the dark castle
+     floor. The raw art is near-black (median luminance 6) and would vanish into
+     the tiles; the ramp keeps the painted shading but lifts the darkest pixels
+     to a value that separates from the background. Eyes and fangs are already
+     bright and are left exactly as painted,
   3. crops both frames to a common box registered on the EYES, so the head
      stays put and only the wings move across the flap,
   4. downscales to the project's 64x64 character frame and lays the two frames
@@ -30,38 +31,48 @@ from PIL import Image
 FRAMES = ["bat1.jpeg", "bat2.jpeg"]
 OUT = Path("public/assets/characters/bat/bat_fly.png")
 
-# Alpha ramp over luminance. Below LO is background/ringing, above HI is paint.
-ALPHA_LO, ALPHA_HI = 22, 40
-# A pixel this bright is an eye or a fang — already readable, never boosted.
+# Alpha ramp over greenness (g - max(r, b)). The background sits at ~239 and the
+# paint at <= 0; everything between is JPEG ringing along the edges.
+GREEN_LO, GREEN_HI = 10, 60
+# A pixel this bright is an eye or a fang — already readable, never recoloured.
 HIGHLIGHT_LUM = 100
-# Multiplier on the wing strokes. #38213A -> ~#925694, the same purple the dash
-# trail already uses, at a value that survives the dark floor.
-STROKE_BOOST = 2.6
+# The body ramp. Darkest painted pixel becomes BODY_DARK, the brightest shading
+# BODY_LIGHT — the same purple family the dash trail already uses.
+BODY_DARK = np.array([91, 53, 96], dtype=np.float64)
+BODY_LIGHT = np.array([192, 143, 198], dtype=np.float64)
+# Luminance in the source that maps to BODY_LIGHT; above it the ramp saturates.
+BODY_LUM_HI = 70.0
 
 # Crop box registered on the eyes: (dx, dy) from the eye centroid to the box
 # centre, then the box size. Sized from the union of both frames' bounding
 # boxes so no wing tip is ever clipped, with a little breathing room.
-CROP_OFFSET = (-20, 4)
-CROP_SIZE = 160
+CROP_OFFSET = (-22, 16)
+CROP_SIZE = 180
 FRAME_SIZE = 64
 
 
-def eye_centroid(rgb: np.ndarray) -> tuple[float, float]:
+def eye_centroid(rgb: np.ndarray, body: np.ndarray) -> tuple[float, float]:
     """Centre of the gold/white face pixels — the one landmark in both frames."""
-    ys, xs = np.nonzero(rgb.max(axis=2) >= HIGHLIGHT_LUM)
+    ys, xs = np.nonzero(body & (rgb.max(axis=2) >= HIGHLIGHT_LUM))
     return float(xs.mean()), float(ys.mean())
 
 
 def to_rgba(path: Path) -> Image.Image:
     rgb = np.asarray(Image.open(path).convert("RGB")).astype(np.float64)
+    greenness = rgb[..., 1] - np.maximum(rgb[..., 0], rgb[..., 2])
     lum = rgb.max(axis=2)
 
-    alpha = np.clip((lum - ALPHA_LO) / (ALPHA_HI - ALPHA_LO), 0.0, 1.0)
-    boost = np.where(lum[..., None] >= HIGHLIGHT_LUM, 1.0, STROKE_BOOST)
-    out = np.dstack([np.clip(rgb * boost, 0, 255), alpha * 255])
+    alpha = 1.0 - np.clip((greenness - GREEN_LO) / (GREEN_HI - GREEN_LO), 0.0, 1.0)
 
-    img = Image.fromarray(out.astype(np.uint8), "RGBA")
-    cx, cy = eye_centroid(rgb)
+    # Two-tone purple ramp over the painted shading, highlights left untouched.
+    t = np.clip(lum / BODY_LUM_HI, 0.0, 1.0)[..., None]
+    ramped = BODY_DARK + (BODY_LIGHT - BODY_DARK) * t
+    out_rgb = np.where(lum[..., None] >= HIGHLIGHT_LUM, rgb, ramped)
+
+    img = Image.fromarray(
+        np.dstack([np.clip(out_rgb, 0, 255), alpha * 255]).astype(np.uint8), "RGBA"
+    )
+    cx, cy = eye_centroid(rgb, greenness < GREEN_LO)
     left = round(cx + CROP_OFFSET[0] - CROP_SIZE / 2)
     top = round(cy + CROP_OFFSET[1] - CROP_SIZE / 2)
     cropped = img.crop((left, top, left + CROP_SIZE, top + CROP_SIZE))
