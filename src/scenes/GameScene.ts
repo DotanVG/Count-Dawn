@@ -206,6 +206,9 @@ export class GameScene extends Phaser.Scene {
       hunter.pursue(this.player.x, this.player.y);
     }
 
+    // The Captain's health rides above his head, so it has to keep up with him.
+    if (this.boss?.active) this.hud?.followBoss(this.boss.x, this.boss.y);
+
     const p = this.countdown.progress;
     this.nightOverlay.setAlpha(0.42 * (1 - p * p));
     this.dawnOverlay.setAlpha(p * p * 0.18);
@@ -1072,6 +1075,9 @@ export class GameScene extends Phaser.Scene {
       if (this.phase === 'playing' && this.boss) this.player.takeDamage(this.boss.contactDamage);
     };
     this.hunters.add(this.boss);
+    // Place the bar before it is first shown, or it flashes at the origin for
+    // a frame before update() catches it up to him.
+    this.hud?.followBoss(this.boss.x, this.boss.y);
     this.flow.notifyBossSpawned();
     this.audioFx.play(AUDIO.bossAppear);
   }

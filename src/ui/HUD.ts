@@ -57,7 +57,12 @@ function healthColor(ratio: number): number {
  */
 export class HUD {
   private timerText: Phaser.GameObjects.Text;
-  private timerHome = { x: GAME_WIDTH / 2, y: 88 };
+  /**
+   * Low in the wall band, clear of the window openings. It used to sit at the
+   * top of the middle window, which is exactly where the sun and moon cross at
+   * the peak of their arc - the clock was standing in front of them.
+   */
+  private timerHome = { x: GAME_WIDTH / 2, y: 158 };
   private healthBarFill: Phaser.GameObjects.Rectangle;
   private healthText: Phaser.GameObjects.Text;
   private dashBarFill: Phaser.GameObjects.Rectangle;
@@ -264,6 +269,11 @@ export class HUD {
     this.dashBarFill.width = BAR_W * Phaser.Math.Clamp(progress, 0, 1);
     this.dashBarFill.setFillStyle(DASH_PURPLE, ready ? 1 : 0.45);
     this.dashLabel.setAlpha(ready ? 1 : 0.5);
+  }
+
+  /** Keeps the Captain's health bar over his head; see BossHealthBar. */
+  followBoss(x: number, y: number): void {
+    this.bossBar.follow(x, y);
   }
 
   /** Red burst where a bloodlet reaches the blood bar. */
