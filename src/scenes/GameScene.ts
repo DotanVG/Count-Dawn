@@ -625,6 +625,18 @@ export class GameScene extends Phaser.Scene {
 
     // Every drop he is short of a full meter, flying home at once.
     const delay = COLD_OPEN.bloodStartMs - COLD_OPEN.strikeMs;
+    // One audible drink per hunter, spread across the blood-arrival window.
+    // These are intentionally stronger than the old per-bloodlet whispers:
+    // twelve distinct overlapping slurps make the feast read as the Count
+    // draining the whole squad without turning into one clipped sound.
+    const drinkWindowMs = (COLD_OPEN.bloodlets - 1) * COLD_OPEN.bloodletStaggerMs;
+    const drinkStepMs = corpses.length > 1 ? drinkWindowMs / (corpses.length - 1) : 0;
+    for (let i = 0; i < corpses.length; i++) {
+      this.time.delayedCall(delay + COLD_OPEN.bloodletFlightMs + i * drinkStepMs, () => {
+        this.audio.playSfx(AUDIO.bloodPickup, { volumeScale: 0.35 });
+      });
+    }
+
     for (let i = 0; i < COLD_OPEN.bloodlets; i++) {
       const origin = corpses.length > 0 ? corpses[i % corpses.length] : PLAYER_SPAWN;
       this.time.delayedCall(delay + i * COLD_OPEN.bloodletStaggerMs, () => {
@@ -645,9 +657,6 @@ export class GameScene extends Phaser.Scene {
           onComplete: () => {
             droplet.destroy();
             this.emitter.emit(EVENTS.BLOOD_CHANGED, nextBlood(), bloodTarget);
-            // Twenty arrivals overlap into one greedy drink. Each copy stays
-            // quiet enough that their sum does not swamp the rest of the scene.
-            this.audio.playSfx(AUDIO.bloodPickup, { volumeScale: 0.12 });
             this.hud?.burstAtBloodBar();
           },
         });
