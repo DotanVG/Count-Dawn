@@ -1077,6 +1077,13 @@ export class GameScene extends Phaser.Scene {
   private wireEvents(): void {
     this.emitter.on(EVENTS.BOSS_SPAWN_REQUESTED, this.spawnBoss, this);
     this.emitter.on(EVENTS.DAWN_REACHED, this.onDawnReached, this);
+    this.emitter.on(EVENTS.BAT_FORM_CHANGED, (active: boolean) => {
+      if (active) {
+        this.audioFx.play(AUDIO.batSound1, { loop: true });
+      } else {
+        this.audioFx.stop(AUDIO.batSound1);
+      }
+    });
     this.emitter.on(EVENTS.PLAYER_DIED, () => this.flow.notifyPlayerDied());
     this.emitter.on(EVENTS.PLAYER_DAMAGED, () => this.audioFx.play(AUDIO.playerHurt));
     this.emitter.on(EVENTS.BLOOD_OVERFLOWED, this.hopBloodToHealth, this);
@@ -1380,6 +1387,7 @@ export class GameScene extends Phaser.Scene {
 
   private cleanup(): void {
     this.audioFx.stop(AUDIO.menuTheme);
+    this.audioFx.stop(AUDIO.batSound1);
     this.emitter.removeAllListeners();
     this.hud?.destroy();
     this.spawner?.stop();

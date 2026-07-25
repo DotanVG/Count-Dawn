@@ -12,6 +12,7 @@ export const EVENTS = {
   BOSS_HEALTH_CHANGED: 'boss-health-changed',
   BOSS_DEFEATED: 'boss-defeated',
   COFFIN_ACTIVATED: 'coffin-activated',
+  BAT_FORM_CHANGED: 'bat-form-changed',
   PLAYER_DAMAGED: 'player-damaged',
   /** Blood collected while the meter was already full, spent as healing instead. */
   PLAYER_HEALED: 'player-healed',

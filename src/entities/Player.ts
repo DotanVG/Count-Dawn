@@ -136,6 +136,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.play(animKey('vampire', 'idle', this.facing), true);
     }
     this.applyFormScale();
+    this.emitter.emit(EVENTS.BAT_FORM_CHANGED, active);
   }
 
   /**

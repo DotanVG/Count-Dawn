@@ -83,6 +83,8 @@ export const ANIMS = {
 export const AUDIO = {
   /** Menu-only theme (Noam) — played while on the main menu, stopped once the night starts. */
   menuTheme: 'menu-theme',
+  /** Bat-form chirping loop, active only while the Count is transformed. */
+  batSound1: 'bat_sound_1',
   playerAttack: 'sfx-player-attack',
   playerHurt: 'sfx-player-hurt',
   hunterDeath: 'sfx-hunter-death',
