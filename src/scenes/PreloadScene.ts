@@ -56,6 +56,14 @@ export class PreloadScene extends Phaser.Scene {
       this.load.audio(asset.key, [...asset.files]);
     }
 
+    // Hunter weapons (Romi's art) — held props swung by code, so they load as
+    // plain images rather than as sheets. The torch ships two frames because
+    // its flame flickers; the other two are single drawings.
+    this.load.image(TEXTURES.weaponSpike, 'assets/environment/weapons/wooden_spike.png');
+    this.load.image(TEXTURES.weaponPitchfork, 'assets/environment/weapons/pitchfork.png');
+    this.load.image(TEXTURES.weaponTorch1, 'assets/environment/weapons/torch_1.png');
+    this.load.image(TEXTURES.weaponTorch2, 'assets/environment/weapons/torch_2.png');
+
     // Props — Romi's coffin (3 states) + the garlic thrown by the throwers.
     this.load.image(TEXTURES.coffinClosed, 'assets/environment/props/coffin_closed.png');
     this.load.image(TEXTURES.coffinHalf, 'assets/environment/props/coffin_half.png');

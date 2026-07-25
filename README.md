@@ -8,7 +8,7 @@ A reverse horde survival game for the **"Countdown"** game jam theme.
 - **Production (main):** https://count-dawn.vercel.app
 - **Staging (staging branch):** https://count-dawn-git-staging-dotanvgs-projects.vercel.app
 
-> **Asset status:** the vampire, hunters, garlic throwers, Captain and castle use licensed free pixel-art packs from CraftPix (see Credits). Romi created the coffin, garlic, bat and cover art. Noam composed the original music (Main Title and Level Music) and the gameplay SFX. The blood droplet is still a runtime-generated placeholder. No AI-generated art or audio is used.
+> **Asset status:** the vampire, hunters, garlic throwers, Captain and castle use licensed free pixel-art packs from CraftPix (see Credits). Romi created the coffin, garlic, bat, hunter weapons and cover art. Noam composed the original music (Main Title and Level Music) and the gameplay SFX. The blood droplet is still a runtime-generated placeholder. No AI-generated art or audio is used.
 
 ## Prototype state
 
@@ -25,7 +25,8 @@ The complete core loop is playable end to end:
 - ✅ Hunters spawn at arena edges and chase the vampire; every new night raises the blood target, increases the alive cap, and accelerates spawning
 - ✅ Mouse-aimed melee arc attack with cooldown pip, hit flash and knockback — landed strikes shove the target back, flinch it, and cancel the swing it was winding up (the Captain resists most of it)
 - ✅ Garlic throwers: unarmed hunters who walk in visibly carrying a garlic bulb, hold a standoff, paint a green glowing crosshair that crawls from their feet onto the Count, and lob the bulb at the spot it locks onto — dodgeable by moving or dashing. Capped at one per night number (1 on night 1, 2 on night 2…), so ranged pressure ramps while the rest of the growing spawn budget stays melee
-- ✅ Flat damage economy: every regular hit — sword or garlic — costs 5 HP; the Hunter Captain hits for 10
+- ✅ Armed hunters (Romi's art): unarmed men carrying a **wooden spike**, a **pitchfork** or a **burning torch**. The base pack has no attack sheet for them, so the prop is pinned to the fist and the whole swing is animated on it — the spike and fork thrust, the torch chops in an arc trailing embers, and the weapon clatters to the floor when its carrier dies. A weapon buys reach and cadence, never damage: the fork jabs from outside sword range, the spike jabs fast and close. One new weapon joins the hall per night (spike night 1, pitchfork night 2, torch night 3)
+- ✅ Flat damage economy: every regular hit — sword, garlic, spike, pitchfork or torch — costs 5 HP; the Hunter Captain hits for 10
 - ✅ Bat dash (Shift / 🦇): a short invulnerable burst with after-images and a HUD charge strip — the escape from a crowd and the counter to a lock
 - ✅ Bat form (Romi's art): the Count *poofs* into a bat for the dash and for both coffin flights, mirrored to whichever way he is travelling
 - ✅ Dead hunters drop blood pickups; Night 1 targets 50 blood, increasing by 15 each new night
@@ -130,9 +131,11 @@ Character & environment art from [CraftPix](https://craftpix.net) under the [Cra
 - **Free Base 4-Direction Male Character Pixel Art** — hunters & Hunter Captain (sword variant, incl. swing attack); garlic throwers (unarmed variant)
 - **Free 2D Top-Down Pixel Dungeon Asset Pack** — castle tiles & torch flames
 
-Original art by **Romi**: the cover art, coffin (closed/half/open), garlic (thrown at the Count by the garlic throwers), and the bat (the Count's dash and coffin-flight form).
+Original art by **Romi**: the cover art, coffin (closed/half/open), garlic (thrown at the Count by the garlic throwers), the bat (the Count's dash and coffin-flight form), and the three hunter weapons (wooden spike, pitchfork, burning torch).
 
 Romi's bat arrived as two 240x240 JPEG frames painted on black. `tools/build_bat_sheet.py` turns them into the shipped `assets/characters/bat/bat_fly.png` — keying the background out to alpha, lifting the wing strokes so they read against the castle floor, registering both frames on the eyes so only the wings move, and laying them out as a 2-frame 64x64 sheet. Re-run it if the source frames are ever repainted.
+
+The weapons arrived the same way — 192x192 JPEGs on black, one drawing each for the spike and the pitchfork, two for the torch's flame. `tools/build_weapon_props.py` keys the black out, crops all four to one common box so they keep their relative sizes and the torch flickers in place, and writes 64x64 PNGs to `assets/environment/weapons/`. The painted colours are passed through untouched.
 
 Original music and sound effects by **Noam**: the Main Title theme, the Level Music that plays through every night, the WOOSH of the Count's swing, and the SLURP of him drinking as collected blood lands on the meter. Each ships as an OGG with an MP3 fallback under one Phaser key; the WAV masters stay out of the repo. See [docs/AUDIO.md](docs/AUDIO.md) for the workflow, the music state flow and the in-game audio balance editor.
 

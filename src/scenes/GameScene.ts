@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import {
+  ARMED,
   BLOOD,
   BOSS,
   HUNTER,
@@ -10,6 +11,7 @@ import {
   captainCountForNight,
   hunterPressureForNight,
   throwerCapForNight,
+  weaponsForNight,
 } from '../data/balance';
 import {
   ARENA,
@@ -25,6 +27,7 @@ import { EVENTS } from '../game/events';
 import { isTouchDevice } from '../game/device';
 import { Player } from '../entities/Player';
 import { Hunter } from '../entities/Hunter';
+import { ArmedHunter } from '../entities/ArmedHunter';
 import { HunterCaptain } from '../entities/HunterCaptain';
 import { GarlicCaptain } from '../entities/GarlicCaptain';
 import { GarlicThrower } from '../entities/GarlicThrower';
@@ -859,17 +862,34 @@ export class GameScene extends Phaser.Scene {
   /**
    * Sword swings damage the player when they land (invulnerability still
    * applies). A share of every night's spawns arrive as garlic throwers
-   * instead — same entrance, completely different threat.
+   * instead — same entrance, completely different threat — and a share of the
+   * melee that remains walks in carrying one of Romi's weapons.
    */
   private createHunter(spawnX: number, spawnY: number, arrivalX: number, arrivalY: number): Hunter {
     const hunter = this.canSpawnThrower()
       ? this.createThrower(spawnX, spawnY)
-      : new Hunter(this, spawnX, spawnY);
+      : this.createMeleeHunter(spawnX, spawnY);
     hunter.beginEntrance(arrivalX, arrivalY);
     hunter.onStrikeHit = () => {
       if (this.phase === 'playing') this.player.takeDamage(hunter.contactDamage);
     };
     return hunter;
+  }
+
+  /**
+   * A melee spawn is either a sword hunter or one of the unarmed men carrying
+   * a weapon Romi drew. They cost the same as a sword hunter and hit for the
+   * same flat 5 — the weapon buys reach and cadence, not damage — so no cap is
+   * needed the way the throwers need one; they simply take a share of the
+   * melee budget. Which weapons are on the table grows by night, so the hall
+   * gains one new silhouette at a time (see weaponsForNight).
+   */
+  private createMeleeHunter(spawnX: number, spawnY: number): Hunter {
+    const available = weaponsForNight(this.night);
+    if (available.length === 0 || Math.random() >= ARMED.spawnChance) {
+      return new Hunter(this, spawnX, spawnY);
+    }
+    return new ArmedHunter(this, spawnX, spawnY, Phaser.Utils.Array.GetRandom(available));
   }
 
   /**

@@ -51,6 +51,23 @@ Same pattern with `TEXTURES.hunter` and `TEXTURES.boss` under `assets/characters
 - **Static image:** load an image and add it in `GameScene.createArena()` in place of the floor/wall rectangles.
 - **Tilemap:** load a Tiled JSON + tileset in `PreloadScene`, build it in `createArena()`, and replace `physics.world.setBounds` with a collision layer if walls become tile-based.
 
+### Held props (weapons, the carried garlic)
+
+Not everything a character carries is a spritesheet. Romi's three hunter
+weapons load as plain **images** and are pinned to a hunter's fist every frame
+by [`ArmedHunter`](../src/entities/ArmedHunter.ts), which also animates the
+swing — because the unarmed pack those hunters wear ships no attack sheet at
+all. When adding another prop of that kind:
+
+- put the source drawing through a `tools/build_*.py` script (see
+  `build_weapon_props.py`) so the background is keyed to alpha and the output
+  lands on the project's 64px frame,
+- load it with `this.load.image(...)`, not `spritesheet`,
+- give it an origin at its **grip**, not its centre, so rotating it swings the
+  weapon rather than spinning it about its middle,
+- keep the numbers (scale, reach, cadence) in `balance.ts`; the entity should
+  only own where the hand is and how the swing is drawn.
+
 ## Registering animations
 
 Animation keys are centralized in `ANIMS` (`assetKeys.ts`). Create them once, after loading, e.g. in `PreloadScene.create()`:

@@ -44,6 +44,14 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   protected normalDepth: number = DEPTHS.hunter;
   /** Multiplier on incoming knockback — the Captain plants his feet harder. */
   protected knockbackResistance = 1;
+  /**
+   * Melee timing and reach, overridable because a hunter's weapon owns them:
+   * a pitchfork genuinely outranges a sword arm and a wooden spike jabs faster
+   * than either (see ArmedHunter / WEAPONS).
+   */
+  protected meleeReachFactor = 1;
+  protected meleeIntervalMs: number = HUNTER.meleeIntervalMs;
+  protected meleeHitDelayMs: number = HUNTER.meleeHitDelayMs;
   protected readonly look: HunterLook;
   private nextSwingAt = 0;
   private lastTargetDist = Infinity;
@@ -149,26 +157,25 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     // Range check against sprite scale so the bigger Captain swings sooner.
     const dist = Phaser.Math.Distance.Between(this.x, this.y, targetX, targetY);
     this.lastTargetDist = dist;
-    const inMeleeRange = dist <= HUNTER.meleeRange * (this.scaleX / 2);
+    const inMeleeRange = dist <= this.meleeRange;
 
     // Let a started swing play out before movement anims take over again.
-    const swinging =
-      this.anims.currentAnim?.key.startsWith(`${this.look.charKey}-attack`) === true &&
-      this.anims.isPlaying;
+    const swinging = this.isSwinging;
 
     if (inMeleeRange) {
       this.setVelocity(0, 0);
       const now = this.scene.time.now;
       if (!swinging && now >= this.nextSwingAt) {
-        this.nextSwingAt = now + HUNTER.meleeIntervalMs;
-        this.play(animKey(this.look.charKey, 'attack', dir), true);
+        this.nextSwingAt = now + this.meleeIntervalMs;
+        this.playSwing(dir, angle);
         const token = ++this.swingToken;
         // The blade connects mid-animation — if the target is still in reach
         // and nothing (a knockback) interrupted the swing in the meantime.
-        this.scene.time.delayedCall(HUNTER.meleeHitDelayMs, () => {
+        this.scene.time.delayedCall(this.meleeHitDelayMs, () => {
           if (!this.active || !this.isAlive || token !== this.swingToken) return;
-          const reach = HUNTER.meleeRange * (this.scaleX / 2) * HUNTER.meleeHitReachFactor;
-          if (this.lastTargetDist <= reach) this.onStrikeHit?.();
+          if (this.lastTargetDist <= this.meleeRange * HUNTER.meleeHitReachFactor) {
+            this.onStrikeHit?.();
+          }
         });
       } else if (!swinging) {
         this.play(animKey(this.look.charKey, 'idle', dir), true);
@@ -180,6 +187,31 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     if (!swinging) {
       this.play(animKey(this.look.charKey, 'walk', dir), true);
     }
+  }
+
+  /** How close this hunter has to be to start swinging — scale plus weapon length. */
+  protected get meleeRange(): number {
+    return HUNTER.meleeRange * (this.scaleX / 2) * this.meleeReachFactor;
+  }
+
+  /**
+   * True while a swing is still playing out. Read off the attack animation,
+   * which is why ArmedHunter — whose unarmed body has no attack sheet and
+   * whose swing lives on the weapon prop — overrides it with its own clock.
+   */
+  protected get isSwinging(): boolean {
+    return (
+      this.anims.currentAnim?.key.startsWith(`${this.look.charKey}-attack`) === true &&
+      this.anims.isPlaying
+    );
+  }
+
+  /**
+   * Start one swing. `aimAngle` is the exact radians toward the target, which
+   * the 4-direction attack sheet has no use for but a swung prop does.
+   */
+  protected playSwing(dir: Dir4, _aimAngle: number): void {
+    this.play(animKey(this.look.charKey, 'attack', dir), true);
   }
 
   /**

@@ -25,6 +25,16 @@ export const TEXTURES = {
   throwerRun: 'thrower-run',
   throwerHurt: 'thrower-hurt',
   throwerDeath: 'thrower-death',
+  /**
+   * Romi's hunter weapons — held props, not spritesheets: one drawing each for
+   * the spike and the pitchfork, two for the torch so its flame can flicker.
+   * ArmedHunter parents them to a hunter's hand and swings them in code,
+   * because the unarmed pack they are carried by has no attack sheet.
+   */
+  weaponSpike: 'weapon-spike',
+  weaponPitchfork: 'weapon-pitchfork',
+  weaponTorch1: 'weapon-torch-1',
+  weaponTorch2: 'weapon-torch-2',
   // Environment
   tiles: 'castle-tiles',
   fire: 'fire-animation',

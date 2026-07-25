@@ -146,6 +146,73 @@ export const HUNTER = {
   minimumSpawnIntervalMs: 650,
 } as const;
 
+/**
+ * Hunters carrying one of Romi's three weapons. They are drawn from the same
+ * unarmed pool as the garlic throwers — the base pack has no attack sheet for
+ * it — so the swing is animated on the PROP rather than on the body (see
+ * ArmedHunter). Every one of them still hits for the flat 5: what a weapon
+ * changes is reach, cadence and how far you have to stay back, never damage.
+ */
+export const ARMED = {
+  health: 45,
+  contactDamage: 5,
+  moveSpeed: 105,
+  bloodDroplets: 5,
+  spriteScale: 2,
+  /** Fraction of the melee spawns that arrive carrying a weapon. */
+  spawnChance: 0.45,
+  /**
+   * Display scale of the 64px prop, relative to the hunter's own scale. Romi
+   * drew the weapons nearly frame-filling and the hunters are a small 64px
+   * character inside a mostly empty frame, so a prop at his scale towers over
+   * him — this is what puts a spike back in a man's hand rather than a totem
+   * pole beside him.
+   */
+  propScale: 0.38,
+} as const;
+
+/**
+ * Per-weapon feel. `reach` multiplies the hunter's melee range — the pitchfork
+ * genuinely outranges an arm, which is the whole point of carrying one — and
+ * `firstNight` staggers the three so the hall gains one new silhouette at a
+ * time instead of all three on night one.
+ */
+export const WEAPONS = {
+  spike: {
+    firstNight: 1,
+    reach: 0.95,
+    intervalMs: 720,
+    hitDelayMs: 240,
+    swingMs: 180,
+    motion: 'thrust',
+  },
+  pitchfork: {
+    firstNight: 2,
+    reach: 1.45,
+    intervalMs: 1050,
+    hitDelayMs: 380,
+    swingMs: 280,
+    motion: 'thrust',
+  },
+  torch: {
+    firstNight: 3,
+    reach: 1.15,
+    intervalMs: 900,
+    hitDelayMs: 320,
+    swingMs: 240,
+    motion: 'chop',
+  },
+} as const;
+
+export type WeaponKind = keyof typeof WEAPONS;
+
+/** Which of Romi's weapons have shown up by a given night. */
+export function weaponsForNight(night: number): WeaponKind[] {
+  return (Object.keys(WEAPONS) as WeaponKind[]).filter(
+    (kind) => night >= WEAPONS[kind].firstNight,
+  );
+}
+
 export const BOSS = {
   health: 350,
   /** Double a regular hunter's hit — the mini-boss is the one that really hurts. */
