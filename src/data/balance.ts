@@ -161,6 +161,40 @@ export const BOSS = {
   garlicThrowGapMs: 180,
 } as const;
 
+/**
+ * The Priest (Romi's art): the boss the fifth night sends instead of the
+ * Captains. He is slower and shorter-reaching than a Captain but tougher, and
+ * he does not only swing his stake — every few seconds he plants his feet,
+ * raises the cross and drives out an expanding ring of holy light. The ring is
+ * telegraphed on the floor for most of a second before it goes off, so it is
+ * beaten by walking out of it or, once it is already coming, by dashing
+ * through it in bat form.
+ */
+export const PRIEST = {
+  health: 420,
+  /** Same heavy hit as a Captain — the ward is what makes him different. */
+  contactDamage: 10,
+  moveSpeed: 76,
+  /**
+   * Romi drew him nearly frame-filling where the CraftPix men sit small inside
+   * theirs, so this is a much lower number than BOSS.spriteScale for a sprite
+   * that renders BIGGER: about 77px tall against a Captain's 62.
+   */
+  spriteScale: 2,
+  /** Priests turn up on this night and every multiple of it. */
+  everyNights: 5,
+  /** Beat between wards, measured from the end of the last one. */
+  wardIntervalMs: 5400,
+  /** He will not start a ward unless the Count is at least this close. */
+  wardRange: 470,
+  /** Telegraph: the full circle is painted on the floor for this long first. */
+  wardWindupMs: 700,
+  /** How long the light takes to sweep out to its full radius. */
+  wardExpandMs: 620,
+  wardRadius: 250,
+  wardDamage: 10,
+} as const;
+
 export const BLOOD = {
   target: 50,
   /** Additional blood required for every night after the first. */
@@ -201,6 +235,20 @@ export function hunterPressureForNight(night: number): { spawnIntervalMs: number
 /** Night 1-4: one Captain; 5-9: two; 10-14: three; and so on. */
 export function captainCountForNight(night: number): number {
   return 1 + Math.floor(Math.max(0, night) / BOSS.nightsPerExtraCaptain);
+}
+
+/**
+ * Who actually walks in when the blood meter fills. Every fifth night the
+ * Priest takes the step up the night was going to make AND the slot it would
+ * have added, so night 5 is him alone in place of two Captains, night 10 is
+ * him plus one Captain, night 15 him plus two — a new boss each time without
+ * the count running away from the player.
+ */
+export function bossLineupForNight(night: number): { priests: number; captains: number } {
+  const total = captainCountForNight(night);
+  const isPriestNight = night >= PRIEST.everyNights && night % PRIEST.everyNights === 0;
+  if (!isPriestNight) return { priests: 0, captains: total };
+  return { priests: 1, captains: Math.max(0, total - 2) };
 }
 
 /** Ranged pressure grows by night, but all thrower flavours share a hard cap. */

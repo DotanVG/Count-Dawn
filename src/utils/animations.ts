@@ -96,10 +96,33 @@ const THROWER_SHEETS: SheetSpec[] = [
   { texture: TEXTURES.throwerDeath, action: 'death', frames: 7, frameRate: 10, repeat: 0 },
 ];
 
+/**
+ * The Priest is a two-frame character: Romi drew one lowered pose and one
+ * raised pose per direction, and that pair has to cover everything the Hunter
+ * base class asks a character for. So instead of a sheet per action he gets
+ * ONE sheet, and each action is the same two frames played differently —
+ * `from`/`to` pick which of the pair leads, which is the whole difference
+ * between him breathing, him walking, and him bringing the stake down.
+ */
+const PRIEST_ROWS: Record<Dir4, number> = { down: 0, up: 1, left: 2, right: 3 };
+const PRIEST_FRAMES = 2;
+
+const PRIEST_ACTIONS: { action: string; from: 0 | 1; frameRate: number; repeat: number }[] = [
+  // Standing his ground: the stake drifts up and settles, slowly.
+  { action: 'idle', from: 0, frameRate: 2.2, repeat: -1 },
+  { action: 'walk', from: 0, frameRate: 4, repeat: -1 },
+  { action: 'run', from: 0, frameRate: 6, repeat: -1 },
+  // The strike reads the other way round — raised first, then driven down.
+  { action: 'attack', from: 1, frameRate: 5, repeat: 0 },
+  { action: 'hurt', from: 1, frameRate: 8, repeat: 0 },
+  { action: 'death', from: 1, frameRate: 3, repeat: 0 },
+];
+
 export function createCharacterAnimations(scene: Phaser.Scene): void {
   registerSheets(scene, 'vampire', VAMPIRE_SHEETS, VAMPIRE_ROWS);
   registerSheets(scene, 'hunter', HUNTER_SHEETS, HUNTER_ROWS);
   registerSheets(scene, 'thrower', THROWER_SHEETS, THROWER_ROWS);
+  registerPriest(scene);
 
   // Bat form: Romi's two hand-painted frames, wings up then wings spread,
   // registered on the eyes so only the wings move. Unlike every character
@@ -136,6 +159,23 @@ export function createCharacterAnimations(scene: Phaser.Scene): void {
       frameRate: 20,
       repeat: 0,
     });
+  }
+}
+
+function registerPriest(scene: Phaser.Scene): void {
+  for (const spec of PRIEST_ACTIONS) {
+    for (const dir of DIRS) {
+      const key = animKey('priest', spec.action, dir);
+      if (scene.anims.exists(key)) continue;
+      const row = PRIEST_ROWS[dir] * PRIEST_FRAMES;
+      const order = spec.from === 0 ? [row, row + 1] : [row + 1, row];
+      scene.anims.create({
+        key,
+        frames: order.map((frame) => ({ key: TEXTURES.priest, frame })),
+        frameRate: spec.frameRate,
+        repeat: spec.repeat,
+      });
+    }
   }
 }
 

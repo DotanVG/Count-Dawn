@@ -51,6 +51,23 @@ Same pattern with `TEXTURES.hunter` and `TEXTURES.boss` under `assets/characters
 - **Static image:** load an image and add it in `GameScene.createArena()` in place of the floor/wall rectangles.
 - **Tilemap:** load a Tiled JSON + tileset in `PreloadScene`, build it in `createArena()`, and replace `physics.world.setBounds` with a collision layer if walls become tile-based.
 
+### Characters with only a couple of frames
+
+Not every character arrives as a six-sheet pack. The Priest is two frames per
+direction, full stop, and every animation the `Hunter` base class asks him for
+is built from that same pair at a different rate and frame order — see
+`PRIEST_ACTIONS` in [`animations.ts`](../src/utils/animations.ts). If a new
+character is in the same position, follow that shape rather than padding the
+sheet out with duplicates: it keeps the fact that he has two poses visible in
+one place instead of hidden inside a sheet.
+
+Hand-drawn characters also rarely sit in the frame the way a bought pack does.
+Romi's Priest fills the 64px frame almost top to bottom where the CraftPix men
+occupy rows 22-43 of it, so his entity overrides both `visibleTopY` (or his
+health bar floats) and the physics circle (or his hitbox sits at his knees),
+and his `spriteScale` is far lower than a Captain's for a sprite that renders
+bigger. Expect to re-tune all three whenever new art replaces old.
+
 ## Registering animations
 
 Animation keys are centralized in `ANIMS` (`assetKeys.ts`). Create them once, after loading, e.g. in `PreloadScene.create()`:
