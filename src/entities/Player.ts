@@ -24,6 +24,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private facing: Dir4 = 'down';
   /** Display scale before the bat-form shrink — see setBaseScale. */
   private baseScale: number = PLAYER.spriteScale;
+  /**
+   * The swing's size-pop tween, held so setBatForm can stop it. It animates
+   * `scale` directly, so if it were still running when he turns into a bat it
+   * would keep driving the sprite back up to full vampire size.
+   */
+  private attackPopTween?: Phaser.Tweens.Tween;
 
   constructor(
     scene: Phaser.Scene,
@@ -115,6 +121,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   setBatForm(active: boolean): void {
     if (this.batForm === active) return;
     this.batForm = active;
+    // A swing landed just before the shape change leaves its size-pop tween
+    // running; left alone it would fight applyFormScale below and stretch the
+    // bat back to full vampire size for the rest of the dash.
+    this.attackPopTween?.stop();
+    this.attackPopTween = undefined;
     this.playTransformPuff();
 
     if (active) {
@@ -219,19 +230,29 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * charge/star-burst frames near the end were getting skipped entirely
    * before. The sprite itself also pops bigger for the swing (instead of a
    * separate overlay effect) so the small attack frames read as impact.
+   *
+   * Does nothing in bat form. The strike itself still lands — CombatSystem
+   * owns that — but a bat has no vampire pose to strike in, and playing one
+   * here would swap the bat sheet out mid-dash and leave the Count dashing as
+   * a man. Bat form owns the sprite for as long as it lasts, exactly as in
+   * updateAnimation.
    */
   playAttackAnim(): void {
+    if (this.batForm) return;
+
     this.attackAnimUntil = this.scene.time.now + VAMPIRE_ATTACK_DURATION_MS;
     // Held input can fire again before the previous animation finishes.
     // Force each accepted attack to restart instead of leaving the sprite
     // parked on the completed animation's final frame between strikes.
     this.play(animKey('vampire', 'attack', this.facing), false);
 
-    this.scene.tweens.add({
+    this.attackPopTween?.stop();
+    this.attackPopTween = this.scene.tweens.add({
       targets: this,
       scale: { from: this.baseScale * 1.22, to: this.baseScale },
       duration: 180,
       ease: 'Quad.easeOut',
+      onComplete: () => (this.attackPopTween = undefined),
     });
   }
 
