@@ -50,7 +50,7 @@ export const DASH = {
  */
 export const BAT = {
   /** Multiplier on the Count's display scale while he is a bat. */
-  scaleFactor: 0.6,
+  scaleFactor: 0.2,
   flapFrames: 2,
   flapFrameRate: 12,
   /** Smoke motes in the *poof* burst on each transformation. */
