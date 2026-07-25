@@ -53,7 +53,7 @@ import { DawnSky } from '../world/DawnSky';
 import { HUD } from '../ui/HUD';
 import { TouchControls } from '../ui/TouchControls';
 import { TEXTURES, AUDIO } from '../utils/assetKeys';
-import { VAMPIRE_ATTACK_DURATION_MS } from '../utils/animations';
+import { VAMPIRE_ATTACK_DURATION_MS, VAMPIRE_SUNBURN_DURATION_MS } from '../utils/animations';
 import type { EndCause, RunSummary } from '../types/game';
 
 type Phase = 'menu' | 'intro' | 'playing' | 'transition' | 'ended';
@@ -1326,33 +1326,20 @@ export class GameScene extends Phaser.Scene {
       })
       .setDepth(DEPTHS.attackFx);
 
-    // Blink: strobe the burn tint while embers pour off him.
-    let flashes = 0;
-    const strobe = this.time.addEvent({
-      delay: 110,
-      repeat: 7,
-      callback: () => {
-        flashes++;
-        embers.explode(8, this.player.x, this.player.y - 20);
-        if (flashes % 2 === 1) {
-          this.player.setTint(0xff9a3d);
-          this.player.setTintMode(Phaser.TintModes.FILL);
-        } else {
-          this.player.clearTint();
-          this.player.setTintMode(Phaser.TintModes.MULTIPLY);
-        }
-      },
+    // Romi drew the burning: he goes down, catches, flickers between two
+    // burning frames, and settles into ash. Nothing is tinted on top of that —
+    // an orange FILL strobe over frames that are already on fire would only
+    // paint out the fire she painted. The embers pour off him the whole way.
+    this.player.playSunburnAnim();
+    const ash = this.time.addEvent({
+      delay: 130,
+      repeat: Math.floor(VAMPIRE_SUNBURN_DURATION_MS / 130),
+      callback: () => embers.explode(6, this.player.x, this.player.y - 14),
     });
 
-    this.time.delayedCall(950, () => {
-      strobe.remove();
-      this.player.clearTint();
-      this.player.setTintMode(Phaser.TintModes.MULTIPLY);
-      this.player.playDeathAnim();
-      this.player.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
-        embers.explode(24, this.player.x, this.player.y - 10);
-        this.time.delayedCall(600, () => this.scene.start(SCENES.gameOver, summary));
-      });
+    this.player.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+      ash.remove();
+      this.time.delayedCall(700, () => this.scene.start(SCENES.gameOver, summary));
     });
   }
 

@@ -6,6 +6,12 @@ import { ANIMS, TEXTURES, animKey, type Dir4 } from '../utils/assetKeys';
 import { angleToDir4 } from '../utils/direction';
 import { VAMPIRE_ATTACK_DURATION_MS } from '../utils/animations';
 
+/** The charge-and-burst stretch of the magic layer, used as his cast. */
+const CAST_FLARE_FRAMES = [3, 4, 5, 6, 7, 8];
+const CAST_FLARE_SCALE = 0.75;
+/** How far out along his aim the spell appears, in world pixels. */
+const CAST_FLARE_DISTANCE = 46;
+
 /**
  * The vampire. Handles movement, the bat dash, directional animation, health,
  * damage invulnerability and the hurt flash. Attack timing lives in
@@ -41,9 +47,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     scene.add.existing(this);
     scene.physics.add.existing(this);
     this.setBaseScale(PLAYER.spriteScale);
-    // Body in unscaled 64x64 texture space: a small circle around the torso/feet.
-    // The bat sheet uses the same 64x64 frame, so the body survives the swap.
-    this.setCircle(11, 21, 26);
+    // Body in unscaled 64x64 texture space: a circle over his torso and legs.
+    // Romi's Count stands taller in the frame than the pack he replaced, so
+    // this is wider and lower than the old one — deliberately sized to land on
+    // the same on-screen radius at the new sprite scale, because the hitbox is
+    // how often a hunter's body actually touches him. The bat sheet uses the
+    // same 64x64 frame, so the body survives the swap.
+    this.setCircle(15, 16, 23);
     this.setCollideWorldBounds(true);
     this.setDepth(DEPTHS.player);
     this.play(animKey('vampire', 'idle', 'down'));
@@ -241,6 +251,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   playAttackAnim(): void {
     if (this.batForm) return;
 
+    this.spawnCastFlare();
     this.attackAnimUntil = this.scene.time.now + VAMPIRE_ATTACK_DURATION_MS;
     // Held input can fire again before the previous animation finishes.
     // Force each accepted attack to restart instead of leaving the sprite
@@ -258,6 +269,30 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
+   * The magic Romi's attack poses do not contain. She drew him rearing up and
+   * roaring, not casting, so the spell itself is the CraftPix pack's
+   * effects-only layer thrown out along his aim — close enough to his raised
+   * hands that the pose reads as the thing that launched it, far enough that
+   * it does not sit on top of his face. The burst that lands on a hunter is a
+   * separate one, spawned by CombatSystem on the target.
+   */
+  private spawnCastFlare(): void {
+    const flare = this.scene.add
+      .sprite(
+        this.x + Math.cos(this.aimAngle) * CAST_FLARE_DISTANCE,
+        this.y + Math.sin(this.aimAngle) * CAST_FLARE_DISTANCE - 6,
+        TEXTURES.vampireAttackMagic,
+        CAST_FLARE_FRAMES[0],
+      )
+      .setDepth(DEPTHS.attackFx)
+      .setScale(this.baseScale * CAST_FLARE_SCALE)
+      .setAlpha(0.9);
+
+    flare.play(ANIMS.castFlare);
+    flare.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => flare.destroy());
+  }
+
+  /**
    * Drops back to the idle pose. Cutscenes need this explicitly: nothing is
    * calling updateAnimation for them, so a strike would otherwise leave the
    * Count frozen on the attack animation's final frame for the rest of the
@@ -271,6 +306,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   playDeathAnim(): void {
     this.play(animKey('vampire', 'death', this.facing), true);
+  }
+
+  /**
+   * The other ending. Where playDeathAnim is just the fall, this carries on
+   * through Romi's burning frames and then her ash frames — the Count catching
+   * the sunrise, which is the one death the game is actually named after.
+   */
+  playSunburnAnim(): void {
+    this.play(animKey('vampire', 'sunburn', this.facing), true);
   }
 
   /**

@@ -8,7 +8,7 @@ A reverse horde survival game for the **"Countdown"** game jam theme.
 - **Production (main):** https://count-dawn.vercel.app
 - **Staging (staging branch):** https://count-dawn-git-staging-dotanvgs-projects.vercel.app
 
-> **Asset status:** the vampire, hunters, garlic throwers, Captain and castle use licensed free pixel-art packs from CraftPix (see Credits). Romi created the coffin, garlic, bat and cover art. Noam composed the original music (Main Title and Level Music) and the gameplay SFX. The blood droplet is still a runtime-generated placeholder. No AI-generated art or audio is used.
+> **Asset status:** **the Count is Romi's**, drawn by hand — as are the coffin, garlic, bat and cover art. The hunters, garlic throwers, Captain and castle use licensed free pixel-art packs from CraftPix (see Credits). Noam composed the original music (Main Title and Level Music) and the gameplay SFX. The blood droplet is still a runtime-generated placeholder. No AI-generated art or audio is used.
 
 ## Prototype state
 
@@ -21,7 +21,8 @@ The complete core loop is playable end to end:
 - ✅ Hunters drop +1 bloodlets that fly to the blood bar on pickup (red burst on arrival); hunters stop and swing their swords in melee range
 - ✅ Mobile support: red virtual joystick, ⚔ auto-strike-nearest button (Space on desktop), tap-to-strike toward the tap, rotate-to-landscape gate, device-aware menus
 - ✅ Sunrise countdown (60s for fast playtests) — big timer framed in the center window, tick pops, growing tremble, red panic mode + vignette + camera shakes in the last 10s
-- ✅ Fully animated 4-direction vampire (idle/run/attack/hurt/death) and sword-hunter enemies with death animations
+- ✅ **The Count is Romi's own drawing** — a hand-painted vampire in place of the bought pack, in all four directions: a breathing idle, a six-frame run, a rear-up-and-roar attack throwing a burst of magic down his aim, and two different deaths. A hunter's kill drops him where he stands; the sunrise catches fire, flickers through Romi's burning frames and leaves him as smoking ash before the screen changes
+- ✅ Sword-hunter enemies with death animations, all four directions
 - ✅ Hunters spawn at arena edges and chase the vampire; every new night raises the blood target, increases the alive cap, and accelerates spawning
 - ✅ Mouse-aimed melee arc attack with cooldown pip, hit flash and knockback — landed strikes shove the target back, flinch it, and cancel the swing it was winding up (the Captain resists most of it)
 - ✅ Garlic throwers: unarmed hunters who walk in visibly carrying a garlic bulb, hold a standoff, paint a green glowing crosshair that crawls from their feet onto the Count, and lob the bulb at the spot it locks onto — dodgeable by moving or dashing. Capped at one per night number (1 on night 1, 2 on night 2…), so ranged pressure ramps while the rest of the growing spawn budget stays melee
@@ -126,11 +127,15 @@ Suggested flow: feature branches → `staging` (playtest on the test URL) → me
 
 Character & environment art from [CraftPix](https://craftpix.net) under the [CraftPix file license](https://craftpix.net/file-licenses/) (free packs, game use permitted):
 
-- **Free Vampire 4-Direction Pixel Character Sprite Pack** — the Count (Vampires1)
+- **Free Vampire 4-Direction Pixel Character Sprite Pack** — the effects-only magic layer from Vampires1's attack sheet, all that remains in use now that the Count is Romi's; it is the burst on a landed strike and the spell he throws as he swings
 - **Free Base 4-Direction Male Character Pixel Art** — hunters & Hunter Captain (sword variant, incl. swing attack); garlic throwers (unarmed variant)
 - **Free 2D Top-Down Pixel Dungeon Asset Pack** — castle tiles & torch flames
 
-Original art by **Romi**: the cover art, coffin (closed/half/open), garlic (thrown at the Count by the garlic throwers), and the bat (the Count's dash and coffin-flight form).
+Original art by **Romi**: **the Count himself**, the cover art, coffin (closed/half/open), garlic (thrown at the Count by the garlic throwers), and the bat (the Count's dash and coffin-flight form).
+
+Her Count is not a sprite pack — it is a folder of 240x240 JPEGs on chroma green: one pose facing the camera, one with his back turned, one facing left, a six-frame left-facing run, three attack poses and a seven-frame death. `tools/build_count_sheets.py` turns those into the four sheets the game loads, and the mapping is written out in full at the top of that file. The short version: right is left mirrored; the idle is one drawing plus the same drawing a pixel lower; running toward or away from the camera alternates a pose with its own mirror so his legs swap; and the burning and ash frames are split into a separate `sunburn` animation, because they are only true when the thing that killed him was the sunrise.
+
+The one thing that script does differently from the bat's: it barely despills. The Count's **robe is green** — a dark forest green measuring 10-30 greenness, right where a tight chroma key starts dissolving it and where a blanket despill clamps it to charcoal. A greenness histogram over all of Romi's frames shows paint stopping at ~59 and the background starting at ~230, so the key lives in that gap and nothing below it is touched at all.
 
 Romi's bat arrived as two 240x240 JPEG frames painted on black. `tools/build_bat_sheet.py` turns them into the shipped `assets/characters/bat/bat_fly.png` — keying the background out to alpha, lifting the wing strokes so they read against the castle floor, registering both frames on the eyes so only the wings move, and laying them out as a 2-frame 64x64 sheet. Re-run it if the source frames are ever repainted.
 

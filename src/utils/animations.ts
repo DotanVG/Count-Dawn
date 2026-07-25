@@ -34,15 +34,33 @@ interface SheetSpec {
   shortRows?: Partial<Record<Dir4, number>>;
 }
 
-const VAMPIRE_ATTACK_FRAMES = 12;
-const VAMPIRE_ATTACK_FRAME_RATE = 30;
+const VAMPIRE_ATTACK_FRAMES = 6;
+const VAMPIRE_ATTACK_FRAME_RATE = 15;
 /** Full swing+magic-burst duration — Player holds the attack pose this long so it plays out completely. */
 export const VAMPIRE_ATTACK_DURATION_MS = (VAMPIRE_ATTACK_FRAMES / VAMPIRE_ATTACK_FRAME_RATE) * 1000;
 
+/**
+ * Romi drew the Count's run facing LEFT and nothing else, so the rows toward
+ * and away from the camera are made of far fewer real frames than the sheet is
+ * wide (see tools/build_count_sheets.py for exactly what stands in for what).
+ * Declaring them here is what stops the padding from blinking him out of
+ * existence, and `registerSheets` slows a short loop to the full row's cycle
+ * length so all four directions keep the same stride.
+ */
+const COUNT_RUN_SHORT_ROWS: Partial<Record<Dir4, number>> = { down: 4, up: 4 };
+
 const VAMPIRE_SHEETS: SheetSpec[] = [
-  { texture: TEXTURES.vampireIdle, action: 'idle', frames: 4, frameRate: 6, repeat: -1 },
-  { texture: TEXTURES.vampireWalk, action: 'walk', frames: 6, frameRate: 10, repeat: -1 },
-  { texture: TEXTURES.vampireRun, action: 'run', frames: 8, frameRate: 14, repeat: -1 },
+  // Two frames: the drawing, and the drawing one pixel lower. Slow, because at
+  // any speed at all a two-frame loop reads as a twitch rather than breathing.
+  { texture: TEXTURES.vampireIdle, action: 'idle', frames: 2, frameRate: 1.6, repeat: -1 },
+  {
+    texture: TEXTURES.vampireRun,
+    action: 'run',
+    frames: 6,
+    frameRate: 12,
+    repeat: -1,
+    shortRows: COUNT_RUN_SHORT_ROWS,
+  },
   {
     texture: TEXTURES.vampireAttack,
     action: 'attack',
@@ -50,9 +68,25 @@ const VAMPIRE_SHEETS: SheetSpec[] = [
     frameRate: VAMPIRE_ATTACK_FRAME_RATE,
     repeat: 0,
   },
-  { texture: TEXTURES.vampireHurt, action: 'hurt', frames: 4, frameRate: 12, repeat: 0 },
-  { texture: TEXTURES.vampireDeath, action: 'death', frames: 11, frameRate: 12, repeat: 0 },
 ];
+
+/**
+ * The death sheet is seven frames wide and feeds TWO animations, because how
+ * the Count dies depends on what killed him:
+ *
+ *   `death`   — frames 0-2, the fall. A hunter got him; he goes down and stays
+ *               down while the game-over screen comes up.
+ *   `sunburn` — the fall, then the burning pair beaten against each other,
+ *               then the ash pair. Only the sunrise does this to him.
+ */
+const COUNT_DEATH_FRAMES = 7;
+const COUNT_FALL = [0, 1, 2];
+const COUNT_SUNBURN = [...COUNT_FALL, 3, 4, 3, 4, 3, 4, 5, 6, 5, 6, 5, 6];
+const COUNT_FALL_FRAME_RATE = 6;
+const COUNT_SUNBURN_FRAME_RATE = 8;
+/** How long playSunburnAnim runs for — GameScene paces the dawn ending off it. */
+export const VAMPIRE_SUNBURN_DURATION_MS =
+  (COUNT_SUNBURN.length / COUNT_SUNBURN_FRAME_RATE) * 1000;
 
 /**
  * The pack's idle sheet is 12 columns wide, but the BACK-TURNED row only holds
@@ -98,6 +132,7 @@ const THROWER_SHEETS: SheetSpec[] = [
 
 export function createCharacterAnimations(scene: Phaser.Scene): void {
   registerSheets(scene, 'vampire', VAMPIRE_SHEETS, VAMPIRE_ROWS);
+  registerCountDeath(scene);
   registerSheets(scene, 'hunter', HUNTER_SHEETS, HUNTER_ROWS);
   registerSheets(scene, 'thrower', THROWER_SHEETS, THROWER_ROWS);
 
@@ -136,6 +171,38 @@ export function createCharacterAnimations(scene: Phaser.Scene): void {
       frameRate: 20,
       repeat: 0,
     });
+  }
+
+  // The Count's own cast: the earlier half of the same layer — the skull
+  // gathering and bursting — thrown out along his aim as the swing starts.
+  // Its length is tied to the swing's so the spell and the pose end together.
+  if (!scene.anims.exists(ANIMS.castFlare)) {
+    scene.anims.create({
+      key: ANIMS.castFlare,
+      frames: scene.anims.generateFrameNumbers(TEXTURES.vampireAttackMagic, { start: 3, end: 8 }),
+      frameRate: VAMPIRE_ATTACK_FRAME_RATE,
+      repeat: 0,
+    });
+  }
+}
+
+/** Both ways the Count can end, cut from the one seven-frame death sheet. */
+function registerCountDeath(scene: Phaser.Scene): void {
+  const build = (action: string, sequence: number[], frameRate: number, dir: Dir4) => {
+    const key = animKey('vampire', action, dir);
+    if (scene.anims.exists(key)) return;
+    const row = VAMPIRE_ROWS[dir] * COUNT_DEATH_FRAMES;
+    scene.anims.create({
+      key,
+      frames: sequence.map((frame) => ({ key: TEXTURES.vampireDeath, frame: row + frame })),
+      frameRate,
+      repeat: 0,
+    });
+  };
+
+  for (const dir of DIRS) {
+    build('death', COUNT_FALL, COUNT_FALL_FRAME_RATE, dir);
+    build('sunburn', COUNT_SUNBURN, COUNT_SUNBURN_FRAME_RATE, dir);
   }
 }
 
