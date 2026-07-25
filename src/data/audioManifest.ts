@@ -49,7 +49,7 @@ export const AUDIO_MANIFEST: readonly AudioAsset[] = [
       'assets/audio/sfx/player-attack-whoosh.ogg',
       'assets/audio/sfx/player-attack-whoosh.mp3',
     ],
-    defaultVolume: 0.7,
+    defaultVolume: 0.6,
   },
   {
     key: AUDIO.playerAttackSlurp,
@@ -59,7 +59,8 @@ export const AUDIO_MANIFEST: readonly AudioAsset[] = [
       'assets/audio/sfx/player-attack-slurp.ogg',
       'assets/audio/sfx/player-attack-slurp.mp3',
     ],
-    defaultVolume: 0.6,
+    // The drink is the payoff of the swing, so it sits above the whoosh.
+    defaultVolume: 1,
   },
   {
     key: AUDIO.batSound1,
@@ -87,7 +88,8 @@ export const AUDIO_MANIFEST: readonly AudioAsset[] = [
     label: 'Coffin Close',
     group: 'sfx',
     files: ['assets/audio/sfx/coffin-close.mp3'],
-    defaultVolume: 0.8,
+    // Quieter than the open: the lid shutting is a settle, not an event.
+    defaultVolume: 0.6,
   },
   // Reserved keys — the call sites already exist, the sounds do not yet.
   { key: AUDIO.playerHurt, label: 'Player Hurt', group: 'sfx', files: [], defaultVolume: 0.8 },
