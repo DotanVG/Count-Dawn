@@ -39,6 +39,11 @@ export class GarlicTarget {
     this.scene.cameras.main.shake(90, 0.002);
   }
 
+  /** Resume following between shots of a garlic Captain's two-bulb volley. */
+  unlock(): void {
+    this.locked = false;
+  }
+
   /**
    * Crawl toward `(px, py)` at a capped speed — fast enough to be a threat,
    * slow enough that running (and certainly dashing) shakes it off.

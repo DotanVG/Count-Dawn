@@ -84,13 +84,10 @@ export const THROWER = {
   spawnChance: 0.35,
   /** Throwers only start showing up from this night on. */
   firstNight: 1,
-  /**
-   * Hard cap on throwers alive at once: night 1 allows one, night 2 two, and
-   * so on. The melee hunters keep scaling through HUNTER's own per-night
-   * pressure, so later nights bring more of both without the ranged threat
-   * ever swamping the hall.
-   */
+  /** Night 1 allows one, night 2 two, and so on until the global cap. */
   maxAlivePerNight: 1,
+  /** Includes garlic-throwing Captains as well as ordinary throwers. */
+  maxAlive: 5,
   /** Preferred standoff band: he closes in past the far edge, backs off inside the near edge. */
   minStandoff: 240,
   maxStandoff: 420,
@@ -156,6 +153,12 @@ export const BOSS = {
   moveSpeed: 90,
   /** Bigger than his men, smaller than the Count. */
   spriteScale: 2.8,
+  /** One extra Captain joins the squad every five nights. */
+  nightsPerExtraCaptain: 5,
+  /** Each Captain independently has this chance to be a garlic thrower. */
+  garlicCaptainChance: 0.5,
+  /** Delay between a garlic Captain's two throws; the target keeps tracking. */
+  garlicThrowGapMs: 180,
 } as const;
 
 export const BLOOD = {
@@ -164,6 +167,13 @@ export const BLOOD = {
   targetIncreasePerNight: 15,
   /** Each collected bloodlet is worth this much. */
   dropletValue: 1,
+  /**
+   * Bloodlets within this distance of the Count are drawn in, without needing
+   * a physics overlap. Belt and braces for droplets that end up somewhere the
+   * Count's body cannot reach - tight against a wall, or outside the hall
+   * entirely - so blood he earned is never stranded.
+   */
+  magnetRadius: 74,
   /**
    * HP restored per unit of blood collected after the meter is already full.
    * Drinking past the quota tops the Count up instead of being thrown away -
@@ -186,4 +196,17 @@ export function hunterPressureForNight(night: number): { spawnIntervalMs: number
     ),
     maxAlive: HUNTER.maxAlive + increases * HUNTER.maxAlivePerNight,
   };
+}
+
+/** Night 1-4: one Captain; 5-9: two; 10-14: three; and so on. */
+export function captainCountForNight(night: number): number {
+  return 1 + Math.floor(Math.max(0, night) / BOSS.nightsPerExtraCaptain);
+}
+
+/** Ranged pressure grows by night, but all thrower flavours share a hard cap. */
+export function throwerCapForNight(night: number): number {
+  return Math.min(
+    THROWER.maxAlive,
+    Math.max(0, night) * THROWER.maxAlivePerNight,
+  );
 }

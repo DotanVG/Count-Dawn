@@ -1,12 +1,15 @@
 import Phaser from 'phaser';
 import {
   BLOOD,
+  BOSS,
   HUNTER,
   NIGHT,
   PLAYER,
   THROWER,
   bloodTargetForNight,
+  captainCountForNight,
   hunterPressureForNight,
+  throwerCapForNight,
 } from '../data/balance';
 import {
   ARENA,
@@ -23,6 +26,7 @@ import { isTouchDevice } from '../game/device';
 import { Player } from '../entities/Player';
 import { Hunter } from '../entities/Hunter';
 import { HunterCaptain } from '../entities/HunterCaptain';
+import { GarlicCaptain } from '../entities/GarlicCaptain';
 import { GarlicThrower } from '../entities/GarlicThrower';
 import { Garlic } from '../entities/Garlic';
 import { BloodPickup } from '../entities/BloodPickup';
@@ -56,6 +60,8 @@ interface GameSceneData {
   /** Skip the menu (used by the restart buttons) and rise straight from the coffin. */
   autostart?: boolean;
 }
+
+type Captain = HunterCaptain | GarlicCaptain;
 
 const FONT = 'Trebuchet MS, sans-serif';
 const COFFIN_POS = { x: 150, y: 430 };
@@ -92,7 +98,7 @@ export class GameScene extends Phaser.Scene {
   private sky!: DawnSky;
   private player!: Player;
   private coffin!: Coffin;
-  private boss: HunterCaptain | null = null;
+  private captains = new Set<Captain>();
   private hunters!: Phaser.Physics.Arcade.Group;
   private pickups!: Phaser.Physics.Arcade.Group;
   private garlics!: Phaser.Physics.Arcade.Group;
@@ -118,7 +124,7 @@ export class GameScene extends Phaser.Scene {
     this.phase = 'menu';
     this.isTouch = isTouchDevice();
     this.night = 1;
-    this.boss = null;
+    this.captains.clear();
     this.countdown = null;
     this.spawner = null;
     this.hud = null;
@@ -206,8 +212,7 @@ export class GameScene extends Phaser.Scene {
       hunter.pursue(this.player.x, this.player.y);
     }
 
-    // The Captain's health rides above his head, so it has to keep up with him.
-    if (this.boss?.active) this.hud?.followBoss(this.boss.x, this.boss.y);
+    this.vacuumNearbyPickups();
 
     const p = this.countdown.progress;
     this.nightOverlay.setAlpha(0.42 * (1 - p * p));
@@ -756,7 +761,7 @@ export class GameScene extends Phaser.Scene {
 
   /** (Re)creates the per-round simulation: flow, countdown, spawner. Reused every night. */
   private beginRoundSystems(): void {
-    this.boss = null;
+    this.captains.clear();
     // The Player and Coffin entities persist across rounds (unlike flow and
     // countdown, which are recreated below) — without resetting them
     // explicitly, HP stayed wherever it was left and the coffin stayed
@@ -809,7 +814,7 @@ export class GameScene extends Phaser.Scene {
   private canSpawnThrower(): boolean {
     if (this.night < THROWER.firstNight) return false;
     if (Math.random() >= THROWER.spawnChance) return false;
-    return this.countAliveThrowers() < this.night * THROWER.maxAlivePerNight;
+    return this.countAliveThrowers() < throwerCapForNight(this.night);
   }
 
   private countAliveThrowers(): number {
@@ -822,6 +827,10 @@ export class GameScene extends Phaser.Scene {
 
   private createThrower(spawnX: number, spawnY: number): GarlicThrower {
     const thrower = new GarlicThrower(this, spawnX, spawnY);
+    return this.configureThrower(thrower);
+  }
+
+  private configureThrower<T extends GarlicThrower>(thrower: T): T {
     thrower.onThrow = (fromX, fromY, toX, toY) => {
       if (this.phase !== 'playing') return;
       const garlic = new Garlic(this, fromX, fromY, toX, toY, (ix, iy, direct) =>
@@ -887,9 +896,7 @@ export class GameScene extends Phaser.Scene {
   // ── Wiring ──────────────────────────────────────────────────────────────
 
   private getAttackTargets(): Hunter[] {
-    const targets = this.hunters.getChildren().filter((h): h is Hunter => h instanceof Hunter);
-    if (this.boss?.active) targets.push(this.boss);
-    return targets;
+    return this.hunters.getChildren().filter((h): h is Hunter => h instanceof Hunter);
   }
 
   private setupCollisions(): void {
@@ -945,6 +952,26 @@ export class GameScene extends Phaser.Scene {
       },
       this,
     );
+  }
+
+  /**
+   * Collects any bloodlet close to the Count without waiting for their bodies
+   * to actually overlap. The physics overlap alone strands blood he cannot
+   * physically reach - a droplet pressed against a wall, or one that ended up
+   * outside the hall - so walking near it is enough.
+   */
+  private vacuumNearbyPickups(): void {
+    for (const object of this.pickups.getChildren()) {
+      const pickup = object as BloodPickup;
+      if (pickup.collecting || !pickup.active) continue;
+      const distance = Phaser.Math.Distance.Between(
+        pickup.x,
+        pickup.y,
+        this.player.x,
+        this.player.y,
+      );
+      if (distance <= BLOOD.magnetRadius) this.collectPickup(pickup);
+    }
   }
 
   /** Fly the bloodlet up to the blood bar; it counts on arrival, in a red burst. */
@@ -1040,8 +1067,10 @@ export class GameScene extends Phaser.Scene {
   private coffinHintMessage(): string {
     const needsBlood = !this.flow.isBloodFull;
     const needsBoss = !this.flow.isBossDefeated;
-    if (needsBlood && needsBoss) return 'Not yet: collect blood and slay the Captain';
-    if (needsBoss) return 'The Hunter Captain still lives';
+    const captainCount = captainCountForNight(this.night);
+    const captainName = captainCount > 1 ? 'the Captains' : 'the Captain';
+    if (needsBlood && needsBoss) return `Not yet: collect blood and slay ${captainName}`;
+    if (needsBoss) return captainCount > 1 ? 'Hunter Captains still live' : 'The Hunter Captain still lives';
     return 'You need more blood';
   }
 
@@ -1065,19 +1094,30 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnBoss(): void {
-    if (this.boss) return;
-    const arrival = this.bossArrivalPosition();
-    const spawn = offCanvasSpawnPoint(arrival);
-    this.boss = new HunterCaptain(this, spawn.x, spawn.y, this.emitter);
-    this.boss.beginEntrance(arrival.x, arrival.y);
-    this.boss.onEntranceArrived = () => this.boss?.playEntrance();
-    this.boss.onStrikeHit = () => {
-      if (this.phase === 'playing' && this.boss) this.player.takeDamage(this.boss.contactDamage);
-    };
-    this.hunters.add(this.boss);
-    // Place the bar before it is first shown, or it flashes at the origin for
-    // a frame before update() catches it up to him.
-    this.hud?.followBoss(this.boss.x, this.boss.y);
+    if (this.captains.size > 0) return;
+    const count = captainCountForNight(this.night);
+    const arrivals = this.bossArrivalPositions(count);
+
+    for (const arrival of arrivals) {
+      const spawn = offCanvasSpawnPoint(arrival);
+      const canUseGarlic =
+        this.countAliveThrowers() < throwerCapForNight(this.night) &&
+        Math.random() < BOSS.garlicCaptainChance;
+      const captain: Captain = canUseGarlic
+        ? this.configureThrower(new GarlicCaptain(this, spawn.x, spawn.y, this.emitter))
+        : new HunterCaptain(this, spawn.x, spawn.y, this.emitter);
+
+      captain.beginEntrance(arrival.x, arrival.y);
+      captain.onEntranceArrived = () => captain.playEntrance();
+      captain.onStrikeHit = () => {
+        if (this.phase === 'playing' && captain.active) {
+          this.player.takeDamage(captain.contactDamage);
+        }
+      };
+      this.captains.add(captain);
+      this.hunters.add(captain);
+    }
+
     this.flow.notifyBossSpawned();
     this.audioFx.play(AUDIO.bossAppear);
   }
@@ -1087,32 +1127,36 @@ export class GameScene extends Phaser.Scene {
    * arrives. Bottom/left/right only, matching SpawnSystem: never the north
    * wall behind the player's spawn point.
    */
-  private bossArrivalPosition(): { x: number; y: number } {
+  private bossArrivalPositions(count: number): { x: number; y: number }[] {
     const cx = (ARENA.left + ARENA.right) / 2;
     const cy = (ARENA.top + ARENA.bottom) / 2;
     const inset = 70;
-    const candidates = [
-      { x: cx, y: ARENA.bottom - inset },
-      { x: ARENA.left + inset, y: cy },
-      { x: ARENA.right - inset, y: cy },
-    ];
-    let best = candidates[0];
-    let bestDist = -1;
-    for (const c of candidates) {
-      const d = Phaser.Math.Distance.Between(c.x, c.y, this.player.x, this.player.y);
-      if (d > bestDist) {
-        bestDist = d;
-        best = c;
-      }
+    const spacing = 105;
+    const candidates: { x: number; y: number }[] = [];
+
+    for (let x = ARENA.left + inset; x <= ARENA.right - inset; x += spacing) {
+      candidates.push({ x, y: ARENA.bottom - inset });
     }
-    return best;
+    for (let y = ARENA.top + inset; y <= ARENA.bottom - inset; y += spacing) {
+      candidates.push({ x: ARENA.left + inset, y });
+      candidates.push({ x: ARENA.right - inset, y });
+    }
+
+    candidates.sort((a, b) => {
+      const da = Phaser.Math.Distance.Between(a.x, a.y, this.player.x, this.player.y);
+      const db = Phaser.Math.Distance.Between(b.x, b.y, this.player.x, this.player.y);
+      return db - da;
+    });
+
+    if (candidates.length === 0) return [{ x: cx, y: cy }];
+    return Array.from({ length: count }, (_, i) => candidates[i % candidates.length]);
   }
 
   private onHunterKilled(hunter: Hunter): void {
     hunter.spawnCorpse();
-    if (hunter instanceof HunterCaptain) {
-      this.boss = null;
-      this.flow.notifyBossDefeated();
+    if (hunter instanceof HunterCaptain || hunter instanceof GarlicCaptain) {
+      this.captains.delete(hunter);
+      if (this.captains.size === 0) this.flow.notifyBossDefeated();
     } else {
       this.scatterBloodlets(hunter.x, hunter.y);
       this.audioFx.play(AUDIO.hunterDeath);
@@ -1122,20 +1166,20 @@ export class GameScene extends Phaser.Scene {
 
   /** Dead hunters burst into a handful of +1 bloodlets around the corpse. */
   private scatterBloodlets(x: number, y: number): void {
+    // The corpse itself can be outside the hall (killed mid-entrance, or shoved
+    // against a wall), so the spawn point is clamped as well as the landing
+    // point - otherwise the droplets are born somewhere unreachable.
+    const fromX = Phaser.Math.Clamp(x, ARENA.left + 10, ARENA.right - 10);
+    const fromY = Phaser.Math.Clamp(y, ARENA.top + 10, ARENA.bottom - 10);
+
     for (let i = 0; i < HUNTER.bloodDroplets; i++) {
       const angle = (Math.PI * 2 * i) / HUNTER.bloodDroplets + Phaser.Math.FloatBetween(-0.4, 0.4);
       const dist = Phaser.Math.Between(14, 38);
-      const px = Phaser.Math.Clamp(x + Math.cos(angle) * dist, ARENA.left + 10, ARENA.right - 10);
-      const py = Phaser.Math.Clamp(y + Math.sin(angle) * dist, ARENA.top + 10, ARENA.bottom - 10);
-      const pickup = new BloodPickup(this, x, y);
+      const px = Phaser.Math.Clamp(fromX + Math.cos(angle) * dist, ARENA.left + 10, ARENA.right - 10);
+      const py = Phaser.Math.Clamp(fromY + Math.sin(angle) * dist, ARENA.top + 10, ARENA.bottom - 10);
+      const pickup = new BloodPickup(this, fromX, fromY);
       this.pickups.add(pickup);
-      this.tweens.add({
-        targets: pickup,
-        x: px,
-        y: py,
-        duration: 220,
-        ease: 'Quad.easeOut',
-      });
+      pickup.settleAt(px, py);
     }
   }
 

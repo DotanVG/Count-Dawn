@@ -3,7 +3,7 @@ import { THROWER } from '../data/balance';
 import { ARENA } from '../game/constants';
 import { TEXTURES, animKey } from '../utils/assetKeys';
 import { angleToDir4 } from '../utils/direction';
-import { Hunter, type HunterLook } from './Hunter';
+import { Hunter, type HunterLook, type HunterStats } from './Hunter';
 import { GarlicTarget } from './GarlicTarget';
 
 const THROWER_LOOK: HunterLook = {
@@ -17,7 +17,14 @@ const THROWER_LOOK: HunterLook = {
  * `tracking`   — crosshair crawling from his feet toward the Count.
  * `locked`     — crosshair held him long enough; strobing through the wind-up.
  */
-type ThrowerState = 'reposition' | 'tracking' | 'locked';
+type ThrowerState = 'reposition' | 'tracking' | 'locked' | 'volley';
+
+interface GarlicThrowerOptions {
+  stats?: HunterStats;
+  spriteScale?: number;
+  garlicPerThrow?: number;
+  garlicThrowGapMs?: number;
+}
 
 /** How long his hand stays empty after a throw before the next bulb appears. */
 const HELD_RELOAD_MS = 700;
@@ -40,17 +47,31 @@ export class GarlicThrower extends Hunter {
   private aimStateDeadline = 0;
   private target: GarlicTarget | null = null;
   private lockHeldMs = 0;
-  /** The bulb he carries — hidden between the throw and pulling out the next one. */
-  private heldGarlic: Phaser.GameObjects.Image;
-  private heldHiddenUntil = 0;
+  /**
+   * How many bulbs he throws per lock, and the beat between them. A plain
+   * thrower lobs one; the Captain has a bulb in each hand and throws them
+   * almost together (see GarlicCaptain).
+   */
+  protected readonly garlicPerThrow: number;
+  protected readonly garlicThrowGapMs: number;
+  private readonly baseSpriteScale: number;
+  /** The bulbs he carries — hidden between a throw and digging out the next. */
+  private heldGarlics: Phaser.GameObjects.Image[] = [];
+  private heldHiddenUntil: number[] = [];
+  private volleyShotsFired = 0;
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene, x, y, THROWER, THROWER_LOOK);
-    this.setScale(THROWER.spriteScale);
-    this.heldGarlic = scene.add
-      .image(x, y, TEXTURES.garlic)
-      .setScale(THROWER.garlicHeldScale)
-      .setDepth(this.depth + 1);
+  constructor(scene: Phaser.Scene, x: number, y: number, options: GarlicThrowerOptions = {}) {
+    super(scene, x, y, options.stats ?? THROWER, THROWER_LOOK);
+    this.garlicPerThrow = options.garlicPerThrow ?? 1;
+    this.garlicThrowGapMs = options.garlicThrowGapMs ?? 0;
+    this.baseSpriteScale = options.spriteScale ?? THROWER.spriteScale;
+    this.setScale(this.baseSpriteScale);
+    for (let i = 0; i < this.garlicPerThrow; i++) {
+      this.heldGarlics.push(
+        scene.add.image(x, y, TEXTURES.garlic).setScale(THROWER.garlicHeldScale).setDepth(this.depth + 1),
+      );
+      this.heldHiddenUntil.push(0);
+    }
     this.enterReposition();
   }
 
@@ -87,7 +108,13 @@ export class GarlicThrower extends Hunter {
 
       case 'locked':
         this.faceAndStand(targetX, targetY);
-        if (now >= this.aimStateDeadline) this.releaseThrow();
+        if (now >= this.aimStateDeadline) this.beginVolley();
+        break;
+
+      case 'volley':
+        this.faceAndStand(targetX, targetY);
+        this.target?.moveToward(targetX, targetY, deltaMs);
+        if (now >= this.aimStateDeadline) this.releaseVolleyShot();
         break;
     }
 
@@ -102,7 +129,7 @@ export class GarlicThrower extends Hunter {
   /** The crosshair and the held bulb are loose objects — both go when he does. */
   override destroy(fromScene?: boolean): void {
     this.clearTarget();
-    this.heldGarlic.destroy();
+    for (const bulb of this.heldGarlics) bulb.destroy();
     super.destroy(fromScene);
   }
 
@@ -116,22 +143,19 @@ export class GarlicThrower extends Hunter {
     const handX = this.displayWidth * 0.13;
     const handY = this.displayHeight * 0.06;
 
-    switch (this.facing) {
-      case 'left':
-        this.heldGarlic.setPosition(this.x - handX, this.y + handY).setDepth(this.depth + 1);
-        break;
-      case 'right':
-        this.heldGarlic.setPosition(this.x + handX, this.y + handY).setDepth(this.depth + 1);
-        break;
-      case 'up':
-        // Back turned: the bulb reads as held on the far side of his body.
-        this.heldGarlic.setPosition(this.x - handX * 0.8, this.y + handY).setDepth(this.depth - 1);
-        break;
-      default:
-        this.heldGarlic.setPosition(this.x + handX * 0.8, this.y + handY).setDepth(this.depth + 1);
+    for (let i = 0; i < this.heldGarlics.length; i++) {
+      const bulb = this.heldGarlics[i];
+      const side = this.heldGarlics.length === 1 ? 1 : i === 0 ? -1 : 1;
+      const facingSide = this.facing === 'left' ? -1 : this.facing === 'right' ? 1 : side;
+      const spread = this.heldGarlics.length === 1 ? 0.8 : 0.72 + i * 0.28;
+      bulb
+        .setPosition(
+          this.x + handX * facingSide * spread,
+          this.y + handY + (this.facing === 'left' || this.facing === 'right' ? side * 5 : 0),
+        )
+        .setDepth(this.facing === 'up' ? this.depth - 1 : this.depth + 1)
+        .setVisible(this.scene.time.now >= this.heldHiddenUntil[i]);
     }
-
-    this.heldGarlic.setVisible(this.scene.time.now >= this.heldHiddenUntil);
   }
 
   // ── States ──────────────────────────────────────────────────────────────
@@ -201,28 +225,49 @@ export class GarlicThrower extends Hunter {
   }
 
   /** No attack sheet exists for the unarmed pack — the throw is a scale-punch. */
-  private releaseThrow(): void {
+  private beginVolley(): void {
     const target = this.target;
     if (!target) {
       this.enterReposition();
       return;
     }
 
+    this.volleyShotsFired = 0;
+    this.aimState = 'volley';
+    this.releaseVolleyShot();
+  }
+
+  /** Fire one bulb; extra bulbs briefly keep tracking before they follow. */
+  private releaseVolleyShot(): void {
+    const target = this.target;
+    if (!target) {
+      this.enterReposition();
+      return;
+    }
+
+    const shotIndex = this.volleyShotsFired++;
     this.onThrow?.(this.x, this.y, target.x, target.y);
-    // The bulb left his hand — empty-handed until he produces the next one.
-    this.heldHiddenUntil = this.scene.time.now + HELD_RELOAD_MS;
+    this.heldHiddenUntil[shotIndex] = this.scene.time.now + HELD_RELOAD_MS;
     this.scene.tweens.add({
       targets: this,
-      scale: { from: THROWER.spriteScale * 1.2, to: THROWER.spriteScale },
-      duration: 220,
+      scale: { from: this.baseSpriteScale * 1.12, to: this.baseSpriteScale },
+      duration: 140,
       ease: 'Back.easeOut',
     });
-    this.enterReposition();
+
+    if (this.volleyShotsFired >= this.garlicPerThrow) {
+      this.enterReposition();
+      return;
+    }
+
+    target.unlock();
+    this.aimStateDeadline = this.scene.time.now + this.garlicThrowGapMs;
   }
 
   private enterReposition(): void {
     this.clearTarget();
     this.lockHeldMs = 0;
+    this.volleyShotsFired = 0;
     this.aimState = 'reposition';
     this.aimStateDeadline = this.scene.time.now + THROWER.aimCooldownMs;
   }

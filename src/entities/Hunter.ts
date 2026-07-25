@@ -122,6 +122,19 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     this.arrivalPoint = { x: arrivalX, y: arrivalY };
     this.entering = true;
     this.setDepth(DEPTHS.enteringHunter);
+    // He starts outside the hall by definition, so the bounds have to be off
+    // until he is in - they go back on the moment he arrives.
+    this.setCollideWorldBounds(false);
+  }
+
+  /**
+   * Top of the PAINTED sprite, which is not the top of its frame: the source
+   * art leaves rows 0-21 of every 64px frame empty above the head. Anything
+   * that hangs over a hunter (the Captain's health bar) has to anchor here,
+   * or it floats a scaled 10px of nothing above him.
+   */
+  get visibleTopY(): number {
+    return this.y - 10 * this.scaleY;
   }
 
   /** Direct pursuit — intentionally no steering or pathfinding. */
@@ -187,6 +200,10 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
         this.entering = false;
         this.arrivalPoint = null;
         this.setDepth(this.normalDepth);
+        // He is inside the hall now, so the hall's walls apply to him. Without
+        // this a knockback near a wall punts him into the wall band, where he
+        // stands stuck and drops his blood outside the playfield.
+        this.setCollideWorldBounds(true);
         this.onEntranceArrived?.();
       }
       return true;

@@ -1,10 +1,9 @@
 import Phaser from 'phaser';
-import { BLOOD, NIGHT, PLAYER } from '../data/balance';
+import { BLOOD, NIGHT, PLAYER, captainCountForNight } from '../data/balance';
 import { DEPTHS, GAME_WIDTH, GAME_HEIGHT, HUD_ANCHORS } from '../game/constants';
 import { EVENTS } from '../game/events';
 import { TEXTURES } from '../utils/assetKeys';
 import type { Objective } from '../types/game';
-import { BossHealthBar } from './BossHealthBar';
 
 const OBJECTIVE_TEXT: Record<Objective, string> = {
   'collect-blood': 'Collect blood before sunrise',
@@ -78,7 +77,6 @@ export class HUD {
   private night = 1;
   private objective: Objective = 'collect-blood';
   private vignette: Phaser.GameObjects.Rectangle;
-  private bossBar: BossHealthBar;
   private hpParticles: Phaser.GameObjects.Particles.ParticleEmitter;
   private bloodParticles: Phaser.GameObjects.Particles.ParticleEmitter;
   private appearTargets: Phaser.GameObjects.GameObject[] = [];
@@ -215,8 +213,6 @@ export class HUD {
       })
       .setDepth(DEPTHS.hud + 2);
 
-    this.bossBar = new BossHealthBar(scene, emitter);
-
     this.setHealth(PLAYER.maxHealth, PLAYER.maxHealth);
     this.setBlood(0, BLOOD.target);
 
@@ -271,11 +267,6 @@ export class HUD {
     this.dashLabel.setAlpha(ready ? 1 : 0.5);
   }
 
-  /** Keeps the Captain's health bar over his head; see BossHealthBar. */
-  followBoss(x: number, y: number): void {
-    this.bossBar.follow(x, y);
-  }
-
   /** Red burst where a bloodlet reaches the blood bar. */
   burstAtBloodBar(): void {
     this.bloodParticles.explode(8, HUD_ANCHORS.bloodBar.x, HUD_ANCHORS.bloodBar.y);
@@ -313,7 +304,12 @@ export class HUD {
 
     this.scene.time.delayedCall(20, () => {
       this.bannerQueued = false;
-      const content = `Night ${this.night}\n${OBJECTIVE_TEXT[this.objective]}`;
+      const captainCount = captainCountForNight(this.night);
+      const objectiveText =
+        this.objective === 'defeat-boss' && captainCount > 1
+          ? `Defeat the ${captainCount} Hunter Captains`
+          : OBJECTIVE_TEXT[this.objective];
+      const content = `Night ${this.night}\n${objectiveText}`;
 
       this.scene.tweens.killTweensOf(this.bannerPop);
       this.bannerPop
@@ -461,7 +457,6 @@ export class HUD {
     this.emitter.off(EVENTS.PLAYER_HEALED, this.onPlayerHealed, this);
     this.emitter.off(EVENTS.BLOOD_CHANGED, this.onBloodChanged, this);
     this.emitter.off(EVENTS.OBJECTIVE_CHANGED, this.onObjective, this);
-    this.bossBar.destroy();
   }
 
   private format(seconds: number): string {
