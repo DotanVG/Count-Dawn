@@ -1077,10 +1077,13 @@ export class GameScene extends Phaser.Scene {
   private wireEvents(): void {
     this.emitter.on(EVENTS.BOSS_SPAWN_REQUESTED, this.spawnBoss, this);
     this.emitter.on(EVENTS.DAWN_REACHED, this.onDawnReached, this);
-    this.emitter.on(EVENTS.BAT_FORM_CHANGED, (active: boolean) => {
-      if (active) {
+    this.emitter.on(EVENTS.BAT_FORM_CHANGED, (active: boolean, cause: 'flight' | 'dash') => {
+      if (active && cause === 'dash') {
+        this.audioFx.stop(AUDIO.batDashSound);
+        this.audioFx.playSegment(AUDIO.batDashSound, 0.5, 1.5);
+      } else if (active) {
         this.audioFx.play(AUDIO.batSound1, { loop: true });
-      } else {
+      } else if (cause === 'flight') {
         this.audioFx.stop(AUDIO.batSound1);
       }
     });
@@ -1388,6 +1391,7 @@ export class GameScene extends Phaser.Scene {
   private cleanup(): void {
     this.audioFx.stop(AUDIO.menuTheme);
     this.audioFx.stop(AUDIO.batSound1);
+    this.audioFx.stop(AUDIO.batDashSound);
     this.emitter.removeAllListeners();
     this.hud?.destroy();
     this.spawner?.stop();

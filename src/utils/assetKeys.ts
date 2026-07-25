@@ -85,6 +85,8 @@ export const AUDIO = {
   menuTheme: 'menu-theme',
   /** Bat-form chirping loop, active only while the Count is transformed. */
   batSound1: 'bat_sound_1',
+  /** Independent key for the 0.5s–2.0s dash excerpt of bat_sound_1. */
+  batDashSound: 'bat-dash-sound',
   playerAttack: 'sfx-player-attack',
   playerHurt: 'sfx-player-hurt',
   hunterDeath: 'sfx-hunter-death',

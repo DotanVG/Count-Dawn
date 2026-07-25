@@ -13,6 +13,18 @@ export class AudioSystem {
     this.scene.sound.play(key, config);
   }
 
+  /** Plays one exact excerpt and releases its temporary sound instance afterward. */
+  playSegment(key: string, start: number, duration: number): void {
+    if (!this.scene.cache.audio.exists(key)) return;
+
+    const sound = this.scene.sound.add(key);
+    sound.addMarker({ name: 'segment', start, duration });
+    const destroy = (): void => sound.destroy();
+    sound.once(Phaser.Sound.Events.COMPLETE, destroy);
+    sound.once(Phaser.Sound.Events.STOP, destroy);
+    sound.play('segment');
+  }
+
   /** Stops every currently-playing instance of this key (e.g. looping menu music). */
   stop(key: string): void {
     if (!this.scene.cache.audio.exists(key)) return;

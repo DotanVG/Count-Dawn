@@ -96,13 +96,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.facing = angleToDir4(Math.atan2(dir.y, dir.x));
 
     this.setVelocity(dir.x * DASH.speed, dir.y * DASH.speed);
-    this.setBatForm(true);
+    this.setBatForm(true, 'dash');
     this.spawnDashTrail();
 
     this.scene.time.delayedCall(DASH.durationMs, () => {
       if (!this.active) return;
       this.setVelocity(0, 0);
-      this.setBatForm(false);
+      this.setBatForm(false, 'dash');
     });
 
     return true;
@@ -118,7 +118,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * The bat has no directional rows: it is painted facing right, so left is
    * flipX and up/down keep whatever mirroring the last horizontal facing set.
    */
-  setBatForm(active: boolean): void {
+  setBatForm(active: boolean, cause: 'flight' | 'dash' = 'flight'): void {
     if (this.batForm === active) return;
     this.batForm = active;
     // A swing landed just before the shape change leaves its size-pop tween
@@ -136,7 +136,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       this.play(animKey('vampire', 'idle', this.facing), true);
     }
     this.applyFormScale();
-    this.emitter.emit(EVENTS.BAT_FORM_CHANGED, active);
+    this.emitter.emit(EVENTS.BAT_FORM_CHANGED, active, cause);
   }
 
   /**
