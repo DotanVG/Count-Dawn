@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { COLORS, DEPTHS } from '../game/constants';
 import { AUDIO, TEXTURES } from '../utils/assetKeys';
+import { getAudioDirector } from '../systems/AudioDirector';
 
 /**
  * The coffin (Romi's art, three states: closed → half-open → open): visible
@@ -99,9 +100,10 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
    */
   private playTransitionSound(open: boolean): void {
     const key = open ? AUDIO.coffinOpen : AUDIO.coffinClose;
-    if (!this.scene.cache.audio.exists(key)) return;
-
-    const sound = this.scene.sound.add(key);
+    // Owned here rather than fired and forgotten, because the queueing below
+    // needs the instance; the level still comes from the central balance.
+    const sound = getAudioDirector(this.scene).addSfx(key);
+    if (!sound) return;
     this.transitionSound = sound;
 
     const finish = (): void => {

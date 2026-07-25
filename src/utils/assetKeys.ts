@@ -77,19 +77,26 @@ export const ANIMS = {
 } as const;
 
 /**
- * Audio keys. No audio files ship yet; AudioSystem plays a key only if
- * something was actually loaded under it, so these are safe no-ops.
+ * Audio keys. One key per logical sound: the OGG and MP3 that ship for a key
+ * are fallback encodings of the same track, not two sounds (see
+ * data/audioManifest.ts, which owns the files, and docs/AUDIO.md). Keys with
+ * no asset yet are safe no-ops — AudioDirector only plays what was loaded.
  */
 export const AUDIO = {
-  /** Menu-only theme (Noam) — played while on the main menu, stopped once the night starts. */
-  menuTheme: 'menu-theme',
+  /** Noam's Main Title. Menu, cold open and every game-over screen. */
+  mainTitle: 'music-main-title',
+  /** Noam's Level Music. Starts the instant the first night hands over control. */
+  levelMusic: 'music-level',
   /** Bat-form chirping loop, active only while the Count is transformed. */
-  batSound1: 'bat_sound_1',
-  /** Independent key for the 0.5s–2.0s dash excerpt of bat_sound_1. */
-  batDashSound: 'bat-dash-sound',
-  coffinOpen: 'coffin-open',
-  coffinClose: 'coffin-close',
-  playerAttack: 'sfx-player-attack',
+  batSound1: 'sfx-bat-loop',
+  /** Independent key for the 0.5s–1.5s dash excerpt of the bat loop. */
+  batDashSound: 'sfx-bat-dash',
+  coffinOpen: 'sfx-coffin-open',
+  coffinClose: 'sfx-coffin-close',
+  /** Noam's attack layer 1 — the swing through the air. */
+  playerAttackWhoosh: 'sfx-player-attack-whoosh',
+  /** Noam's attack layer 2 — the drink. Always fired together with the whoosh. */
+  playerAttackSlurp: 'sfx-player-attack-slurp',
   playerHurt: 'sfx-player-hurt',
   hunterDeath: 'sfx-hunter-death',
   bloodPickup: 'sfx-blood-pickup',

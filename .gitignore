@@ -31,6 +31,13 @@ Thumbs.db
 .env.*
 !.env.example
 
+# Audio source masters. Only the OGG/MP3 exports ship; the WAV/AIFF masters
+# stay out of the repo and out of the build (see docs/AUDIO.md).
+public/assets/audio/**/*.wav
+public/assets/audio/**/*.aif
+public/assets/audio/**/*.aiff
+public/assets/audio/**/*.flac
+
 # Misc
 coverage/
 .cache/

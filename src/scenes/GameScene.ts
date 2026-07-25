@@ -45,7 +45,7 @@ import {
   coldOpenTimerSeconds,
 } from '../systems/coldOpen';
 import { GameFlowSystem } from '../systems/GameFlowSystem';
-import { AudioSystem } from '../systems/AudioSystem';
+import { AudioDirector, getAudioDirector, PLAYER_ATTACK_SFX } from '../systems/AudioDirector';
 import { CastleMap } from '../world/CastleMap';
 import { DawnSky } from '../world/DawnSky';
 import { HUD } from '../ui/HUD';
@@ -94,7 +94,8 @@ export class GameScene extends Phaser.Scene {
   private emitter!: Phaser.Events.EventEmitter;
   private flow!: GameFlowSystem;
   private countdown: CountdownSystem | null = null;
-  private audioFx!: AudioSystem;
+  /** The game-wide audio authority; owned by the game, never by this scene. */
+  private audio!: AudioDirector;
   private sky!: DawnSky;
   private player!: Player;
   private coffin!: Coffin;
@@ -132,7 +133,7 @@ export class GameScene extends Phaser.Scene {
 
     this.emitter = new Phaser.Events.EventEmitter();
     this.flow = new GameFlowSystem(this.emitter, bloodTargetForNight(this.night));
-    this.audioFx = new AudioSystem(this);
+    this.audio = getAudioDirector(this);
 
     new CastleMap(this);
     this.sky = new DawnSky(this);
@@ -150,7 +151,12 @@ export class GameScene extends Phaser.Scene {
       this,
       this.player,
       (hunter) => this.onHunterKilled(hunter),
-      () => this.audioFx.play(AUDIO.playerAttack),
+      // Fired by CombatSystem only once an attack has actually been accepted
+      // (cooldown clear, Count alive) — never per frame while the button is
+      // held, and never for a rejected swing. The two layers are separate
+      // files on separate keys and start in the same frame, so they read as
+      // one attack sound while each keeps its own level.
+      () => this.audio.playSfxStack(PLAYER_ATTACK_SFX),
     );
 
     // Cold ambient darkness that lifts as the night passes…
@@ -168,6 +174,10 @@ export class GameScene extends Phaser.Scene {
     this.wireEvents();
     this.setupPauseKeys();
 
+    // scene.events survives a restart, so these are paired with explicit
+    // off() calls in cleanup — otherwise every restart adds another listener.
+    this.events.on(Phaser.Scenes.Events.PAUSE, this.onScenePaused, this);
+    this.events.on(Phaser.Scenes.Events.RESUME, this.onSceneResumed, this);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, this.cleanup, this);
 
     // Strict check: Phaser keeps the previous start()'s data when none is
@@ -224,6 +234,19 @@ export class GameScene extends Phaser.Scene {
     if (this.phase !== 'playing' || this.scene.isPaused()) return;
     this.scene.pause();
     this.scene.launch(SCENES.pause);
+  }
+
+  /**
+   * Music follows the scene, not the pause menu: this covers the pause
+   * overlay AND the portrait-orientation gate, and opening the pause screen
+   * never promotes the Main Title over a suspended run.
+   */
+  private onScenePaused(): void {
+    this.audio.pauseMusic();
+  }
+
+  private onSceneResumed(): void {
+    this.audio.resumeMusic();
   }
 
   // ── Per-device control routing ──────────────────────────────────────────
@@ -338,8 +361,11 @@ export class GameScene extends Phaser.Scene {
 
     this.input.keyboard?.once('keydown-ENTER', () => this.startIntro());
 
-    // Menu-only theme (Noam) — looping, stopped the instant the night starts.
-    this.audioFx.play(AUDIO.menuTheme, { loop: true, volume: 0.5 });
+    // The Main Title (Noam) owns everything that is not an active night: the
+    // menu, the cold open, and every game-over screen. Asking for it while it
+    // is already playing does nothing, so coming back here from game over
+    // neither restarts it nor stacks a second copy.
+    this.audio.playMainTitle();
   }
 
   /** Write-stream / reverse-stream the three tagline sentences, forever. */
@@ -379,7 +405,9 @@ export class GameScene extends Phaser.Scene {
     if (this.phase !== 'menu') return;
     this.phase = 'intro';
 
-    this.audioFx.stop(AUDIO.menuTheme);
+    // The Main Title deliberately keeps playing from here: through the cold
+    // open, through the coffin opening, and through the Count's flight into
+    // the hall. It is handed over in startPlaying, not here.
     this.taglineTimer?.remove();
     this.taglineTimer = null;
     if (this.menuUi) {
@@ -576,7 +604,7 @@ export class GameScene extends Phaser.Scene {
       hunter.spawnCorpse();
       this.hunters.remove(hunter, true, true);
     }
-    this.audioFx.play(AUDIO.hunterDeath);
+    this.audio.playSfx(AUDIO.hunterDeath);
 
     // Every drop he is short of a full meter, flying home at once.
     const delay = COLD_OPEN.bloodStartMs - COLD_OPEN.strikeMs;
@@ -733,6 +761,15 @@ export class GameScene extends Phaser.Scene {
     this.phase = 'playing';
     this.setPlayerDormant(false);
     this.cameras.main.shake(120, 0.004); // landing thump
+
+    // THE gameplay music cue. This is the one line in the run where the cold
+    // open is over, the Count has landed, controls go live and (via
+    // beginRoundSystems below) the first-night countdown and hunter spawning
+    // start — so the handover is tied to the state change itself, not to a
+    // timer guessing when the cutscene ends. Subsequent nights come through
+    // beginRoundSystems directly and never re-request it; if they did, the
+    // director would ignore it, which is what keeps the loop seamless.
+    this.audio.playLevelMusic();
 
     // The opening cinematic builds the HUD early (it needs the bars on screen
     // to tell its story), so only create one here if it isn't already up.
@@ -992,7 +1029,7 @@ export class GameScene extends Phaser.Scene {
       onComplete: () => {
         if (!this.flow.hasEnded) {
           this.flow.addBlood(pickup.amount);
-          this.audioFx.play(AUDIO.bloodPickup);
+          this.audio.playSfx(AUDIO.bloodPickup);
           this.hud?.burstAtBloodBar();
         }
         this.pickups.remove(pickup, true, true);
@@ -1079,20 +1116,20 @@ export class GameScene extends Phaser.Scene {
     this.emitter.on(EVENTS.DAWN_REACHED, this.onDawnReached, this);
     this.emitter.on(EVENTS.BAT_FORM_CHANGED, (active: boolean, cause: 'flight' | 'dash') => {
       if (active && cause === 'dash') {
-        this.audioFx.stop(AUDIO.batDashSound);
-        this.audioFx.playSegment(AUDIO.batDashSound, 0.5, 1);
+        this.audio.stopSfx(AUDIO.batDashSound);
+        this.audio.playSfxSegment(AUDIO.batDashSound, 0.5, 1);
       } else if (active) {
-        this.audioFx.play(AUDIO.batSound1, { loop: true });
+        this.audio.playSfx(AUDIO.batSound1, { loop: true });
       } else if (cause === 'flight') {
-        this.audioFx.stop(AUDIO.batSound1);
+        this.audio.stopSfx(AUDIO.batSound1);
       }
     });
     this.emitter.on(EVENTS.PLAYER_DIED, () => this.flow.notifyPlayerDied());
-    this.emitter.on(EVENTS.PLAYER_DAMAGED, () => this.audioFx.play(AUDIO.playerHurt));
+    this.emitter.on(EVENTS.PLAYER_DAMAGED, () => this.audio.playSfx(AUDIO.playerHurt));
     this.emitter.on(EVENTS.BLOOD_OVERFLOWED, this.hopBloodToHealth, this);
     this.emitter.on(EVENTS.COFFIN_ACTIVATED, () => this.coffin.activate());
     this.emitter.on(EVENTS.FINAL_TEN_SECONDS, () => {
-      this.audioFx.play(AUDIO.finalSeconds);
+      this.audio.playSfx(AUDIO.finalSeconds);
       this.cameras.main.flash(200, 255, 154, 61);
     });
     this.emitter.on(EVENTS.GAME_ENDED, this.onGameEnded, this);
@@ -1129,7 +1166,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.flow.notifyBossSpawned();
-    this.audioFx.play(AUDIO.bossAppear);
+    this.audio.playSfx(AUDIO.bossAppear);
   }
 
   /**
@@ -1169,7 +1206,7 @@ export class GameScene extends Phaser.Scene {
       if (this.captains.size === 0) this.flow.notifyBossDefeated();
     } else {
       this.scatterBloodlets(hunter.x, hunter.y);
-      this.audioFx.play(AUDIO.hunterDeath);
+      this.audio.playSfx(AUDIO.hunterDeath);
     }
     this.hunters.remove(hunter, true, true);
   }
@@ -1194,13 +1231,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onDawnReached(): void {
-    this.audioFx.play(AUDIO.dawn);
+    this.audio.playSfx(AUDIO.dawn);
     this.flow.notifyDawnReached();
   }
 
   private onGameEnded(cause: EndCause): void {
     this.spawner?.stop();
     this.physics.pause();
+
+    // A run that is over hands the music back to the Main Title straight
+    // away, so it is already up and looping by the time the game-over screen
+    // appears (death waits on a death animation first). GameFlowSystem lets
+    // the run end exactly once, and the director ignores a request for the
+    // track it is already playing, so this cannot fire the swap twice.
+    if (cause !== 'victory') this.audio.playMainTitle();
 
     // Nothing is aiming at a Count who has already lost (or won) the night.
     this.garlics.clear(true, true);
@@ -1389,14 +1433,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private cleanup(): void {
-    this.audioFx.stop(AUDIO.menuTheme);
-    this.audioFx.stop(AUDIO.batSound1);
-    this.audioFx.stop(AUDIO.batDashSound);
+    // Only this scene's own effects are silenced. The music is deliberately
+    // left alone: it belongs to the game, not to the scene, and has to carry
+    // across game over, the menu and the next run without a gap.
+    this.audio.stopSfx(AUDIO.batSound1);
+    this.audio.stopSfx(AUDIO.batDashSound);
     this.emitter.removeAllListeners();
     this.hud?.destroy();
     this.spawner?.stop();
     this.taglineTimer?.remove();
     this.coldOpenClock?.remove();
+    this.events.off(Phaser.Scenes.Events.PAUSE, this.onScenePaused, this);
+    this.events.off(Phaser.Scenes.Events.RESUME, this.onSceneResumed, this);
     this.input.keyboard?.off('keydown-ESC', this.requestPause, this);
     this.input.keyboard?.off('keydown-P', this.requestPause, this);
   }

@@ -19,7 +19,8 @@ public/assets/
   environment/
     castle/      tilemap / background images
   ui/            HUD frames, icons
-  audio/         music + sfx (ogg preferred, mp3 fallback)
+  audio/music/   music tracks (ogg first, mp3 fallback, same key)
+  audio/sfx/     sound effects (same pairing)
 ```
 
 ## How placeholder replacement works
@@ -71,15 +72,23 @@ Physics sizing is set explicitly (e.g. `Player` calls `setCircle(20, 4, 4)`), in
 
 ## Audio
 
-The original main-title theme by **Ouzana** is loaded from `public/assets/audio/`. Gameplay SFX and additional level music are planned.
+Audio has its own guide: **[docs/AUDIO.md](AUDIO.md)** — source WAV workflow, OGG/MP3 encoding, the music state flow and the in-game balance editor. The short version:
 
-Load files in `PreloadScene` under the `AUDIO` keys:
+Sounds are not loaded by hand. Add a key to `AUDIO` in `assetKeys.ts`, then one entry to `AUDIO_MANIFEST` in [`src/data/audioManifest.ts`](../src/data/audioManifest.ts):
 
 ```ts
-this.load.audio(AUDIO.playerAttack, 'assets/audio/player-attack.ogg');
+{
+  key: AUDIO.playerHurt,
+  label: 'Player Hurt',
+  group: 'sfx',
+  files: ['assets/audio/sfx/player-hurt.ogg', 'assets/audio/sfx/player-hurt.mp3'],
+  defaultVolume: 0.8,
+}
 ```
 
-`AudioSystem.play()` is already called at every hook point (attack, hurt, hunter death, pickup, boss appear, final seconds, dawn, victory, defeat) and is a silent no-op for unloaded keys — sounds start working the moment they are loaded.
+`PreloadScene` loads every manifest entry that has files, and the audio balance editor lists every entry whether it has files or not. `AudioDirector.playSfx()` is already called at every hook point (attack, hurt, hunter death, pickup, boss appear, final seconds, dawn, victory, defeat) and is a silent no-op for unloaded keys — sounds start working the moment a file is added to the manifest.
+
+Never commit a WAV master, and never put one under `public/`.
 
 ## Crediting asset creators
 

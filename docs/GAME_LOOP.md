@@ -52,4 +52,4 @@ Shift on desktop, the bat button on mobile. The Count *poofs* into a bat and bur
 
 Procedural maps, multiple levels, permanent progression, upgrades, inventory, advanced enemy AI or full pathfinding, multiple enemy types beyond hunter + boss, and boss phases.
 
-Extension points exist for: touch input (`InputController`), audio (`AudioSystem` + keys in `assetKeys.ts`), real sprites (`docs/ASSET_INTEGRATION.md`).
+Extension points exist for: touch input (`InputController`), audio (`AudioDirector` + the manifest in `data/audioManifest.ts` — see `docs/AUDIO.md`), real sprites (`docs/ASSET_INTEGRATION.md`).

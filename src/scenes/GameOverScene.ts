@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, SCENES } from '../game/constants';
 import { isTouchDevice } from '../game/device';
+import { getAudioDirector } from '../systems/AudioDirector';
 import type { RunSummary } from '../types/game';
 
 const FONT = 'Trebuchet MS, sans-serif';
@@ -17,6 +18,11 @@ export class GameOverScene extends Phaser.Scene {
 
   create(summary: RunSummary): void {
     const cx = GAME_WIDTH / 2;
+
+    // GameScene already handed the music back at the moment the run ended,
+    // so this is a no-op in the normal flow — it is here so the screen is
+    // never reached with the Level Music still running underneath.
+    getAudioDirector(this).playMainTitle();
 
     this.add
       .text(cx, GAME_HEIGHT * 0.26, 'DAWN CLAIMS YOU', {

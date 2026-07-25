@@ -8,7 +8,7 @@ A reverse horde survival game for the **"Countdown"** game jam theme.
 - **Production (main):** https://count-dawn.vercel.app
 - **Staging (staging branch):** https://count-dawn-git-staging-dotanvgs-projects.vercel.app
 
-> **Asset status:** the vampire, hunters, garlic throwers, Captain and castle use licensed free pixel-art packs from CraftPix (see Credits). Romi created the coffin, garlic, bat and cover art. Ouzana composed the original main-title soundtrack; gameplay SFX and additional level music are planned. The blood droplet is still a runtime-generated placeholder. No AI-generated art or audio is used.
+> **Asset status:** the vampire, hunters, garlic throwers, Captain and castle use licensed free pixel-art packs from CraftPix (see Credits). Romi created the coffin, garlic, bat and cover art. Noam composed the original music (Main Title and Level Music) and the gameplay SFX. The blood droplet is still a runtime-generated placeholder. No AI-generated art or audio is used.
 
 ## Prototype state
 
@@ -89,14 +89,15 @@ src/
   game/      bootstrap: main, Phaser config, constants, event names, fullscreen
   scenes/    Boot, Preload, MainMenu, Game, Pause, GameOver, Victory
   entities/  Player, Hunter, HunterCaptain, BloodPickup, Coffin
-  systems/   Input, Combat, Spawn, Countdown, GameFlow (rules), Audio
+  systems/   Input, Combat, Spawn, Countdown, GameFlow (rules), AudioDirector
   ui/        HUD (timer, health, blood, objective), BossHealthBar
   data/      balance.ts — every tunable number, incl. FAST_DEV_MODE
+             audioManifest.ts / audioBalance.ts — every sound and its level
   utils/     assetKeys, runtime placeholder textures
   types/     shared game types
 public/assets/  real assets go here (empty for now)
 tests/     node:test unit tests for CountdownSystem and GameFlowSystem
-docs/      game loop, asset integration, deployment
+docs/      game loop, asset integration, audio, deployment
 ```
 
 ## Dev mode
@@ -118,8 +119,7 @@ Suggested flow: feature branches → `staging` (playtest on the test URL) → me
 
 - **Dotan** — _(role TBD)_
 - **Romi** — coffin, garlic and bat art; cover art
-- **Ouzana** — original soundtrack (main-title theme; gameplay SFX and more level music planned)
-- **Noam** — _(role TBD)_
+- **Noam** — original music (Main Title, Level Music) and gameplay SFX (attack WOOSH and SLURP)
 - **Abed** — _(role TBD)_
 
 ### Third-party assets
@@ -134,6 +134,6 @@ Original art by **Romi**: the cover art, coffin (closed/half/open), garlic (thro
 
 Romi's bat arrived as two 240x240 JPEG frames painted on black. `tools/build_bat_sheet.py` turns them into the shipped `assets/characters/bat/bat_fly.png` — keying the background out to alpha, lifting the wing strokes so they read against the castle floor, registering both frames on the eyes so only the wings move, and laying them out as a 2-frame 64x64 sheet. Re-run it if the source frames are ever repainted.
 
-Original music by **Ouzana**: the main-title theme. Gameplay SFX and additional level music are planned.
+Original music and sound effects by **Noam**: the Main Title theme, the Level Music that plays through every night, and the two-layer player attack (WOOSH + SLURP). Each ships as an OGG with an MP3 fallback under one Phaser key; the WAV masters stay out of the repo. See [docs/AUDIO.md](docs/AUDIO.md) for the workflow, the music state flow and the in-game audio balance editor.
 
 The blood droplet is a runtime-generated placeholder. Summonable bat minions are still planned; they will reuse `TEXTURES.bat` / `ANIMS.batFly`, already shipping for the dash and the coffin flights. No AI-generated art or audio.

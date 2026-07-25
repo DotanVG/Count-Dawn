@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { SCENES } from '../game/constants';
-import { TEXTURES, AUDIO } from '../utils/assetKeys';
+import { TEXTURES } from '../utils/assetKeys';
+import { AUDIO_MANIFEST } from '../data/audioManifest';
 import { createCharacterAnimations } from '../utils/animations';
 import { createPlaceholderTextures } from '../utils/placeholderTextures';
 
@@ -47,15 +48,13 @@ export class PreloadScene extends Phaser.Scene {
     // Menu / itch cover art.
     this.load.image(TEXTURES.cover, 'assets/ui/count_dawn_cover.jpeg');
 
-    // Menu theme (Noam) — menu only, never plays during a night.
-    this.load.audio(AUDIO.menuTheme, [
-      'assets/audio/menu_theme.ogg',
-      'assets/audio/menu_theme.mp3',
-    ]);
-    this.load.audio(AUDIO.batSound1, 'assets/audio/bat_sound_1.mp3');
-    this.load.audio(AUDIO.batDashSound, 'assets/audio/bat_sound_1.mp3');
-    this.load.audio(AUDIO.coffinOpen, 'assets/audio/coffin-open.mp3');
-    this.load.audio(AUDIO.coffinClose, 'assets/audio/coffin-close.mp3');
+    // Music and SFX (Noam) — one Phaser key per sound, several encodings per
+    // key. Phaser downloads only the first format the browser can decode, so
+    // the OGG/MP3 pair costs one request, not two. See data/audioManifest.ts.
+    for (const asset of AUDIO_MANIFEST) {
+      if (asset.files.length === 0) continue;
+      this.load.audio(asset.key, [...asset.files]);
+    }
 
     // Props — Romi's coffin (3 states) + the garlic thrown by the throwers.
     this.load.image(TEXTURES.coffinClosed, 'assets/environment/props/coffin_closed.png');
