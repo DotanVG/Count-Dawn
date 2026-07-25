@@ -1080,7 +1080,7 @@ export class GameScene extends Phaser.Scene {
     this.emitter.on(EVENTS.BAT_FORM_CHANGED, (active: boolean, cause: 'flight' | 'dash') => {
       if (active && cause === 'dash') {
         this.audioFx.stop(AUDIO.batDashSound);
-        this.audioFx.playSegment(AUDIO.batDashSound, 0.5, 1.5);
+        this.audioFx.playSegment(AUDIO.batDashSound, 0.5, 1);
       } else if (active) {
         this.audioFx.play(AUDIO.batSound1, { loop: true });
       } else if (cause === 'flight') {

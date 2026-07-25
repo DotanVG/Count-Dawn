@@ -87,6 +87,8 @@ export const AUDIO = {
   batSound1: 'bat_sound_1',
   /** Independent key for the 0.5s–2.0s dash excerpt of bat_sound_1. */
   batDashSound: 'bat-dash-sound',
+  coffinOpen: 'coffin-open',
+  coffinClose: 'coffin-close',
   playerAttack: 'sfx-player-attack',
   playerHurt: 'sfx-player-hurt',
   hunterDeath: 'sfx-hunter-death',

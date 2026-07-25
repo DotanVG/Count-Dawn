@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { COLORS, DEPTHS } from '../game/constants';
-import { TEXTURES } from '../utils/assetKeys';
+import { AUDIO, TEXTURES } from '../utils/assetKeys';
 
 /**
  * The coffin (Romi's art, three states: closed → half-open → open): visible
@@ -17,6 +17,9 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
   private glow: Phaser.GameObjects.Arc;
   private hintText: Phaser.GameObjects.Text | null = null;
   private hintCooldownUntil = 0;
+  /** Current lid sound; the opposite transition waits until this finishes. */
+  private transitionSound: Phaser.Sound.BaseSound | null = null;
+  private queuedOpenState: boolean | null = null;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, TEXTURES.coffinClosed);
@@ -63,7 +66,13 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
 
   /** Animate the lid through the half-open frame with a small pop. */
   setOpen(open: boolean): void {
+    if (this.transitionSound) {
+      this.queuedOpenState = open;
+      return;
+    }
+
     if (this.opened === open) return;
+
     this.opened = open;
     // The lid pop tweens scale too; the breath has to let go of it first or
     // the two fight and the coffin never settles back to its resting size.
@@ -80,6 +89,35 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
       duration: 200,
       ease: 'Quad.easeOut',
     });
+    this.playTransitionSound(open);
+  }
+
+  /**
+   * Plays each lid sound in full. If the opposite transition is requested
+   * while it is playing, that visual and its sound begin only after this one
+   * completes, so opening and closing can never overlap or cut each other off.
+   */
+  private playTransitionSound(open: boolean): void {
+    const key = open ? AUDIO.coffinOpen : AUDIO.coffinClose;
+    if (!this.scene.cache.audio.exists(key)) return;
+
+    const sound = this.scene.sound.add(key);
+    this.transitionSound = sound;
+
+    const finish = (): void => {
+      if (this.transitionSound !== sound) return;
+      this.transitionSound = null;
+      sound.destroy();
+
+      const queued = this.queuedOpenState;
+      this.queuedOpenState = null;
+      if (this.active && queued !== null && queued !== this.opened) {
+        this.setOpen(queued);
+      }
+    };
+
+    sound.once(Phaser.Sound.Events.COMPLETE, finish);
+    if (!sound.play()) finish();
   }
 
   activate(): void {
@@ -173,6 +211,9 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
   }
 
   override destroy(fromScene?: boolean): void {
+    this.queuedOpenState = null;
+    this.transitionSound?.destroy();
+    this.transitionSound = null;
     this.breathTween?.stop();
     this.pulseTween?.stop();
     this.glow.destroy();

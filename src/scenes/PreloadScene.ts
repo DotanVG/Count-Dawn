@@ -54,6 +54,8 @@ export class PreloadScene extends Phaser.Scene {
     ]);
     this.load.audio(AUDIO.batSound1, 'assets/audio/bat_sound_1.mp3');
     this.load.audio(AUDIO.batDashSound, 'assets/audio/bat_sound_1.mp3');
+    this.load.audio(AUDIO.coffinOpen, 'assets/audio/coffin-open.mp3');
+    this.load.audio(AUDIO.coffinClose, 'assets/audio/coffin-close.mp3');
 
     // Props — Romi's coffin (3 states) + the garlic thrown by the throwers.
     this.load.image(TEXTURES.coffinClosed, 'assets/environment/props/coffin_closed.png');
