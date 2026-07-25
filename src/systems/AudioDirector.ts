@@ -6,6 +6,12 @@ import {
   normalizeBalance,
   type AudioBalanceConfig,
 } from '../data/audioBalance';
+import {
+  audioAsset,
+  shouldReverse,
+  variedDetune,
+  variedVolume,
+} from '../data/audioManifest';
 import { MusicStateMachine, musicKeyForState, musicStateForKey } from './MusicStateMachine';
 import type { MusicState } from './MusicStateMachine';
 
@@ -23,6 +29,9 @@ export interface SfxOptions {
 
 /** Short enough to feel like one gesture, long enough not to click. */
 const CROSSFADE_MS = 300;
+
+/** Cache key suffix for the in-memory reversed copy of a sound. */
+const REVERSED_SUFFIX = '--reversed';
 
 interface Fade {
   sound: LevelledSound;
@@ -67,6 +76,8 @@ export class AudioDirector {
   private currentLevel = 0;
   /** State to fall back to when the editor's music preview is stopped. */
   private previewRestore: MusicState | null = null;
+  /** Keys proven un-reversible on this backend; never retried. */
+  private readonly unreversible = new Set<string>();
   private destroyed = false;
 
   constructor(private readonly game: Phaser.Game) {
@@ -187,9 +198,64 @@ export class AudioDirector {
 
   // ── SFX ─────────────────────────────────────────────────────────────────
 
+  /**
+   * Levels and per-play variance both come from the manifest entry for `key`,
+   * so a caller never asks for "the quieter, slightly lower-pitched one" — it
+   * asks for the cue and gets whatever that sound is currently defined to be.
+   */
   playSfx(key: string, options?: SfxOptions): void {
     if (this.destroyed || !this.exists(key)) return;
-    this.sound.play(key, { ...options, volume: effectiveSfxVolume(this.balance, key) });
+
+    const variance = audioAsset(key)?.variance;
+    if (!variance) {
+      this.sound.play(key, { ...options, volume: effectiveSfxVolume(this.balance, key) });
+      return;
+    }
+
+    // Independent rolls: pitch, level and direction should not move together,
+    // or every "loud" swing is also the high one and the variance reads as a
+    // single dial rather than as the sound simply not repeating itself.
+    const volume = variedVolume(effectiveSfxVolume(this.balance, key), variance, Math.random());
+    const detune = (options?.detune ?? 0) + variedDetune(variance, Math.random());
+    const playKey = shouldReverse(variance, Math.random()) ? this.reversedKey(key) : key;
+
+    this.sound.play(playKey, { ...options, volume, detune });
+  }
+
+  /**
+   * A reversed copy of an already-decoded sound, built once and kept in the
+   * audio cache under its own key. Same recording, played back to front: the
+   * swing arrives as a swell instead of a crack, which is the cheapest way to
+   * make one short file stop sounding like one short file.
+   *
+   * Falls back to the original key whenever that is not possible — an HTML5
+   * Audio backend, a browser with no AudioBuffer, or a cache entry that is not
+   * a decoded buffer. Variance is a nicety; never a reason to lose the sound.
+   */
+  private reversedKey(key: string): string {
+    const reversedKey = `${key}${REVERSED_SUFFIX}`;
+    if (this.game.cache.audio.exists(reversedKey)) return reversedKey;
+    if (this.unreversible.has(key)) return key;
+
+    const source: unknown = this.game.cache.audio.get(key);
+    if (typeof AudioBuffer === 'undefined' || !(source instanceof AudioBuffer)) {
+      this.unreversible.add(key);
+      return key;
+    }
+
+    const reversed = new AudioBuffer({
+      length: source.length,
+      numberOfChannels: source.numberOfChannels,
+      sampleRate: source.sampleRate,
+    });
+    for (let channel = 0; channel < source.numberOfChannels; channel++) {
+      const from = source.getChannelData(channel);
+      const to = reversed.getChannelData(channel);
+      for (let i = 0, j = from.length - 1; j >= 0; i++, j--) to[i] = from[j];
+    }
+
+    this.game.cache.audio.add(reversedKey, reversed);
+    return reversedKey;
   }
 
   /**

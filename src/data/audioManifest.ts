@@ -3,6 +3,23 @@ import { AUDIO } from '../utils/assetKeys.ts';
 
 export type AudioGroup = 'music' | 'sfx';
 
+/**
+ * Per-play randomisation, so a sound fired over and over from one file does
+ * not read as a copy-paste. Everything here modifies ONE recording at
+ * playback time — no extra assets, and Noam's file itself is never altered.
+ */
+export interface SfxVariance {
+  /** Pitch spread in cents, applied as ±this on every play. 100 = a semitone. */
+  detuneCents?: number;
+  /** Level spread as a fraction of the balanced volume, applied as ±this. */
+  volumeJitter?: number;
+  /**
+   * Chance, 0..1, that a play uses a reversed copy of the same buffer. The
+   * reversal is built once, in memory, the first time it is needed.
+   */
+  reverseChance?: number;
+}
+
 export interface AudioAsset {
   /** The single Phaser key the game plays. Never format-specific. */
   key: string;
@@ -18,6 +35,8 @@ export interface AudioAsset {
   files: readonly string[];
   /** Individual level, 0..1, before the group fader and the master fader. */
   defaultVolume: number;
+  /** Optional per-play randomisation; omitted means "play it straight". */
+  variance?: SfxVariance;
 }
 
 /**
@@ -49,7 +68,12 @@ export const AUDIO_MANIFEST: readonly AudioAsset[] = [
       'assets/audio/sfx/player-attack-whoosh.ogg',
       'assets/audio/sfx/player-attack-whoosh.mp3',
     ],
-    defaultVolume: 0.6,
+    defaultVolume: 0.4,
+    // Fired up to three times a second on a held attack, so one unvaried
+    // 0.16s file turns into a rattle fast. Roughly ±2 semitones of pitch,
+    // a little level movement, and a third of swings played backwards —
+    // enough that consecutive hits stop sounding stamped out.
+    variance: { detuneCents: 220, volumeJitter: 0.18, reverseChance: 0.33 },
   },
   {
     key: AUDIO.bloodPickup,
@@ -115,4 +139,37 @@ export function audioAsset(key: string): AudioAsset | undefined {
 /** Unknown keys are treated as SFX: the safer of the two group faders. */
 export function audioGroupOf(key: string): AudioGroup {
   return audioAsset(key)?.group ?? 'sfx';
+}
+
+// ── Variance math ────────────────────────────────────────────────────────
+// Pure, and each takes its own roll in [0, 1) rather than calling Math.random
+// itself, so the spread is unit-testable at its edges instead of by sampling.
+
+/** Maps a roll onto the symmetric range [-spread, +spread]. */
+function spread(roll: number, amount: number): number {
+  return (roll * 2 - 1) * amount;
+}
+
+export function variedVolume(
+  base: number,
+  variance: SfxVariance | undefined,
+  roll: number,
+): number {
+  const jitter = variance?.volumeJitter;
+  if (!jitter) return base;
+  // Clamped, because the top of the jitter must never push a sound past the
+  // level the balance editor says is its maximum.
+  return Math.min(1, Math.max(0, base * (1 + spread(roll, jitter))));
+}
+
+export function variedDetune(variance: SfxVariance | undefined, roll: number): number {
+  const cents = variance?.detuneCents;
+  if (!cents) return 0;
+  return spread(roll, cents);
+}
+
+export function shouldReverse(variance: SfxVariance | undefined, roll: number): boolean {
+  const chance = variance?.reverseChance;
+  if (!chance) return false;
+  return roll < chance;
 }

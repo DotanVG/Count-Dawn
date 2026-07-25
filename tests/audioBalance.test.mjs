@@ -10,6 +10,12 @@ import {
   effectiveVolume,
   normalizeBalance,
 } from '../src/data/audioBalance.ts';
+import {
+  audioAsset,
+  shouldReverse,
+  variedDetune,
+  variedVolume,
+} from '../src/data/audioManifest.ts';
 import { AUDIO } from '../src/utils/assetKeys.ts';
 
 function balance(overrides = {}) {
@@ -111,4 +117,68 @@ test('normalizing drops keys the manifest does not know about', () => {
   const restored = normalizeBalance({ assets: { 'sfx-from-a-future-build': 0.3 } });
 
   assert.equal(restored.assets['sfx-from-a-future-build'], undefined);
+});
+
+// ── Per-play variance ─────────────────────────────────────────────────────
+// Each helper takes its own roll in [0, 1), so the spread is pinned at its
+// edges rather than sampled and hoped for.
+
+test('detune spans the full symmetric range and centres on no change', () => {
+  const variance = { detuneCents: 220 };
+
+  assert.equal(variedDetune(variance, 0), -220);
+  assert.equal(variedDetune(variance, 0.5), 0);
+  assert.ok(Math.abs(variedDetune(variance, 0.999) - 220) < 1);
+});
+
+test('volume jitter moves around the balanced level, never away from it', () => {
+  const variance = { volumeJitter: 0.2 };
+
+  assert.equal(variedVolume(0.5, variance, 0.5), 0.5);
+  assert.equal(variedVolume(0.5, variance, 0), 0.4);
+  assert.ok(Math.abs(variedVolume(0.5, variance, 0.999) - 0.6) < 0.001);
+});
+
+test('jitter can never push a sound past full scale', () => {
+  // The editor's ceiling is 1.0; a lucky roll must not sneak past it.
+  assert.equal(variedVolume(1, { volumeJitter: 0.5 }, 0.999), 1);
+  assert.equal(variedVolume(0.01, { volumeJitter: 5 }, 0), 0);
+});
+
+test('a sound with no variance declared is played exactly as balanced', () => {
+  assert.equal(variedVolume(0.42, undefined, 0), 0.42);
+  assert.equal(variedVolume(0.42, {}, 0.999), 0.42);
+  assert.equal(variedDetune(undefined, 0), 0);
+  assert.equal(variedDetune({}, 0.999), 0);
+  assert.equal(shouldReverse(undefined, 0), false);
+  assert.equal(shouldReverse({}, 0), false);
+});
+
+test('reverse fires at its declared rate, and never when it is zero', () => {
+  const variance = { reverseChance: 0.33 };
+
+  assert.equal(shouldReverse(variance, 0), true);
+  assert.equal(shouldReverse(variance, 0.32), true);
+  assert.equal(shouldReverse(variance, 0.33), false);
+  assert.equal(shouldReverse(variance, 0.9), false);
+  assert.equal(shouldReverse({ reverseChance: 0 }, 0), false);
+});
+
+test('the attack whoosh actually declares variance, and stays inside sane bounds', () => {
+  const whoosh = audioAsset(AUDIO.playerAttackWhoosh);
+  const variance = whoosh.variance;
+
+  assert.ok(variance, 'the whoosh is the one sound that repeats fastest');
+  // Wide enough to hear, not so wide the swing changes weapon.
+  assert.ok(variance.detuneCents > 0 && variance.detuneCents <= 400);
+  assert.ok(variance.volumeJitter > 0 && variance.volumeJitter < 0.5);
+  assert.ok(variance.reverseChance > 0 && variance.reverseChance < 1);
+
+  // And the loudest possible roll still lands under the balanced ceiling.
+  const loudest = variedVolume(
+    effectiveSfxVolume(DEFAULT_AUDIO_BALANCE, AUDIO.playerAttackWhoosh),
+    variance,
+    0.999,
+  );
+  assert.ok(loudest <= 1);
 });

@@ -251,6 +251,10 @@ intentional:
   `player.playAttackAnim()` directly, bypassing `CombatSystem`);
 - a dead Count makes no sound (`CombatSystem` checks `player.isAlive`).
 
+At a 350 ms cooldown a held attack fires this roughly three times a second,
+and one unvaried 0.16 s file becomes a rattle fast, so the whoosh is the one
+sound that declares per-play **variance** (below).
+
 **SLURP — `AUDIO.bloodPickup`, on the blood arriving.**
 
 Fired from `GameScene.collectPickup()`, in the tween's `onComplete` — the frame
@@ -269,6 +273,41 @@ of going through `collectPickup`.
 
 `playSfxStack(keys, options)` stays on the director for future layered cues;
 nothing uses it at the moment.
+
+### Per-play variance
+
+A sound that fires often should not sound stamped out. An optional `variance`
+block on a manifest entry randomises **each play** of the one recording — no
+extra assets, and the file on disk is never touched:
+
+```ts
+variance: { detuneCents: 220, volumeJitter: 0.18, reverseChance: 0.33 }
+```
+
+| Field | Effect |
+| --- | --- |
+| `detuneCents` | pitch, ±this many cents (100 = a semitone) |
+| `volumeJitter` | level, ±this fraction of the balanced volume |
+| `reverseChance` | odds this play uses a reversed copy of the buffer |
+
+Each gets its **own** roll, so the loud swing is not always the high one —
+otherwise the variance reads as a single dial rather than as the sound simply
+not repeating itself. Jitter is clamped, so a lucky roll can never push a sound
+past the level the editor says is its maximum.
+
+The reversal is real sample reversal, built once on first use and cached under
+`<key>--reversed`. It never appears in the manifest, the balance editor or the
+saved config — it is an encoding of an existing sound, not a sound of its own,
+and it inherits that sound's level. If reversal is impossible (an HTML5 Audio
+backend, no `AudioBuffer`), the original plays instead and the key is never
+retried. Variance is a nicety; it is never a reason to lose the sound.
+
+The maths (`variedVolume`, `variedDetune`, `shouldReverse` in
+[audioManifest.ts](../src/data/audioManifest.ts)) is pure and takes its roll as
+an argument, so the spread is unit-tested at its edges instead of sampled.
+
+Adding variance to another sound is one line on its manifest entry. The slurp
+is a candidate if five-per-kill starts to read repetitive.
 
 ---
 
