@@ -8,7 +8,7 @@ A reverse horde survival game for the **"Countdown"** game jam theme.
 - **Production (main):** https://count-dawn.vercel.app
 - **Staging (staging branch):** https://count-dawn-git-staging-dotanvgs-projects.vercel.app
 
-> **Asset status:** the vampire, hunters, garlic throwers, Captain and castle use licensed free pixel-art packs from CraftPix (see Credits). Romi created the coffin, garlic, bat, hunter weapons and cover art. Noam composed the original music (Main Title and Level Music) and the gameplay SFX. The blood droplet is still a runtime-generated placeholder. No AI-generated art or audio is used.
+> **Asset status:** the hunters, garlic throwers, Captain and castle use licensed free pixel-art packs from CraftPix (see Credits). Romi created the Priest, the hunter weapons, the coffin, garlic, bat and cover art. Noam composed the original music (Main Title and Level Music) and the gameplay SFX. The blood droplet is still a runtime-generated placeholder. No AI-generated art or audio is used.
 
 ## Prototype state
 
@@ -31,6 +31,8 @@ The complete core loop is playable end to end:
 - ✅ Bat form (Romi's art): the Count *poofs* into a bat for the dash and for both coffin flights, mirrored to whichever way he is travelling
 - ✅ Dead hunters drop blood pickups; Night 1 targets 50 blood, increasing by 15 each new night
 - ✅ Filling the round's Blood Meter immediately summons the Hunter Captain: entrance effect, dedicated health bar, heavier contact damage
+- ✅ **The Priest** (Romi's art): every fifth night the blood meter summons him instead of the Captains — night 5 is him alone, night 10 him plus a Captain, night 15 him plus two. He carries a wooden stake, and every few seconds he plants his feet and drives out a **ward** of holy light: the full circle is painted gold on the floor first, so you can walk out of it, then the light sweeps out as staggered ripples in three shades while a giant golden cross rises out of the circle trailing sparks and lingers a beat after the rings die
+- ✅ Every boss telegraphs, and no boss can be staggered out of its special. A ring closes and brightens on the Priest (gold), the Hunter Captain (red) and the garlic Captain (green) before each one commits; from that moment hitting them shoves them but does not stop the attack, where a regular hunter drops his swing the instant he is hit. The answer to a boss winding up is footwork — walk clear, or dash through the edge in bat form where the dash's own invulnerability carries you
 - ✅ Coffin activates only when blood is full **and** the Captain is dead (pulsing glow, hint messages if approached early)
 - ✅ Victory / dawn-defeat / death-defeat endings with run stats and instant restart (R)
 - ✅ Pause overlay (Esc / P), main menu, fullscreen button
@@ -119,7 +121,7 @@ Suggested flow: feature branches → `staging` (playtest on the test URL) → me
 ## Credits
 
 - **Dotan** — _(role TBD)_
-- **Romi** — coffin, garlic and bat art; cover art
+- **Romi** — the Priest, the hunter weapons, the coffin, garlic and bat art; cover art
 - **Noam** — original music (Main Title, Level Music) and gameplay SFX (attack WOOSH, blood-drinking SLURP)
 - **Abed** — _(role TBD)_
 
@@ -131,7 +133,9 @@ Character & environment art from [CraftPix](https://craftpix.net) under the [Cra
 - **Free Base 4-Direction Male Character Pixel Art** — hunters & Hunter Captain (sword variant, incl. swing attack); garlic throwers (unarmed variant)
 - **Free 2D Top-Down Pixel Dungeon Asset Pack** — castle tiles & torch flames
 
-Original art by **Romi**: the cover art, coffin (closed/half/open), garlic (thrown at the Count by the garlic throwers), the bat (the Count's dash and coffin-flight form), and the three hunter weapons (wooden spike, pitchfork, burning torch).
+Original art by **Romi**: the cover art, the Priest, the three hunter weapons (wooden spike, pitchfork, burning torch), the coffin (closed/half/open), garlic (thrown at the Count by the garlic throwers), and the bat (the Count's dash and coffin-flight form).
+
+The Priest arrived as six 240x240 JPEGs on chroma green — two frames each for down, up and the left-facing side view. `tools/build_priest_sheet.py` keys the green out, despills the JPEG fringe, and lays them out as the 2x4 sheet the game loads, mirroring the side pair for the right-facing row. Each direction is registered on his **boots** rather than on its bounding box: his stake swings clear across the frame between the two frames of a pair, so a bbox crop would slide him around the floor while he walks, and his boots barely move. It also silently corrects the back-turned pair, which Romi drew about 11px left of the other four.
 
 Romi's bat arrived as two 240x240 JPEG frames painted on black. `tools/build_bat_sheet.py` turns them into the shipped `assets/characters/bat/bat_fly.png` — keying the background out to alpha, lifting the wing strokes so they read against the castle floor, registering both frames on the eyes so only the wings move, and laying them out as a 2-frame 64x64 sheet. Re-run it if the source frames are ever repainted.
 

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BLOOD, NIGHT, PLAYER, captainCountForNight } from '../data/balance';
+import { BLOOD, NIGHT, PLAYER, bossLineupForNight } from '../data/balance';
 import { DEPTHS, GAME_WIDTH, GAME_HEIGHT, HUD_ANCHORS } from '../game/constants';
 import { EVENTS } from '../game/events';
 import { TEXTURES } from '../utils/assetKeys';
@@ -11,6 +11,18 @@ const OBJECTIVE_TEXT: Record<Objective, string> = {
   'collect-more-blood': 'Collect more blood',
   'return-to-coffin': 'Return to your coffin',
 };
+
+/**
+ * Names tonight's lineup on the objective banner — the whole point of the
+ * Priest showing up on the fifth night is that the player is told a different
+ * name is coming for him, so the banner cannot keep saying "Hunter Captain".
+ */
+function defeatBossText(night: number): string {
+  const { priests, captains } = bossLineupForNight(night);
+  if (priests > 0 && captains === 0) return 'Defeat the Priest';
+  if (priests > 0) return `Defeat the Priest and his ${captains > 1 ? 'Captains' : 'Captain'}`;
+  return captains > 1 ? `Defeat the ${captains} Hunter Captains` : OBJECTIVE_TEXT['defeat-boss'];
+}
 
 const FONT = 'Trebuchet MS, sans-serif';
 const HP_GREEN = 0x4caf50;
@@ -304,10 +316,9 @@ export class HUD {
 
     this.scene.time.delayedCall(20, () => {
       this.bannerQueued = false;
-      const captainCount = captainCountForNight(this.night);
       const objectiveText =
-        this.objective === 'defeat-boss' && captainCount > 1
-          ? `Defeat the ${captainCount} Hunter Captains`
+        this.objective === 'defeat-boss'
+          ? defeatBossText(this.night)
           : OBJECTIVE_TEXT[this.objective];
       const content = `Night ${this.night}\n${objectiveText}`;
 

@@ -6,8 +6,8 @@
 2. Human hunters spawn at random arena-edge positions and pursue the player. Night 1 starts at ~1.25s between spawns with max 18 alive; later nights spawn faster and allow more hunters.
 3. The player kites and kills hunters with a mouse-aimed melee arc, and escapes crowds with the bat dash (see below).
 4. Each dead hunter drops five bloodlets worth 1 blood each. Night 1 targets 50 blood; each later night requires 15 more.
-5. The instant the player fills that round's Blood Meter, the **Hunter Captain** spawns at the arena edge farthest from the player. Captain entrance never depends on remaining time.
-6. When the Blood Meter is full **and** the Captain is dead, the coffin activates (pulsing glow).
+5. The instant the player fills that round's Blood Meter, that night's **boss lineup** spawns at the arena edges farthest from the player. Boss entrance never depends on remaining time.
+6. When the Blood Meter is full **and** every boss is dead, the coffin activates (pulsing glow).
 7. Enter the active coffin before the timer reaches zero.
 
 ## Victory condition
@@ -15,7 +15,7 @@
 Overlap the **activated** coffin before dawn. Both requirements must be met first:
 
 - Blood Meter full (50 on Night 1, +15 per later night)
-- Hunter Captain defeated
+- Every boss in the night's lineup defeated
 
 ## Defeat conditions
 
@@ -27,6 +27,24 @@ Either way the end screen shows the cause, blood collected, and time survived, w
 ## Boss entrance
 
 `GameFlowSystem` emits one boss-spawn request when collected blood first reaches the current round's target. `CountdownSystem` only owns dawn, timer ticks, and the final warning; it has no Captain timing logic.
+
+Who answers that request is `bossLineupForNight` (`data/balance.ts`). Ordinary nights send Hunter Captains, one more every fifth night, each with an even chance of carrying garlic instead of a sword. **Every fifth night sends the Priest instead**: he takes both the step up the night was going to make and the slot it would have added, so night 5 is the Priest alone where two Captains would have stood, night 10 is the Priest plus one Captain, night 15 the Priest plus two. The lineup never exceeds the Captain count it replaces — a Priest night is a new fight, not a bigger one.
+
+### The Priest's ward
+
+Every `PRIEST.wardIntervalMs` the Priest plants his feet, raises the cross and paints the full circle of the ward gold on the floor around himself. After `wardWindupMs` the light sweeps outward to `wardRadius`, burning the Count for `wardDamage` the moment the expanding edge passes him — once per ward, so standing inside the circle after it has gone by is safe.
+
+Only the leading ring is the attack. `wardRipples` more follow it in paler golds, each launched `wardRippleDelayMs` after the last, and a golden cross grows out of the circle to `crossOvershoot` of its radius trailing sparks, holding `crossLingerMs` after the rings have gone. None of that has a hitbox; it exists so the ward lands like something dropped in water and leaves the shape of what burned him as the last thing on screen.
+
+Two answers: walk out of the circle while it is still being painted, or dash through the edge (the dash's own invulnerability window carries him clean, exactly as it does through a garlic bulb). Damage is **not** an answer — see below.
+
+### Boss telegraphs, and committed attacks
+
+Every boss wears the same tell before it commits, drawn by `BossCharge`: a ring that closes inward onto its body and brightens as the wind-up runs out, colour-coded per threat — gold for the Priest's ward, red for a Hunter Captain's swing, green for a garlic Captain's volley.
+
+From the moment that ring appears the attack is **committed** (`Hunter.isCommitted`). Hitting the boss still shoves it, and the Priest's whole ward slides with him because every part of it is anchored on his body, but nothing cancels. A regular hunter is the opposite: a landed strike knocks him back, flinches him and drops the swing he was winding up.
+
+That split is the point. Against hunters, damage is crowd control; against bosses it never is, so the telegraph has to be loud enough that footwork can be the answer instead.
 
 ## Bat dash
 

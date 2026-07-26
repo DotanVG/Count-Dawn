@@ -108,16 +108,39 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   applyKnockback(sourceX: number, sourceY: number): void {
     if (!this.active || !this.isAlive || this.entering) return;
 
+    // A committed attack is not interrupted, only shoved. This is the line
+    // between a hunter and a boss: pressuring a hunter stops him hitting you,
+    // pressuring a boss mid-special buys you a shove and nothing else, so the
+    // answer to a boss's telegraph has to be footwork rather than damage.
+    if (this.isCommitted) {
+      this.applyShove(sourceX, sourceY);
+      return;
+    }
+
+    this.applyShove(sourceX, sourceY);
+
+    // Flinch toward whoever hit him, and drop the pending swing.
+    this.swingToken++;
+    const away = Phaser.Math.Angle.Between(sourceX, sourceY, this.x, this.y);
+    this.facing = angleToDir4(away + Math.PI);
+    this.play(animKey(this.look.charKey, 'hurt', this.facing), true);
+  }
+
+  /**
+   * True while this hunter is mid-attack in a way a hit cannot cancel. Bosses
+   * override it for their specials; a plain hunter is never committed.
+   */
+  protected get isCommitted(): boolean {
+    return false;
+  }
+
+  /** The shove itself, with no say over whether the attack survives it. */
+  private applyShove(sourceX: number, sourceY: number): void {
     const away = Phaser.Math.Angle.Between(sourceX, sourceY, this.x, this.y);
     const speed = KNOCKBACK.speed * this.knockbackResistance;
     this.knockbackVelocity.set(Math.cos(away) * speed, Math.sin(away) * speed);
     this.knockbackUntil = this.scene.time.now + KNOCKBACK.durationMs;
     this.setVelocity(this.knockbackVelocity.x, this.knockbackVelocity.y);
-
-    // Flinch toward whoever hit him, and drop the pending swing.
-    this.swingToken++;
-    this.facing = angleToDir4(away + Math.PI);
-    this.play(animKey(this.look.charKey, 'hurt', this.facing), true);
   }
 
   /**

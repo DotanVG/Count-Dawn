@@ -67,6 +67,22 @@ all. When adding another prop of that kind:
   weapon rather than spinning it about its middle,
 - keep the numbers (scale, reach, cadence) in `balance.ts`; the entity should
   only own where the hand is and how the swing is drawn.
+### Characters with only a couple of frames
+
+Not every character arrives as a six-sheet pack. The Priest is two frames per
+direction, full stop, and every animation the `Hunter` base class asks him for
+is built from that same pair at a different rate and frame order — see
+`PRIEST_ACTIONS` in [`animations.ts`](../src/utils/animations.ts). If a new
+character is in the same position, follow that shape rather than padding the
+sheet out with duplicates: it keeps the fact that he has two poses visible in
+one place instead of hidden inside a sheet.
+
+Hand-drawn characters also rarely sit in the frame the way a bought pack does.
+Romi's Priest fills the 64px frame almost top to bottom where the CraftPix men
+occupy rows 22-43 of it, so his entity overrides both `visibleTopY` (or his
+health bar floats) and the physics circle (or his hitbox sits at his knees),
+and his `spriteScale` is far lower than a Captain's for a sprite that renders
+bigger. Expect to re-tune all three whenever new art replaces old.
 
 ## Registering animations
 

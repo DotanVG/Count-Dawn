@@ -12,6 +12,12 @@ export const TEXTURES = {
   vampireAttackMagic: 'vampire-attack-magic',
   vampireHurt: 'vampire-hurt',
   vampireDeath: 'vampire-death',
+  /**
+   * The Priest (Romi's art) — one 2x4 sheet instead of a sheet per action:
+   * two frames per direction is everything he has, so every animation he owns
+   * is built from the same pair at a different rate (see animations.ts).
+   */
+  priest: 'priest',
   // Hunter (sword male) sheets — rows: 0=down(front), 1=left, 2=right, 3=up(back)
   hunterIdle: 'hunter-idle',
   hunterWalk: 'hunter-walk',
@@ -65,7 +71,7 @@ export const TEXTURES = {
 export type Dir4 = 'down' | 'up' | 'left' | 'right';
 
 /** Every character that has a set of directional animations registered. */
-export type CharacterKey = 'vampire' | 'hunter' | 'thrower';
+export type CharacterKey = 'vampire' | 'hunter' | 'thrower' | 'priest';
 
 export type VampireAction = 'idle' | 'walk' | 'run' | 'attack' | 'hurt' | 'death';
 export type HunterAction = 'idle' | 'walk' | 'run' | 'hurt' | 'death';

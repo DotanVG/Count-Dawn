@@ -1,11 +1,13 @@
 import Phaser from 'phaser';
-import { BOSS, KNOCKBACK } from '../data/balance';
+import { BOSS, KNOCKBACK, THROWER } from '../data/balance';
 import { DEPTHS } from '../game/constants';
 import type { GameEventEmitter } from '../game/events';
 import { BossHealthBar } from '../ui/BossHealthBar';
+import { BossCharge } from './BossCharge';
 import { GarlicThrower } from './GarlicThrower';
 import {
   CAPTAIN_TINT,
+  GARLIC_CHARGE_COLOR,
   captainTookDamage,
   type CaptainTraits,
 } from './HunterCaptain';
@@ -37,9 +39,43 @@ export class GarlicCaptain extends GarlicThrower implements CaptainTraits {
     this.setTint(CAPTAIN_TINT);
   }
 
+  /** The wind-up ring, live from the lock until the bulbs are away. */
+  private charge: BossCharge | null = null;
+
   override pursue(targetX: number, targetY: number): void {
     super.pursue(targetX, targetY);
     this.healthBar.follow(this.x, this.visibleTopY);
+    this.charge?.follow(this.x, this.y);
+    // The volley is over — either thrown or given up on — so the tell goes.
+    if (this.charge && !this.isAiming) {
+      this.charge.finish(true);
+      this.charge = null;
+    }
+  }
+
+  /**
+   * Once his crosshair locks, the bulbs are coming. Hitting him shoves him but
+   * does not knock the throw out of him the way it does an ordinary thrower —
+   * the green ring closing on him is the warning that pays for that.
+   */
+  protected override get isCommitted(): boolean {
+    return this.isAiming;
+  }
+
+  protected override get keepsAimUnderFire(): boolean {
+    return true;
+  }
+
+  protected override onLocked(): void {
+    this.charge?.destroy();
+    this.charge = new BossCharge(
+      this.scene,
+      this.x,
+      this.y,
+      GARLIC_CHARGE_COLOR,
+      this.displayHeight * 0.6,
+      THROWER.throwWindupMs,
+    );
   }
 
   override takeDamage(amount: number): boolean {
@@ -49,6 +85,8 @@ export class GarlicCaptain extends GarlicThrower implements CaptainTraits {
   }
 
   override destroy(fromScene?: boolean): void {
+    this.charge?.destroy();
+    this.charge = null;
     this.healthBar.destroy();
     super.destroy(fromScene);
   }

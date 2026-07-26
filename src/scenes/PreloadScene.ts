@@ -27,6 +27,10 @@ export class PreloadScene extends Phaser.Scene {
     this.load.spritesheet(TEXTURES.vampireHurt, 'assets/characters/vampire/vampire_hurt.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.vampireDeath, 'assets/characters/vampire/vampire_death.png', CHAR_FRAME);
 
+    // The Priest (Romi's art) — one sheet, 2 frames x 4 directions, in the
+    // row order animations.ts expects: down, up, left, right.
+    this.load.spritesheet(TEXTURES.priest, 'assets/characters/humans/priest.png', CHAR_FRAME);
+
     // Hunters — CraftPix free male base pack, sword variant.
     this.load.spritesheet(TEXTURES.hunterIdle, 'assets/characters/humans/hunter_idle.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.hunterWalk, 'assets/characters/humans/hunter_walk.png', CHAR_FRAME);

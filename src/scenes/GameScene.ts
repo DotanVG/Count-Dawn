@@ -6,8 +6,10 @@ import {
   HUNTER,
   NIGHT,
   PLAYER,
+  PRIEST,
   THROWER,
   bloodTargetForNight,
+  bossLineupForNight,
   captainCountForNight,
   hunterPressureForNight,
   throwerCapForNight,
@@ -31,6 +33,7 @@ import { ArmedHunter } from '../entities/ArmedHunter';
 import { HunterCaptain } from '../entities/HunterCaptain';
 import { GarlicCaptain } from '../entities/GarlicCaptain';
 import { GarlicThrower } from '../entities/GarlicThrower';
+import { Priest } from '../entities/Priest';
 import { Garlic } from '../entities/Garlic';
 import { BloodPickup } from '../entities/BloodPickup';
 import { Coffin } from '../entities/Coffin';
@@ -66,7 +69,12 @@ interface GameSceneData {
   autostart?: boolean;
 }
 
-type Captain = HunterCaptain | GarlicCaptain;
+/**
+ * Everything that has to die before the coffin will take the Count. The
+ * Priest is not a Captain by rank, but he holds the same slot in a night's
+ * lineup and the coffin waits on him identically.
+ */
+type Captain = HunterCaptain | GarlicCaptain | Priest;
 
 const FONT = 'Trebuchet MS, sans-serif';
 const COFFIN_POS = { x: 150, y: 430 };
@@ -1156,11 +1164,25 @@ export class GameScene extends Phaser.Scene {
   private coffinHintMessage(): string {
     const needsBlood = !this.flow.isBloodFull;
     const needsBoss = !this.flow.isBossDefeated;
-    const captainCount = captainCountForNight(this.night);
-    const captainName = captainCount > 1 ? 'the Captains' : 'the Captain';
-    if (needsBlood && needsBoss) return `Not yet: collect blood and slay ${captainName}`;
-    if (needsBoss) return captainCount > 1 ? 'Hunter Captains still live' : 'The Hunter Captain still lives';
+    const { name, plural } = this.bossName();
+    if (needsBlood && needsBoss) return `Not yet: collect blood and slay ${name}`;
+    if (needsBoss) return plural;
     return 'You need more blood';
+  }
+
+  /** What to call tonight's boss (or bosses) in the coffin's hint messages. */
+  private bossName(): { name: string; plural: string } {
+    const lineup = bossLineupForNight(this.night);
+    if (lineup.priests > 0 && lineup.captains === 0) {
+      return { name: 'the Priest', plural: 'The Priest still lives' };
+    }
+    if (lineup.priests > 0) {
+      const escort = lineup.captains > 1 ? 'Captains' : 'Captain';
+      return { name: `the Priest and his ${escort}`, plural: 'The Priest still lives' };
+    }
+    return captainCountForNight(this.night) > 1
+      ? { name: 'the Captains', plural: 'Hunter Captains still live' }
+      : { name: 'the Captain', plural: 'The Hunter Captain still lives' };
   }
 
   private wireEvents(): void {
@@ -1194,17 +1216,17 @@ export class GameScene extends Phaser.Scene {
 
   private spawnBoss(): void {
     if (this.captains.size > 0) return;
-    const count = captainCountForNight(this.night);
-    const arrivals = this.bossArrivalPositions(count);
+    const lineup = bossLineupForNight(this.night);
+    const arrivals = this.bossArrivalPositions(lineup.priests + lineup.captains);
 
-    for (const arrival of arrivals) {
+    for (const [index, arrival] of arrivals.entries()) {
       const spawn = offCanvasSpawnPoint(arrival);
-      const canUseGarlic =
-        this.countAliveThrowers() < throwerCapForNight(this.night) &&
-        Math.random() < BOSS.garlicCaptainChance;
-      const captain: Captain = canUseGarlic
-        ? this.configureThrower(new GarlicCaptain(this, spawn.x, spawn.y, this.emitter))
-        : new HunterCaptain(this, spawn.x, spawn.y, this.emitter);
+      // The Priests lead the lineup, so on a night that sends one he is the
+      // boss who arrives at the spot farthest from the Count.
+      const captain: Captain =
+        index < lineup.priests
+          ? this.createPriest(spawn.x, spawn.y)
+          : this.createCaptain(spawn.x, spawn.y);
 
       captain.beginEntrance(arrival.x, arrival.y);
       captain.onEntranceArrived = () => captain.playEntrance();
@@ -1219,6 +1241,29 @@ export class GameScene extends Phaser.Scene {
 
     this.flow.notifyBossSpawned();
     this.audio.playSfx(AUDIO.bossAppear);
+  }
+
+  /** A Captain, half of them armed with garlic instead of a sword. */
+  private createCaptain(spawnX: number, spawnY: number): Captain {
+    const canUseGarlic =
+      this.countAliveThrowers() < throwerCapForNight(this.night) &&
+      Math.random() < BOSS.garlicCaptainChance;
+    return canUseGarlic
+      ? this.configureThrower(new GarlicCaptain(this, spawnX, spawnY, this.emitter))
+      : new HunterCaptain(this, spawnX, spawnY, this.emitter);
+  }
+
+  /**
+   * The Priest. His ward burns through the Count's own damage path, so the
+   * invulnerability window applies and a dash carries him through the light
+   * untouched — the same escape that beats a garlic lock.
+   */
+  private createPriest(spawnX: number, spawnY: number): Priest {
+    const priest = new Priest(this, spawnX, spawnY, this.emitter);
+    priest.onWardHit = () => {
+      if (this.phase === 'playing') this.player.takeDamage(PRIEST.wardDamage);
+    };
+    return priest;
   }
 
   /**
@@ -1253,7 +1298,11 @@ export class GameScene extends Phaser.Scene {
 
   private onHunterKilled(hunter: Hunter): void {
     hunter.spawnCorpse();
-    if (hunter instanceof HunterCaptain || hunter instanceof GarlicCaptain) {
+    if (
+      hunter instanceof HunterCaptain ||
+      hunter instanceof GarlicCaptain ||
+      hunter instanceof Priest
+    ) {
       this.captains.delete(hunter);
       if (this.captains.size === 0) this.flow.notifyBossDefeated();
     } else {
