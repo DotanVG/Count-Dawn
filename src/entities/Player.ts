@@ -27,6 +27,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private dashUntil = 0;
   private nextDashAt = 0;
   private batForm = false;
+  /**
+   * What is currently keeping him a bat: his own dash, or a coffin flight.
+   * The dash must only undo a bat form it still owns — see setBatForm.
+   */
+  private batFormCause: 'flight' | 'dash' | null = null;
   private facing: Dir4 = 'down';
   /** Display scale before the bat-form shrink — see setBaseScale. */
   private baseScale: number = PLAYER.spriteScale;
@@ -111,6 +116,12 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.scene.time.delayedCall(DASH.durationMs, () => {
       if (!this.active) return;
+      // Dashing into an open coffin ends the night mid-dash, and the coffin
+      // flight takes the bat over. This timer is still queued from before that
+      // happened, so it has to check it still owns the shape — otherwise it
+      // turns him back into a man halfway into his own coffin, which is the
+      // intermittent bug this guard exists for.
+      if (this.batFormCause !== 'dash') return;
       this.setVelocity(0, 0);
       this.setBatForm(false, 'dash');
     });
@@ -129,8 +140,19 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * flipX and up/down keep whatever mirroring the last horizontal facing set.
    */
   setBatForm(active: boolean, cause: 'flight' | 'dash' = 'flight'): void {
-    if (this.batForm === active) return;
+    if (this.batForm === active) {
+      // Already the right shape, but the OWNER may be changing hands — which
+      // matters. Dash into an open coffin and the flight claims a bat the dash
+      // is still holding; without this the dash's own cleanup would fire a
+      // moment later and turn him back into a man mid-flight.
+      if (active && cause !== this.batFormCause) {
+        this.batFormCause = cause;
+        this.emitter.emit(EVENTS.BAT_FORM_CHANGED, true, cause);
+      }
+      return;
+    }
     this.batForm = active;
+    this.batFormCause = active ? cause : null;
     // A swing landed just before the shape change leaves its size-pop tween
     // running; left alone it would fight applyFormScale below and stretch the
     // bat back to full vampire size for the rest of the dash.

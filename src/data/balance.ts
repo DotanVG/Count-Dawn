@@ -206,7 +206,7 @@ export const WEAPONS = {
   },
   pitchfork: {
     firstNight: 1,
-    scale: 0.95,
+    scale: 0.63,
     gripY: 0.72,
     reach: 1.45,
     intervalMs: 1050,
