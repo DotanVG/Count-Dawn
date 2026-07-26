@@ -29,8 +29,16 @@ export const TEXTURES = {
   tiles: 'castle-tiles',
   fire: 'fire-animation',
   objects: 'castle-objects',
-  // UI
-  cover: 'count-dawn-cover',
+  /**
+   * Cover art (Romi's), three takes on the same painting that differ only in
+   * the title. `coverDawn` is the game's real name and what the menu rests on;
+   * `coverDown` is the jam theme the title is a pun on; `coverFlicker` has the
+   * letter physically missing, which is what makes it the frame to strike
+   * through when lightning swaps one for the other (see MenuLightning).
+   */
+  coverDawn: 'cover-dawn',
+  coverDown: 'cover-down',
+  coverFlicker: 'cover-flicker',
   // Props (Romi's art)
   coffinClosed: 'coffin-closed',
   coffinHalf: 'coffin-half',

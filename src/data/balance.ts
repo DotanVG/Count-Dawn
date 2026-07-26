@@ -161,6 +161,24 @@ export const BOSS = {
   garlicThrowGapMs: 180,
 } as const;
 
+/**
+ * The main menu's title gag: the cover rests on COUNT DAWN, lightning cuts it
+ * to COUNT DOWN — the jam theme — for a much shorter beat, and another strike
+ * puts it back. Both windows are ranges rather than fixed numbers so the menu
+ * never settles into a metronome. See ui/MenuLightning.ts.
+ */
+export const MENU_LIGHTNING = {
+  /** The real title holds this long (ms, randomised) between strikes. */
+  restMs: [3000, 5000],
+  /** The punchline holds a fraction of that — it is a flash of a joke. */
+  punchlineMs: [500, 2000],
+  /** Gap between the hard frames inside one strike. */
+  beatMs: 55,
+  /** Peak whiteout over the whole menu on the strike's first frame. */
+  flashAlpha: 0.55,
+  flashFadeMs: 180,
+} as const;
+
 export const BLOOD = {
   target: 50,
   /** Additional blood required for every night after the first. */

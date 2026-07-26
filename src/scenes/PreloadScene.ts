@@ -45,8 +45,12 @@ export class PreloadScene extends Phaser.Scene {
     // Bat form (Romi's art) — 2 frames, right-facing, mirrored in code for left.
     this.load.spritesheet(TEXTURES.bat, 'assets/characters/bat/bat_fly.png', CHAR_FRAME);
 
-    // Menu / itch cover art.
-    this.load.image(TEXTURES.cover, 'assets/ui/count_dawn_cover.jpeg');
+    // Menu cover art — three title variants the lightning cuts between. The
+    // itch.io-ratio export lives beside them but is not loaded: it is for the
+    // store page, not the game.
+    this.load.image(TEXTURES.coverDawn, 'assets/ui/cover/cover_dawn.jpeg');
+    this.load.image(TEXTURES.coverDown, 'assets/ui/cover/cover_down.jpeg');
+    this.load.image(TEXTURES.coverFlicker, 'assets/ui/cover/cover_flicker.jpeg');
 
     // Music and SFX (Noam) — one Phaser key per sound, several encodings per
     // key. Phaser downloads only the first format the browser can decode, so

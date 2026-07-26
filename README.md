@@ -17,6 +17,7 @@ The complete core loop is playable end to end:
 - ✅ Castle great-hall built from a 16px dungeon tileset (4x scale): north wall with sky windows, animated torches
 - ✅ Living sky behind the windows: night gradient with twinkling stars → pre-dawn purple → sunrise, with a pixel sun that physically rises into the windows
 - ✅ The main menu **is** the level: cover art + typewriter tagline over the night hall; START opens the coffin and the Count spirals out across the room to land dead center
+- ✅ **Lightning title gag** on the menu: Romi painted the cover three times, differing only in the title. It rests on COUNT **DAWN**, then a storm flash stutters it — through the variant with the letter physically *missing* — onto COUNT **DOWN**, the jam theme the title puns on, and a second strike knocks it back. Both holds are randomised (a long calm on the real title, a short beat on the punchline) and the flash whitens the whole hall, not just the poster
 - ✅ Victory reverses the entrance — the Count spirals back into the coffin and his collected blood drains into his health bar with green/red particle streams
 - ✅ Hunters drop +1 bloodlets that fly to the blood bar on pickup (red burst on arrival); hunters stop and swing their swords in melee range
 - ✅ Mobile support: red virtual joystick, ⚔ auto-strike-nearest button (Space on desktop), tap-to-strike toward the tap, rotate-to-landscape gate, device-aware menus
@@ -95,7 +96,7 @@ src/
              audioManifest.ts / audioBalance.ts — every sound and its level
   utils/     assetKeys, runtime placeholder textures
   types/     shared game types
-public/assets/  real assets go here (empty for now)
+public/assets/  shipped assets; RAW/ holds Romi's source drawings (see its README)
 tests/     node:test unit tests for CountdownSystem and GameFlowSystem
 docs/      game loop, asset integration, audio, deployment
 ```
@@ -118,7 +119,7 @@ Suggested flow: feature branches → `staging` (playtest on the test URL) → me
 ## Credits
 
 - **Dotan** — _(role TBD)_
-- **Romi** — coffin, garlic and bat art; cover art
+- **Romi** — coffin, garlic and bat art; cover art (three title variants + the itch.io export)
 - **Noam** — original music (Main Title, Level Music) and gameplay SFX (attack WOOSH, blood-drinking SLURP)
 - **Abed** — _(role TBD)_
 
@@ -131,6 +132,10 @@ Character & environment art from [CraftPix](https://craftpix.net) under the [Cra
 - **Free 2D Top-Down Pixel Dungeon Asset Pack** — castle tiles & torch flames
 
 Original art by **Romi**: the cover art, coffin (closed/half/open), garlic (thrown at the Count by the garlic throwers), and the bat (the Count's dash and coffin-flight form).
+
+The cover exists in three takes that differ only in the title — COUNT DAWN, COUNT DOWN, and COUNT D_WN with the letter absent — plus a 630x500 export for the itch.io page. The menu rests on DAWN and lets lightning cut to DOWN and back, striking *through* the letter-missing frame so the swap reads as one letter being knocked out and another landing (see [`src/ui/MenuLightning.ts`](src/ui/MenuLightning.ts)).
+
+Her original drawings all ship under [`public/assets/RAW/`](public/assets/RAW/README.md) — not loaded at runtime, but kept with the game so any sheet can be rebuilt from source without going hunting for it.
 
 Romi's bat arrived as two 240x240 JPEG frames painted on black. `tools/build_bat_sheet.py` turns them into the shipped `assets/characters/bat/bat_fly.png` — keying the background out to alpha, lifting the wing strokes so they read against the castle floor, registering both frames on the eyes so only the wings move, and laying them out as a 2-frame 64x64 sheet. Re-run it if the source frames are ever repainted.
 
