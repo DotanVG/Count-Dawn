@@ -29,10 +29,10 @@ const WEAPON_TEXTURES: Record<WeaponKind, string[]> = {
  * reading as a totem standing next to him.
  */
 const CARRY: Record<Dir4, { handX: number; handY: number; lean: number; behind: boolean }> = {
-  down: { handX: 0.06, handY: 0.05, lean: 0.3, behind: false },
-  up: { handX: -0.06, handY: 0.04, lean: -0.3, behind: true },
-  left: { handX: -0.08, handY: 0.05, lean: -0.5, behind: false },
-  right: { handX: 0.09, handY: 0.05, lean: 0.5, behind: false },
+  down: { handX: 0.04, handY: 0.035, lean: 0.3, behind: false },
+  up: { handX: -0.04, handY: 0.03, lean: -0.3, behind: true },
+  left: { handX: -0.05, handY: 0.035, lean: -0.55, behind: false },
+  right: { handX: 0.06, handY: 0.035, lean: 0.55, behind: false },
 };
 
 /**
@@ -45,11 +45,11 @@ const CARRY: Record<Dir4, { handX: number; handY: number; lean: number; behind: 
 const BODY_BOB = [2, 0, 1];
 
 /**
- * The props are drawn point-up with the grip at the bottom of the frame, so
- * the sprite pivots about (0.5, 0.92) — his fist — and the head of the weapon
- * sits this far along the shaft from there.
+ * The props are drawn point-up, so the sprite pivots about his fist and the
+ * head sits this far along the shaft from there. WHERE the fist closes is per
+ * weapon (see WEAPONS.gripY): a stake is gripped at the very bottom, a
+ * pitchfork partway up the shaft so its butt end sticks out behind him.
  */
-const GRIP_ORIGIN_Y = 0.92;
 const HEAD_FRACTION = 0.6;
 
 /** Radians past the target a chop carries through to; a thrust stops on it. */
@@ -59,7 +59,7 @@ const CHOP_FOLLOW_THROUGH = 0.55;
  * The thrust gets the bigger number because for a stab the travel IS the
  * attack: a chop is sold by its arc, a stab by the point going in.
  */
-const LUNGE: Record<'thrust' | 'chop', number> = { thrust: 0.14, chop: 0.03 };
+const LUNGE: Record<'thrust' | 'chop', number> = { thrust: 0.08, chop: 0.03 };
 /**
  * How much of a thrust is spent bringing the point to bear before he drives it
  * in. A chop rotates all the way through its arc; a stab must be POINTED for
@@ -121,7 +121,7 @@ export class ArmedHunter extends Hunter {
 
     this.weapon = scene.add
       .image(x, y, this.textures[0])
-      .setOrigin(0.5, GRIP_ORIGIN_Y)
+      .setOrigin(0.5, spec.gripY)
       .setScale(this.scaleX * spec.scale);
 
     // Only the torch burns, and it burns the whole time he is carrying it —

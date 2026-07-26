@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { AUDIO_MANIFEST, MUSIC_ASSETS, SFX_ASSETS, type AudioAsset } from '../data/audioManifest';
 import type { AudioDirector } from '../systems/AudioDirector';
+import { setSystemCursorVisible } from '../game/vampireCursor';
 
 const PANEL_ID = 'cd-audio-editor';
 const TOGGLE_KEY = 'F8';
@@ -113,6 +114,9 @@ export function installAudioEditor(game: Phaser.Game, director: AudioDirector): 
 
   function setVisible(visible: boolean): void {
     panel.style.display = visible ? 'flex' : 'none';
+    // Sliders need a pointer you can aim with. The game's fangs stay where they
+    // are — this only puts the ordinary system cursor back on top of them.
+    setSystemCursorVisible(visible);
     if (visible) sync();
   }
 

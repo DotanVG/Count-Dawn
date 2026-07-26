@@ -60,15 +60,32 @@ export const COLD_OPEN = {
 } as const;
 
 /**
- * The squad is not all swordsmen: the back column is garlic throwers, so the
- * scene shows both halves of what hunts him before the first night starts -
- * the line that closes and the row that stands off behind it.
+ * Everything that hunts him, in one squad, so the cold open shows the whole
+ * roster before the first night starts: swordsmen in front, the three weapon
+ * carriers Romi drew mixed through the middle, garlic throwers standing off at
+ * the back — and a Priest at the head of the column, because the thing leading
+ * them should be the thing you will eventually have to kill.
  *
- * Which slot gets which is fixed, never random: a cutscene has to play the
- * same way every time.
+ * Which slot gets which is FIXED, never rolled: a cutscene has to play the same
+ * way every time.
  */
+export type ColdOpenActor = 'priest' | 'sword' | 'spike' | 'pitchfork' | 'torch' | 'thrower';
+
+const COLD_OPEN_ROSTER: ColdOpenActor[] = [
+  'priest', 'sword', 'thrower',
+  'spike', 'sword', 'thrower',
+  'pitchfork', 'torch', 'thrower',
+  'sword', 'spike', 'thrower',
+];
+
+/** Who stands in slot `i` of the squad. */
+export function coldOpenSlotActor(i: number): ColdOpenActor {
+  return COLD_OPEN_ROSTER[i % COLD_OPEN_ROSTER.length];
+}
+
+/** Kept for the tests and for callers that only care about the standoff row. */
 export function coldOpenSlotIsThrower(i: number): boolean {
-  return i % COLD_OPEN.columns === COLD_OPEN.columns - 1;
+  return coldOpenSlotActor(i) === 'thrower';
 }
 
 /**

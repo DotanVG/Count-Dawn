@@ -1,5 +1,28 @@
 const CURSOR_ID = 'vampire-cursor';
 const MIN_BITE_MS = 220;
+/** Set while the fangs should stay hidden regardless of pointer movement. */
+const SUPPRESSED_CLASS = 'is-suppressed';
+/** On <html> while something needs the real OS pointer back (the audio editor). */
+const SYSTEM_CURSOR_CLASS = 'show-system-cursor';
+
+/**
+ * Hides or reveals the fangs without tearing them down. They start hidden: the
+ * menu and the cold open are watched, not played, and a set of teeth tracking
+ * the mouse over a cutscene reads as a bug. GameScene reveals them at the exact
+ * moment control goes live (see startPlaying).
+ */
+export function setVampireCursorVisible(visible: boolean): void {
+  document.getElementById(CURSOR_ID)?.classList.toggle(SUPPRESSED_CLASS, !visible);
+}
+
+/**
+ * Puts the ordinary system pointer back on top of everything. The fangs are
+ * deliberately left alone — the audio editor is a real HTML panel with sliders
+ * to drag, and dragging a slider needs a pointer you can aim with.
+ */
+export function setSystemCursorVisible(visible: boolean): void {
+  document.documentElement.classList.toggle(SYSTEM_CURSOR_CLASS, visible);
+}
 
 /**
  * Installs the desktop-only two-part vampire cursor. The hotspot is the
@@ -25,6 +48,8 @@ export function installVampireCursor(): void {
   lower.alt = '';
   lower.draggable = false;
 
+  // Hidden until the game says otherwise — see setVampireCursorVisible.
+  cursor.classList.add(SUPPRESSED_CLASS);
   cursor.append(upper, lower);
   // The game root is the element promoted by the Fullscreen API. Keeping the
   // cursor inside it makes the jaws visible both normally and in fullscreen.

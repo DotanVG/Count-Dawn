@@ -40,11 +40,20 @@ const ARC_RIGHT = 1070; // inside the right window's 960..1088 span
 const HORIZON_Y = 178; // bottom of the window openings
 const PEAK_Y = 88; // clear of the arch stone at the top
 
-/** Cycle span each body is above the horizon for. The sun rises a little before
- *  the night formally ends, which is what makes dawn dawn. */
-const SUN_UP = { from: 0.44, to: 1.02 };
+/**
+ * Cycle span each body is above the horizon for. The sun rises a little before
+ * the night formally ends, which is what makes dawn dawn.
+ *
+ * Both spans END exactly where their half of the clock does, and that is load
+ * bearing. The sun used to run to 1.02, so the day cycle stopped at 96% of its
+ * arc and the sun simply blinked out still well short of the right window
+ * instead of setting. The moon used to start at 0.93, which put it 12% along
+ * its arc — already past the left window — at the instant a night began. A
+ * body should enter at one window and leave at the other, with nothing popping.
+ */
+const SUN_UP = { from: 0.44, to: 1.0 };
 /** The moon is up across midnight, so its span wraps past 1 back to 0. */
-const MOON_UP = { from: 0.93, to: 1.5 };
+const MOON_UP = { from: 1.0, to: 1.5 };
 
 /** Position along a rising-and-setting arc for t in 0..1, plus a visibility fade. */
 function arcPoint(t: number): { x: number; y: number; alpha: number; lift: number } {

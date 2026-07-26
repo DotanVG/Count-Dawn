@@ -83,16 +83,26 @@ export class BossCharge {
     this.motes.stop();
 
     const ring = this.ring;
-    this.scene.tweens.add({
+    // Kept in `tween` so destroy() can stop it: a fade still running when the
+    // owner is torn down would keep writing to a destroyed Arc from inside the
+    // tween manager, which throws out of the scene step and freezes the game.
+    this.tween = this.scene.tweens.add({
       targets: ring,
       alpha: 0,
       duration: fired ? 160 : 220,
       onUpdate: fired
-        ? () => ring.setRadius(this.startRadius * 0.12 + (1 - ring.alpha) * this.startRadius * 0.5)
+        ? () => {
+            if (!ring.active) return;
+            ring.setRadius(this.startRadius * 0.12 + (1 - ring.alpha) * this.startRadius * 0.5);
+          }
         : undefined,
-      onComplete: () => ring.destroy(),
+      onComplete: () => {
+        this.tween = null;
+        ring.destroy();
+      },
     });
-    this.scene.time.delayedCall(700, () => this.motes.destroy());
+    const motes = this.motes;
+    this.scene.time.delayedCall(700, () => motes.destroy());
   }
 
   /** Torn down with its owner, mid-charge or not. */
@@ -100,6 +110,7 @@ export class BossCharge {
     this.done = true;
     this.tween?.stop();
     this.tween = null;
+    this.scene.tweens.killTweensOf(this.ring);
     this.ring.destroy();
     this.motes.destroy();
   }

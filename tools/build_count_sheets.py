@@ -89,17 +89,25 @@ FRAMES: dict[str, dict[str, list[Frame]]] = {
         "right": [("count-dawn-side-1", False), ("count-dawn-move-4", False)],
     },
     "run": {
+        # The front pose against a run frame, twice. NOTHING here is mirrored:
+        # move-4 faces right, so its mirror faces LEFT, and a left-facing frame
+        # inside the row used for running toward the camera reads as the Count
+        # snapping sideways for one frame every stride. The repeat is not
+        # padding — a short row is slowed to the full row's cycle length, so
+        # four entries is what keeps his stride in time with the side view.
         "down": [
             ("count-dawn-down-1", False),
             ("count-dawn-move-4", False),
             ("count-dawn-down-1", False),
-            ("count-dawn-move-4", True),
+            ("count-dawn-move-4", False),
             None,
             None,
         ],
-        # The back pose against its own mirror, twice. Two entries would say
-        # the same thing, but a two-frame row gets slowed to the six-frame
-        # row's cycle length and he would waddle away at 4fps.
+        # The back pose against its own mirror, twice. Mirroring is safe here
+        # where it is not on the `down` row: a back view flipped is still a back
+        # view, so it reads as his legs swapping rather than as him turning.
+        # Two entries would say the same thing, but a two-frame row gets slowed
+        # to the six-frame row's cycle length and he would waddle away at 4fps.
         "up": [
             ("count-dawn-up-1", False),
             ("count-dawn-up-1", True),

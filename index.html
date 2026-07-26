@@ -41,6 +41,13 @@
         body * {
           cursor: none !important;
         }
+        /* The audio editor is real HTML with sliders to drag, so it asks for
+           the system pointer back rather than aiming with fangs. */
+        html.show-system-cursor,
+        html.show-system-cursor body,
+        html.show-system-cursor body * {
+          cursor: auto !important;
+        }
       }
       #game-root {
         position: fixed;
@@ -69,6 +76,11 @@
       }
       #vampire-cursor.is-visible {
         opacity: 1;
+      }
+      /* Beats .is-visible: the fangs stay down until the game hands over
+         control, and while the audio editor wants the real pointer. */
+      #vampire-cursor.is-suppressed {
+        opacity: 0;
       }
       .vampire-cursor__jaw {
         position: absolute;

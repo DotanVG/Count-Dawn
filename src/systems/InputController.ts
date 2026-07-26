@@ -20,9 +20,24 @@ export class InputController {
     dash: Phaser.Input.Keyboard.Key;
   };
 
+  /**
+   * Whether the pointer has ever reported a position this scene.
+   *
+   * Until it has, `activePointer.worldX/worldY` are (0, 0) — the top-left
+   * corner of the hall — and aiming there turns the Count to face a corner he
+   * has no reason to look at. That is what made him land out of the coffin
+   * staring up and to the left instead of into the room.
+   */
+  private pointerSeen = false;
+
   constructor(private readonly scene: Phaser.Scene) {
     const kb = scene.input.keyboard;
     if (!kb) throw new Error('Keyboard input plugin is unavailable');
+    const noticePointer = (): void => {
+      this.pointerSeen = true;
+    };
+    scene.input.on(Phaser.Input.Events.POINTER_MOVE, noticePointer);
+    scene.input.on(Phaser.Input.Events.POINTER_DOWN, noticePointer);
     this.keys = {
       up: kb.addKey(Phaser.Input.Keyboard.KeyCodes.W),
       down: kb.addKey(Phaser.Input.Keyboard.KeyCodes.S),
@@ -58,6 +73,11 @@ export class InputController {
   /** Shift, edge-triggered: holding it must not chain dashes on every frame. */
   isDashJustPressed(): boolean {
     return Phaser.Input.Keyboard.JustDown(this.keys.dash);
+  }
+
+  /** False until the player has actually moved or clicked the mouse. */
+  get hasAimPoint(): boolean {
+    return this.pointerSeen;
   }
 
   /** Current aim point in world coordinates (mouse position). */

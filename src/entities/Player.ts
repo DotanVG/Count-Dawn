@@ -78,20 +78,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     return 1 - remaining / DASH.cooldownMs;
   }
 
-  /**
-   * moveX/moveY is a normalized direction from InputController.
-   *
-   * Movement is what decides which way he is DRAWN. The cursor decides where a
-   * strike goes and nothing else — see aimAt. Hold D and he runs right even
-   * with the mouse off to the left, and when he stops he keeps facing the way
-   * he was last travelling instead of snapping around to the pointer.
-   */
+  /** moveX/moveY is a normalized direction from InputController. */
   move(moveX: number, moveY: number): void {
     if (this.isDashing) return; // the dash owns the velocity until it ends
     this.setVelocity(moveX * PLAYER.moveSpeed, moveY * PLAYER.moveSpeed);
-    const moving = moveX !== 0 || moveY !== 0;
-    if (moving) this.facing = angleToDir4(Math.atan2(moveY, moveX));
-    this.updateAnimation(moving);
+    this.updateAnimation(moveX !== 0 || moveY !== 0);
   }
 
   /**
@@ -231,15 +222,30 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
-   * Where a strike would go. GameScene calls this every frame with the cursor,
-   * so it deliberately does NOT touch `facing`: the pointer used to drive the
-   * drawn direction as a side effect, which meant the Count ran and stood
-   * facing wherever the mouse happened to be, no matter which key was held.
-   * Movement owns the drawn direction (see move); the aim only becomes a
-   * facing at the moment he actually swings (see playAttackAnim).
+   * Where a strike would go, and which way he is drawn. The Count faces the
+   * cursor: he is aiming, not steering, so the pointer is the thing he is
+   * looking at whether he is standing still or running the other way.
+   *
+   * Note this deliberately does NOT re-mirror the bat: GameScene aims at the
+   * cursor every frame, which would otherwise spin the bat around to face the
+   * pointer mid-dash instead of the way he is actually hurtling. In bat form
+   * the mirror belongs to the dash direction (setBatForm) or the coffin flight
+   * (faceBatTowards); `facing` here only decides which vampire row he lands
+   * back on.
    */
   aimAt(worldX: number, worldY: number): void {
     this.aimAngle = Phaser.Math.Angle.Between(this.x, this.y, worldX, worldY);
+    this.facing = angleToDir4(this.aimAngle);
+  }
+
+  /**
+   * Point him somewhere without a world position to aim at — the cutscenes,
+   * which hand him to the player already facing the room rather than facing
+   * whatever the last flight left him on.
+   */
+  setFacing(dir: Dir4): void {
+    this.facing = dir;
+    if (!this.batForm) this.play(animKey('vampire', 'idle', dir), true);
   }
 
   /**
@@ -259,9 +265,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   playAttackAnim(): void {
     if (this.batForm) return;
 
-    // The one moment the cursor decides which way he is drawn: he turns into
-    // the strike. Everywhere else the drawn direction belongs to movement.
-    this.facing = angleToDir4(this.aimAngle);
     this.spawnCastFlare();
     this.attackAnimUntil = this.scene.time.now + VAMPIRE_ATTACK_DURATION_MS;
     // Held input can fire again before the previous animation finishes.

@@ -67,6 +67,9 @@ export class Priest extends Hunter implements CaptainTraits {
   private wardTimer: Phaser.Time.TimerEvent | null = null;
   /** The paler rings trailing the damage edge — decoration, no hitbox. */
   private ripples: Phaser.GameObjects.Arc[] = [];
+  /** Held so teardown can stop them; see the note in releaseWard. */
+  private rippleTweens: Phaser.Tweens.Tween[] = [];
+  private crossTweens: Phaser.Tweens.Tween[] = [];
   /** The cross that rises out of the circle as the light goes out. */
   private cross: Phaser.GameObjects.Container | null = null;
   private sparkles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
@@ -150,6 +153,10 @@ export class Priest extends Hunter implements CaptainTraits {
   override destroy(fromScene?: boolean): void {
     this.charge?.destroy();
     this.charge = null;
+    // Same rule as the ripples: nothing may still be animating an object we are
+    // about to destroy, or the scene's step throws on it forever after.
+    for (const tween of this.crossTweens) tween.stop();
+    this.crossTweens = [];
     this.cross?.destroy();
     this.cross = null;
     this.endWard();
@@ -240,6 +247,14 @@ export class Priest extends Hunter implements CaptainTraits {
     // Ripples: the same sweep again in paler golds, each one launched a beat
     // later than the last. Only the ring above carries damage — these exist so
     // the ward lands like something dropped in water instead of one flat hoop.
+    //
+    // Every one of these tweens is KEPT, because a counter tween's target is an
+    // internal counter rather than the Arc it drives, so killTweensOf(ripple)
+    // cannot reach it. A ripple that is still expanding (or still sitting on its
+    // stagger delay) when the ward ends would otherwise go on calling setRadius
+    // on a destroyed Arc from inside TweenManager.step — which throws out of the
+    // scene's step every frame and freezes the entire game with the audio still
+    // playing. That is exactly the bug this shape of code caused.
     for (let i = 1; i <= PRIEST.wardRipples; i++) {
       const ripple = this.scene.add
         .circle(this.x, this.y, 1, HOLY_GLOW, 0)
@@ -247,17 +262,22 @@ export class Priest extends Hunter implements CaptainTraits {
         .setDepth(DEPTHS.groundFx)
         .setAlpha(0);
       this.ripples.push(ripple);
-      this.scene.tweens.addCounter({
-        from: 0,
-        to: PRIEST.wardRadius,
-        delay: PRIEST.wardRippleDelayMs * i,
-        duration: PRIEST.wardExpandMs,
-        ease: 'Cubic.easeOut',
-        onUpdate: (tween) => {
-          const r = tween.getValue() ?? 0;
-          ripple.setRadius(Math.max(1, r)).setAlpha(0.85 * (1 - r / PRIEST.wardRadius));
-        },
-      });
+      this.rippleTweens.push(
+        this.scene.tweens.addCounter({
+          from: 0,
+          to: PRIEST.wardRadius,
+          delay: PRIEST.wardRippleDelayMs * i,
+          duration: PRIEST.wardExpandMs,
+          ease: 'Cubic.easeOut',
+          onUpdate: (tween) => {
+            // Second line of defence: even a tween that escapes teardown can
+            // never touch an Arc that is already gone.
+            if (!ripple.active) return;
+            const r = tween.getValue() ?? 0;
+            ripple.setRadius(Math.max(1, r)).setAlpha(0.85 * (1 - r / PRIEST.wardRadius));
+          },
+        }),
+      );
     }
 
     this.spawnCross();
@@ -330,22 +350,24 @@ export class Priest extends Hunter implements CaptainTraits {
       })
       .setDepth(DEPTHS.attackFx);
 
-    this.scene.tweens.add({
-      targets: cross,
-      scale: 1,
-      duration: PRIEST.wardExpandMs,
-      ease: 'Cubic.easeOut',
-    });
-    this.scene.tweens.add({
-      targets: cross,
-      alpha: 0,
-      delay: PRIEST.wardExpandMs,
-      duration: PRIEST.crossLingerMs,
-      onComplete: () => {
-        cross.destroy();
-        if (this.cross === cross) this.cross = null;
-      },
-    });
+    this.crossTweens = [
+      this.scene.tweens.add({
+        targets: cross,
+        scale: 1,
+        duration: PRIEST.wardExpandMs,
+        ease: 'Cubic.easeOut',
+      }),
+      this.scene.tweens.add({
+        targets: cross,
+        alpha: 0,
+        delay: PRIEST.wardExpandMs,
+        duration: PRIEST.crossLingerMs,
+        onComplete: () => {
+          cross.destroy();
+          if (this.cross === cross) this.cross = null;
+        },
+      }),
+    ];
     this.scene.time.delayedCall(PRIEST.wardExpandMs, () => this.sparkles?.stop());
   }
 
@@ -405,6 +427,12 @@ export class Priest extends Hunter implements CaptainTraits {
 
     // The cross and its sparks outlive the rings on purpose (see spawnCross),
     // so they are handed their own fade rather than cut here.
+    //
+    // The ripples' expansion tweens MUST die before their Arcs do — a live
+    // tween writing to a destroyed Arc throws out of the scene step and freezes
+    // the game (see the note in releaseWard).
+    for (const tween of this.rippleTweens) tween.stop();
+    this.rippleTweens = [];
     for (const ripple of this.ripples) {
       this.scene.tweens.add({
         targets: ripple,

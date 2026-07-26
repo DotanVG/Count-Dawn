@@ -27,6 +27,7 @@ import {
 } from '../game/constants';
 import { EVENTS } from '../game/events';
 import { isTouchDevice } from '../game/device';
+import { setVampireCursorVisible } from '../game/vampireCursor';
 import { Player } from '../entities/Player';
 import { Hunter } from '../entities/Hunter';
 import { ArmedHunter } from '../entities/ArmedHunter';
@@ -49,8 +50,9 @@ import {
   COLD_OPEN_THROWER_STATS,
   coldOpenHunterSlot,
   coldOpenSkyProgress,
-  coldOpenSlotIsThrower,
+  coldOpenSlotActor,
   coldOpenTimerSeconds,
+  type ColdOpenActor,
 } from '../systems/coldOpen';
 import { GameFlowSystem } from '../systems/GameFlowSystem';
 import { AudioDirector, getAudioDirector } from '../systems/AudioDirector';
@@ -288,8 +290,13 @@ export class GameScene extends Phaser.Scene {
     }
 
     const move = this.inputController.getMoveVector();
-    const aim = this.inputController.getAimPoint();
-    this.player.aimAt(aim.x, aim.y);
+    // Only once the mouse has actually been somewhere. Before that its world
+    // position is the hall's top-left corner, and aiming there would spin the
+    // Count out of the landing pose he was handed over in.
+    if (this.inputController.hasAimPoint) {
+      const aim = this.inputController.getAimPoint();
+      this.player.aimAt(aim.x, aim.y);
+    }
 
     // Dash first: it takes over the velocity that move() would otherwise set.
     if (this.inputController.isDashJustPressed()) this.player.tryDash(move.x, move.y);
@@ -585,13 +592,28 @@ export class GameScene extends Phaser.Scene {
   private cinematicSurround(): void {
     for (let i = 0; i < COLD_OPEN.hunterCount; i++) {
       const { spawn, arrival } = coldOpenHunterSlot(i);
-      // Deliberately NOT configureThrower'd: these throwers are scenery, and
-      // wiring onThrow would arm a bulb that the scene never wants launched.
-      const hunter = coldOpenSlotIsThrower(i)
-        ? new GarlicThrower(this, spawn.x, spawn.y, { stats: COLD_OPEN_THROWER_STATS })
-        : new Hunter(this, spawn.x, spawn.y);
+      const hunter = this.createColdOpenActor(coldOpenSlotActor(i), spawn.x, spawn.y);
       this.hunters.add(hunter);
       hunter.beginEntrance(arrival.x, arrival.y);
+    }
+  }
+
+  /**
+   * One actor of the cold open's squad. They are SCENERY: the throwers are
+   * deliberately not configureThrower'd (wiring onThrow would arm a bulb the
+   * scene never wants launched) and the Priest's ward never gets a chance to
+   * fire, because the whole squad dies to one strike seconds later.
+   */
+  private createColdOpenActor(actor: ColdOpenActor, x: number, y: number): Hunter {
+    switch (actor) {
+      case 'priest':
+        return new Priest(this, x, y, this.emitter);
+      case 'thrower':
+        return new GarlicThrower(this, x, y, { stats: COLD_OPEN_THROWER_STATS });
+      case 'sword':
+        return new Hunter(this, x, y);
+      default:
+        return new ArmedHunter(this, x, y, actor);
     }
   }
 
@@ -741,6 +763,10 @@ export class GameScene extends Phaser.Scene {
         squash: 0.42,
         onComplete: () => {
           this.setBatForm(false);
+          // He lands facing the room, not wherever the spiral happened to leave
+          // him — the flight is a bat and has no bearing on which way the man
+          // is standing. The cursor takes over the instant control does.
+          this.player.setFacing('down');
           this.coffin.setOpen(false);
           onComplete();
         },
@@ -808,6 +834,10 @@ export class GameScene extends Phaser.Scene {
   private startPlaying(): void {
     this.phase = 'playing';
     this.setPlayerDormant(false);
+    // Control goes live, so the aiming fangs come out. Before this the menu and
+    // the cold open are watched rather than played, and a cursor tracking the
+    // mouse over a cutscene reads as a bug rather than as a cursor.
+    setVampireCursorVisible(true);
     this.cameras.main.shake(120, 0.004); // landing thump
 
     // THE gameplay music cue. This is the one line in the run where the cold
@@ -1529,6 +1559,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private cleanup(): void {
+    setVampireCursorVisible(false);
     // Only this scene's own effects are silenced. The music is deliberately
     // left alone: it belongs to the game, not to the scene, and has to carry
     // across game over, the menu and the next run without a gap.

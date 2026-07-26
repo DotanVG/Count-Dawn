@@ -35,16 +35,18 @@ test('a Priest night is never bigger than the Captain night it replaces', () => 
   }
 });
 
-test('all garlic throwers share a hard cap of five', () => {
-  assert.equal(throwerCapForNight(1), 1);
-  assert.equal(throwerCapForNight(3), 3);
-  assert.equal(throwerCapForNight(5), 5);
-  assert.equal(throwerCapForNight(10), 5);
+test('garlic throwers start on night two and ramp one behind the night', () => {
+  // Night one is every melee flavour at once and no ranged pressure at all.
+  assert.equal(throwerCapForNight(1), 0);
+  assert.equal(throwerCapForNight(2), 1);
+  assert.equal(throwerCapForNight(4), 3);
+  // Still a hard ceiling however long the run goes.
+  assert.equal(throwerCapForNight(6), 5);
+  assert.equal(throwerCapForNight(20), 5);
 });
 
-test('the hall gains one new weapon silhouette per night, then keeps them all', () => {
-  assert.deepEqual(weaponsForNight(1), ['spike']);
-  assert.deepEqual(weaponsForNight(2), ['spike', 'pitchfork']);
-  assert.deepEqual(weaponsForNight(3), ['spike', 'pitchfork', 'torch']);
-  assert.deepEqual(weaponsForNight(9), ['spike', 'pitchfork', 'torch']);
+test('every weapon is in the hall from the first night', () => {
+  const all = ['spike', 'pitchfork', 'torch'];
+  assert.deepEqual(weaponsForNight(1), all);
+  assert.deepEqual(weaponsForNight(9), all);
 });

@@ -86,9 +86,14 @@ export const THROWER = {
   spriteScale: 2,
   /** Fraction of regular spawns replaced by a thrower, while under the cap. */
   spawnChance: 0.35,
-  /** Throwers only start showing up from this night on. */
-  firstNight: 1,
-  /** Night 1 allows one, night 2 two, and so on until the global cap. */
+  /**
+   * Throwers only start showing up from this night on. Night one is every
+   * MELEE flavour at once — sword, spike, pitchfork, torch — and no ranged
+   * pressure at all, so the first night teaches the crowd before it teaches
+   * the crosshair.
+   */
+  firstNight: 2,
+  /** Night 2 allows one, night 3 two — always one fewer than the night. */
   maxAlivePerNight: 1,
   /** Includes garlic-throwing Captains as well as ordinary throwers. */
   maxAlive: 5,
@@ -169,14 +174,19 @@ export const ARMED = {
 
 /**
  * Per-weapon feel. `reach` multiplies the hunter's melee range — the pitchfork
- * genuinely outranges an arm, which is the whole point of carrying one — and
- * `firstNight` staggers the three so the hall gains one new silhouette at a
- * time instead of all three on night one.
+ * genuinely outranges an arm, which is the whole point of carrying one. All
+ * three are on the table from night one; the garlic thrower is the only
+ * flavour held back (see THROWER.firstNight).
  *
  * `scale` is the prop's display scale relative to the hunter's own. Romi drew
  * all three nearly frame-filling and at roughly the same length, but they are
- * not the same object: a hand-whittled stake is shorter than a farm pitchfork,
- * so the sizes are separated here rather than left to the source art.
+ * not the same object: a hand-whittled stake is a forearm, a pitchfork is a
+ * two-handed farm tool taller than the man holding it.
+ *
+ * `gripY` is where along the prop his fist closes, as a fraction of the source
+ * frame. A stake and a torch are held at the very bottom; a pitchfork is held
+ * partway UP the shaft, which is what leaves its butt end sticking out behind
+ * him and makes it read as carried rather than balanced on a palm.
  *
  * `motion` is the real difference in how they read. A `thrust` keeps the point
  * on the target for the whole strike and drives it in — a stab. A `chop`
@@ -186,7 +196,8 @@ export const ARMED = {
 export const WEAPONS = {
   spike: {
     firstNight: 1,
-    scale: 0.32,
+    scale: 0.34,
+    gripY: 0.92,
     reach: 0.95,
     intervalMs: 720,
     hitDelayMs: 240,
@@ -194,8 +205,9 @@ export const WEAPONS = {
     motion: 'thrust',
   },
   pitchfork: {
-    firstNight: 2,
-    scale: 0.48,
+    firstNight: 1,
+    scale: 0.95,
+    gripY: 0.72,
     reach: 1.45,
     intervalMs: 1050,
     hitDelayMs: 380,
@@ -203,8 +215,9 @@ export const WEAPONS = {
     motion: 'thrust',
   },
   torch: {
-    firstNight: 3,
-    scale: 0.38,
+    firstNight: 1,
+    scale: 0.4,
+    gripY: 0.92,
     reach: 1.15,
     intervalMs: 900,
     hitDelayMs: 320,
@@ -360,10 +373,14 @@ export function bossLineupForNight(night: number): { priests: number; captains: 
   return { priests: 1, captains: Math.max(0, total - 2) };
 }
 
-/** Ranged pressure grows by night, but all thrower flavours share a hard cap. */
+/**
+ * Ranged pressure grows by night, but all thrower flavours share a hard cap —
+ * and night one has none at all. One fewer than the night number: night 2 gets
+ * a single thrower, night 3 two, and so on.
+ */
 export function throwerCapForNight(night: number): number {
   return Math.min(
     THROWER.maxAlive,
-    Math.max(0, night) * THROWER.maxAlivePerNight,
+    Math.max(0, night - THROWER.firstNight + 1) * THROWER.maxAlivePerNight,
   );
 }
