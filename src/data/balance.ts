@@ -161,14 +161,6 @@ export const ARMED = {
   spriteScale: 2,
   /** Fraction of the melee spawns that arrive carrying a weapon. */
   spawnChance: 0.45,
-  /**
-   * Display scale of the 64px prop, relative to the hunter's own scale. Romi
-   * drew the weapons nearly frame-filling and the hunters are a small 64px
-   * character inside a mostly empty frame, so a prop at his scale towers over
-   * him — this is what puts a spike back in a man's hand rather than a totem
-   * pole beside him.
-   */
-  propScale: 0.38,
 } as const;
 
 /**
@@ -176,10 +168,21 @@ export const ARMED = {
  * genuinely outranges an arm, which is the whole point of carrying one — and
  * `firstNight` staggers the three so the hall gains one new silhouette at a
  * time instead of all three on night one.
+ *
+ * `scale` is the prop's display scale relative to the hunter's own. Romi drew
+ * all three nearly frame-filling and at roughly the same length, but they are
+ * not the same object: a hand-whittled stake is shorter than a farm pitchfork,
+ * so the sizes are separated here rather than left to the source art.
+ *
+ * `motion` is the real difference in how they read. A `thrust` keeps the point
+ * on the target for the whole strike and drives it in — a stab. A `chop`
+ * sweeps the head through an arc and carries past. Only the torch chops;
+ * swinging a stake like a club is exactly what it should not look like.
  */
 export const WEAPONS = {
   spike: {
     firstNight: 1,
+    scale: 0.32,
     reach: 0.95,
     intervalMs: 720,
     hitDelayMs: 240,
@@ -188,6 +191,7 @@ export const WEAPONS = {
   },
   pitchfork: {
     firstNight: 2,
+    scale: 0.48,
     reach: 1.45,
     intervalMs: 1050,
     hitDelayMs: 380,
@@ -196,6 +200,7 @@ export const WEAPONS = {
   },
   torch: {
     firstNight: 3,
+    scale: 0.38,
     reach: 1.15,
     intervalMs: 900,
     hitDelayMs: 320,

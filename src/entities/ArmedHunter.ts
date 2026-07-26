@@ -22,13 +22,27 @@ const WEAPON_TEXTURES: Record<WeaponKind, string[]> = {
  * Where the prop sits while he is just carrying it: which side of his body the
  * hand is on (as a fraction of his display size), how the shaft leans, and
  * whether the weapon passes in front of him or behind his back.
+ *
+ * The hunter is a SMALL painting inside his frame — 12x21 of a 64x64 sheet,
+ * with his fist around texture row 34 — so these offsets are deliberately
+ * tight. Pushed out any further and the prop stops reading as held and starts
+ * reading as a totem standing next to him.
  */
 const CARRY: Record<Dir4, { handX: number; handY: number; lean: number; behind: boolean }> = {
-  down: { handX: 0.09, handY: 0.02, lean: 0.3, behind: false },
-  up: { handX: -0.09, handY: 0.0, lean: -0.3, behind: true },
-  left: { handX: -0.11, handY: 0.02, lean: -0.5, behind: false },
-  right: { handX: 0.12, handY: 0.02, lean: 0.5, behind: false },
+  down: { handX: 0.06, handY: 0.05, lean: 0.3, behind: false },
+  up: { handX: -0.06, handY: 0.04, lean: -0.3, behind: true },
+  left: { handX: -0.08, handY: 0.05, lean: -0.5, behind: false },
+  right: { handX: 0.09, handY: 0.05, lean: 0.5, behind: false },
 };
+
+/**
+ * The walk cycle lifts him off the floor and sets him back down again — its
+ * painted top runs 23, 21, 22 texture rows and repeats. A prop pinned to a
+ * fixed offset does not ride that, so his fist bobs and the weapon does not,
+ * and the join slides by a couple of pixels every step. This is that bob, in
+ * unscaled texture rows, indexed by position in the cycle.
+ */
+const BODY_BOB = [2, 0, 1];
 
 /**
  * The props are drawn point-up with the grip at the bottom of the frame, so
@@ -41,11 +55,18 @@ const HEAD_FRACTION = 0.6;
 /** Radians past the target a chop carries through to; a thrust stops on it. */
 const CHOP_FOLLOW_THROUGH = 0.55;
 /**
- * How far the FIST drives forward over a swing, as a fraction of his height —
- * an arm's worth, not a step. Any more and the prop visibly detaches from the
- * hunter and flies at the Count on its own.
+ * How far the FIST drives forward over a swing, as a fraction of his height.
+ * The thrust gets the bigger number because for a stab the travel IS the
+ * attack: a chop is sold by its arc, a stab by the point going in.
  */
-const LUNGE: Record<'thrust' | 'chop', number> = { thrust: 0.07, chop: 0.03 };
+const LUNGE: Record<'thrust' | 'chop', number> = { thrust: 0.14, chop: 0.03 };
+/**
+ * How much of a thrust is spent bringing the point to bear before he drives it
+ * in. A chop rotates all the way through its arc; a stab must be POINTED for
+ * the whole travel or it is just a swing with extra steps, so it finishes
+ * aiming inside the first quarter and then holds still and pushes.
+ */
+const THRUST_AIM_FRACTION = 0.25;
 
 /** Milliseconds each torch frame is held before the flame flickers to the other. */
 const FLICKER_MS = 110;
@@ -101,26 +122,28 @@ export class ArmedHunter extends Hunter {
     this.weapon = scene.add
       .image(x, y, this.textures[0])
       .setOrigin(0.5, GRIP_ORIGIN_Y)
-      .setScale(this.scaleX * ARMED.propScale);
+      .setScale(this.scaleX * spec.scale);
 
     // Only the torch burns, and it burns the whole time he is carrying it —
     // he is walking a live flame across a hall lit by the same fire.
-    this.embers =
-      kind === 'torch'
-        ? scene.add.particles(0, 0, TEXTURES.particle, {
-            speed: { min: 10, max: 45 },
-            angle: { min: 235, max: 305 },
-            lifespan: { min: 240, max: 560 },
-            scale: { start: 0.7, end: 0 },
-            alpha: { start: 0.9, end: 0 },
-            gravityY: -70,
-            tint: [0xffd76b, 0xff9a3d, 0xff5a2a],
-            frequency: 120,
-            quantity: 1,
-          })
-        : null;
+    this.embers = this.textures.length > 1 ? this.createEmbers() : null;
 
     this.updateWeapon();
+  }
+
+  /** Embers rising off a lit torch head, carried or dropped. */
+  private createEmbers(): Phaser.GameObjects.Particles.ParticleEmitter {
+    return this.scene.add.particles(0, 0, TEXTURES.particle, {
+      speed: { min: 10, max: 45 },
+      angle: { min: 235, max: 305 },
+      lifespan: { min: 240, max: 560 },
+      scale: { start: 0.7, end: 0 },
+      alpha: { start: 0.9, end: 0 },
+      gravityY: -70,
+      tint: [0xffd76b, 0xff9a3d, 0xff5a2a],
+      frequency: 120,
+      quantity: 1,
+    });
   }
 
   override pursue(targetX: number, targetY: number): void {
@@ -163,7 +186,6 @@ export class ArmedHunter extends Hunter {
   /** The weapon he was carrying clatters to the floor and fades with him. */
   override spawnCorpse(): void {
     super.spawnCorpse();
-    this.embers?.stop();
 
     const dropped = this.scene.add
       .image(this.weapon.x, this.weapon.y, this.weapon.texture.key)
@@ -178,12 +200,45 @@ export class ArmedHunter extends Hunter {
       duration: 260,
       ease: 'Quad.easeOut',
     });
+
+    // A dropped torch is still on fire. It used to be handed off as a single
+    // still frame with the embers cut dead, so the one thing on screen that is
+    // supposed to be alive read as frozen for the whole fade. The drop gets its
+    // own flicker and its own embers — the hunter's emitter dies with him.
+    const burning = this.textures.length > 1;
+    const flicker = burning
+      ? this.scene.time.addEvent({
+          delay: FLICKER_MS,
+          loop: true,
+          startAt: FLICKER_MS * this.frameIndex,
+          callback: () => {
+            const next = (this.textures.indexOf(dropped.texture.key) + 1) % this.textures.length;
+            dropped.setTexture(this.textures[next]);
+          },
+        })
+      : null;
+    const embers = burning ? this.createEmbers() : null;
+    if (embers) {
+      const shaft = dropped.displayHeight * HEAD_FRACTION;
+      embers
+        .setPosition(
+          dropped.x + Math.sin(dropped.rotation) * shaft,
+          dropped.y - Math.cos(dropped.rotation) * shaft,
+        )
+        .setDepth(DEPTHS.corpse);
+    }
+
     this.scene.tweens.add({
       targets: dropped,
       alpha: 0,
       delay: 700,
       duration: 900,
-      onComplete: () => dropped.destroy(),
+      onUpdate: () => embers?.setAlpha(dropped.alpha),
+      onComplete: () => {
+        flicker?.remove();
+        embers?.destroy();
+        dropped.destroy();
+      },
     });
   }
 
@@ -229,16 +284,24 @@ export class ArmedHunter extends Hunter {
       this.swingAim +
       Math.PI / 2 +
       (this.motion === 'chop' ? CHOP_FOLLOW_THROUGH : 0);
-    const rotation = lerpAngle(rest, strike, t);
+    // The chop's rotation IS the attack, so it tracks t the whole way. The
+    // thrust finishes aiming early and then holds, so the travel reads as a
+    // stab rather than as a slower swing.
+    const aimT =
+      this.motion === 'chop' ? t : Math.min(1, Math.max(0, t) / THRUST_AIM_FRACTION);
+    const rotation = lerpAngle(rest, strike, aimT);
 
     const lunge = this.displayHeight * LUNGE[this.motion] * Math.max(0, t);
+    // Ride his walk cycle so the join with his fist holds still (see BODY_BOB).
+    const frame = this.anims.currentFrame;
+    const bob = frame ? BODY_BOB[frame.index % BODY_BOB.length] * this.scaleY : 0;
     const x = this.x + this.displayWidth * carry.handX + Math.cos(this.swingAim) * lunge;
-    const y = this.y + this.displayHeight * carry.handY + Math.sin(this.swingAim) * lunge;
+    const y = this.y + this.displayHeight * carry.handY + bob + Math.sin(this.swingAim) * lunge;
 
     this.weapon
       .setPosition(x, y)
       .setRotation(rotation)
-      .setScale(this.scaleX * ARMED.propScale)
+      .setScale(this.scaleX * WEAPONS[this.weaponKind].scale)
       .setDepth(this.depth + (carry.behind ? -1 : 1));
 
     if (!this.embers) return;
