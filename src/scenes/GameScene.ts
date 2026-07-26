@@ -57,6 +57,7 @@ import { AudioDirector, getAudioDirector } from '../systems/AudioDirector';
 import { CastleMap } from '../world/CastleMap';
 import { DawnSky } from '../world/DawnSky';
 import { HUD } from '../ui/HUD';
+import { MenuLightning } from '../ui/MenuLightning';
 import { TouchControls } from '../ui/TouchControls';
 import { TEXTURES, AUDIO } from '../utils/assetKeys';
 import { VAMPIRE_ATTACK_DURATION_MS, VAMPIRE_SUNBURN_DURATION_MS } from '../utils/animations';
@@ -125,6 +126,8 @@ export class GameScene extends Phaser.Scene {
   private nightOverlay!: Phaser.GameObjects.Rectangle;
   private menuUi: Phaser.GameObjects.Container | null = null;
   private taglineTimer: Phaser.Time.TimerEvent | null = null;
+  /** Drives the cover's title swapping on the menu; see ui/MenuLightning.ts. */
+  private menuLightning: MenuLightning | null = null;
   /** The opening cinematic plays once, from the menu - restarts skip it. */
   private playCinematic = true;
   /** Drives the cold open's scripted clock; see systems/coldOpen.ts. */
@@ -322,8 +325,11 @@ export class GameScene extends Phaser.Scene {
 
     const dim = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0d0716, 0.45).setOrigin(0);
 
-    // Cover art, fully opaque, centered in the upper middle of the page.
-    const cover = this.add.image(cx, 260, TEXTURES.cover).setDisplaySize(300, 300);
+    // Cover art, fully opaque, centered in the upper middle of the page. Which
+    // title it wears is the lightning's business from here on.
+    const cover = this.add.image(cx, 260, TEXTURES.coverDawn).setDisplaySize(300, 300);
+    this.menuLightning?.destroy();
+    this.menuLightning = new MenuLightning(this, cover);
 
     // Typewriter tagline: types a sentence, holds, deletes it, types the next.
     const tagline = this.add
@@ -428,6 +434,8 @@ export class GameScene extends Phaser.Scene {
     // the hall. It is handed over in startPlaying, not here.
     this.taglineTimer?.remove();
     this.taglineTimer = null;
+    this.menuLightning?.destroy();
+    this.menuLightning = null;
     if (this.menuUi) {
       const ui = this.menuUi;
       this.menuUi = null;
@@ -1530,6 +1538,8 @@ export class GameScene extends Phaser.Scene {
     this.hud?.destroy();
     this.spawner?.stop();
     this.taglineTimer?.remove();
+    this.menuLightning?.destroy();
+    this.menuLightning = null;
     this.coldOpenClock?.remove();
     this.events.off(Phaser.Scenes.Events.PAUSE, this.onScenePaused, this);
     this.events.off(Phaser.Scenes.Events.RESUME, this.onSceneResumed, this);
