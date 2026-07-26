@@ -6,10 +6,13 @@ const SUPPRESSED_CLASS = 'is-suppressed';
 const SYSTEM_CURSOR_CLASS = 'show-system-cursor';
 
 /**
- * Hides or reveals the fangs without tearing them down. They start hidden: the
- * menu and the cold open are watched, not played, and a set of teeth tracking
- * the mouse over a cutscene reads as a bug. GameScene reveals them at the exact
- * moment control goes live (see startPlaying).
+ * Hides or reveals the fangs without tearing them down.
+ *
+ * They default to VISIBLE, and that matters: the page sets `cursor: none` on
+ * everything, so these teeth are the only pointer the game has. Hiding them on
+ * a screen with a button on it leaves nothing to aim with at all. The one place
+ * they come off is the opening cutscene, which is watched rather than played
+ * (see GameScene.startIntro / startPlaying).
  */
 export function setVampireCursorVisible(visible: boolean): void {
   document.getElementById(CURSOR_ID)?.classList.toggle(SUPPRESSED_CLASS, !visible);
@@ -48,8 +51,6 @@ export function installVampireCursor(): void {
   lower.alt = '';
   lower.draggable = false;
 
-  // Hidden until the game says otherwise — see setVampireCursorVisible.
-  cursor.classList.add(SUPPRESSED_CLASS);
   cursor.append(upper, lower);
   // The game root is the element promoted by the Fullscreen API. Keeping the
   // cursor inside it makes the jaws visible both normally and in fullscreen.

@@ -435,6 +435,10 @@ export class GameScene extends Phaser.Scene {
   private startIntro(): void {
     if (this.phase !== 'menu') return;
     this.phase = 'intro';
+    // The cold open and the coffin flight are watched, not played — teeth
+    // tracking the mouse across a cutscene read as a bug. Every screen with a
+    // button on it keeps them, because they are the game's ONLY pointer.
+    setVampireCursorVisible(false);
 
     // The Main Title deliberately keeps playing from here: through the cold
     // open, through the coffin opening, and through the Count's flight into
@@ -1559,7 +1563,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private cleanup(): void {
-    setVampireCursorVisible(false);
+    // Whatever comes next (game over, victory, the menu again) is clickable.
+    setVampireCursorVisible(true);
     // Only this scene's own effects are silenced. The music is deliberately
     // left alone: it belongs to the game, not to the scene, and has to carry
     // across game over, the menu and the next run without a gap.
