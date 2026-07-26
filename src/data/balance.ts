@@ -193,6 +193,21 @@ export const PRIEST = {
   wardExpandMs: 620,
   wardRadius: 250,
   wardDamage: 10,
+  /**
+   * Rings in the sweep. Only the FIRST one is the attack — it carries the
+   * damage edge; the rest are staggered behind it in paler golds so the ward
+   * lands like ripples on water rather than as one flat hoop.
+   */
+  wardRipples: 3,
+  wardRippleDelayMs: 120,
+  /**
+   * The cross that rises out of the circle with the light: it grows past the
+   * ward's own radius by this factor and lingers this much longer than the
+   * rings, so the last thing left on screen is the shape of the thing that
+   * just burned him.
+   */
+  crossOvershoot: 1.35,
+  crossLingerMs: 420,
 } as const;
 
 export const BLOOD = {

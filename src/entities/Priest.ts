@@ -4,6 +4,7 @@ import { DEPTHS } from '../game/constants';
 import type { GameEventEmitter } from '../game/events';
 import { BossHealthBar } from '../ui/BossHealthBar';
 import { TEXTURES, animKey } from '../utils/assetKeys';
+import { BossCharge } from './BossCharge';
 import { Hunter, type HunterLook } from './Hunter';
 import { captainTookDamage, type CaptainTraits } from './HunterCaptain';
 
@@ -21,6 +22,8 @@ const PRIEST_LOOK: HunterLook = {
 const HOLY_LIGHT = 0xffd76b;
 const HOLY_GLOW = 0xffa32b;
 const HOLY_PALE = 0xfff3c4;
+/** Yellows for the trailing ripples, deepest first — see spawnCross's siblings. */
+const RIPPLE_SHADES = [HOLY_PALE, HOLY_LIGHT, HOLY_GLOW];
 
 /**
  * Top of his PAINTED sprite in unscaled texture rows, measured off the built
@@ -41,8 +44,9 @@ const PAINTED_TOP_OFFSET = -19;
  * The ward is deliberately slow to start and fully drawn before it fires, so
  * it is a decision rather than a tax: walk out of the circle while it is being
  * painted, or dash through the edge in bat form, where the dash's own
- * invulnerability carries the Count clean. Landing a strike on him mid-ward
- * cancels it outright.
+ * invulnerability carries the Count clean. Damage is NOT an answer — once the
+ * circle is up he sees it through no matter how hard he is hit (see
+ * isCommitted), which is exactly why the telegraph is as loud as it is.
  */
 export class Priest extends Hunter implements CaptainTraits {
   readonly maxHealth = PRIEST.health;
@@ -61,6 +65,12 @@ export class Priest extends Hunter implements CaptainTraits {
   private wardCircle: Phaser.GameObjects.Arc | null = null;
   private wardTween: Phaser.Tweens.Tween | null = null;
   private wardTimer: Phaser.Time.TimerEvent | null = null;
+  /** The paler rings trailing the damage edge — decoration, no hitbox. */
+  private ripples: Phaser.GameObjects.Arc[] = [];
+  /** The cross that rises out of the circle as the light goes out. */
+  private cross: Phaser.GameObjects.Container | null = null;
+  private sparkles: Phaser.GameObjects.Particles.ParticleEmitter | null = null;
+  private charge: BossCharge | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -98,11 +108,14 @@ export class Priest extends Hunter implements CaptainTraits {
     this.healthBar.follow(this.x, this.visibleTopY);
   }
 
-  /** A landed strike breaks his concentration and the ward with it. */
-  override applyKnockback(sourceX: number, sourceY: number): void {
-    const interrupted = this.warding;
-    super.applyKnockback(sourceX, sourceY);
-    if (interrupted) this.endWard();
+  /**
+   * Once the ward is up he sees it through. Hitting him shoves him — and the
+   * whole ward slides with him, because it is anchored on his body — but it
+   * does not stop. Trading damage into a Priest mid-cast is not an answer; the
+   * telegraph is there so that footwork can be.
+   */
+  protected override get isCommitted(): boolean {
+    return this.warding;
   }
 
   override takeDamage(amount: number): boolean {
@@ -135,6 +148,10 @@ export class Priest extends Hunter implements CaptainTraits {
   }
 
   override destroy(fromScene?: boolean): void {
+    this.charge?.destroy();
+    this.charge = null;
+    this.cross?.destroy();
+    this.cross = null;
     this.endWard();
     this.healthBar.destroy();
     super.destroy(fromScene);
@@ -184,6 +201,17 @@ export class Priest extends Hunter implements CaptainTraits {
       repeat: 1,
     });
 
+    // The tell on his body, matching every other boss: a gold ring closing in
+    // on him, tightening and brightening as the wind-up runs out.
+    this.charge = new BossCharge(
+      this.scene,
+      this.x,
+      this.y,
+      HOLY_LIGHT,
+      this.displayHeight * 0.75,
+      PRIEST.wardWindupMs,
+    );
+
     this.wardTimer = this.scene.time.delayedCall(PRIEST.wardWindupMs, () => this.releaseWard());
   }
 
@@ -196,6 +224,8 @@ export class Priest extends Hunter implements CaptainTraits {
       return;
     }
 
+    this.charge?.finish(true);
+    this.charge = null;
     this.wardTween?.stop();
     circle.setAlpha(1).setRadius(1).setFillStyle(HOLY_GLOW, 0.1).setStrokeStyle(11, HOLY_LIGHT, 1);
     this.wardTween = this.scene.tweens.addCounter({
@@ -206,6 +236,31 @@ export class Priest extends Hunter implements CaptainTraits {
       onUpdate: (tween) => (this.wardRadius = tween.getValue() ?? 0),
       onComplete: () => this.endWard(),
     });
+
+    // Ripples: the same sweep again in paler golds, each one launched a beat
+    // later than the last. Only the ring above carries damage — these exist so
+    // the ward lands like something dropped in water instead of one flat hoop.
+    for (let i = 1; i <= PRIEST.wardRipples; i++) {
+      const ripple = this.scene.add
+        .circle(this.x, this.y, 1, HOLY_GLOW, 0)
+        .setStrokeStyle(6 - i, RIPPLE_SHADES[i % RIPPLE_SHADES.length], 0.8)
+        .setDepth(DEPTHS.groundFx)
+        .setAlpha(0);
+      this.ripples.push(ripple);
+      this.scene.tweens.addCounter({
+        from: 0,
+        to: PRIEST.wardRadius,
+        delay: PRIEST.wardRippleDelayMs * i,
+        duration: PRIEST.wardExpandMs,
+        ease: 'Cubic.easeOut',
+        onUpdate: (tween) => {
+          const r = tween.getValue() ?? 0;
+          ripple.setRadius(Math.max(1, r)).setAlpha(0.85 * (1 - r / PRIEST.wardRadius));
+        },
+      });
+    }
+
+    this.spawnCross();
 
     const motes = this.scene.add
       .particles(this.x, this.y, TEXTURES.particle, {
@@ -224,6 +279,77 @@ export class Priest extends Hunter implements CaptainTraits {
   }
 
   /**
+   * The cross. It rises out of the circle as the light goes out, grows past the
+   * ward's own radius and holds a moment longer than the rings do, so the last
+   * thing on screen is the shape of what just burned him. Sparks trail off both
+   * arms the whole way out.
+   *
+   * Two crossed bars in a Container rather than an image: it has to scale from
+   * nothing to bigger than the ward, and geometry stays crisp where a 64px
+   * sprite blown up that far would not.
+   */
+  private spawnCross(): void {
+    const reach = PRIEST.wardRadius * PRIEST.crossOvershoot;
+    // Tall enough to read as a crucifix standing in the middle of the ward,
+    // short enough not to run off the top of the hall — and translucent, so he
+    // is visible through his own light rather than hidden behind it.
+    const height = reach * 1.15;
+    const arm = reach * 0.52;
+    const thickness = Math.max(6, reach * 0.07);
+    const shaftY = -height * 0.12;
+    const barY = -height * 0.3;
+
+    const vertical = this.scene.add.rectangle(0, shaftY, thickness, height, HOLY_LIGHT);
+    const horizontal = this.scene.add.rectangle(0, barY, arm * 2, thickness, HOLY_LIGHT);
+    const glowV = this.scene.add.rectangle(0, shaftY, thickness * 2.2, height, HOLY_GLOW, 0.35);
+    const glowH = this.scene.add.rectangle(0, barY, arm * 2, thickness * 2.2, HOLY_GLOW, 0.35);
+
+    const cross = this.scene.add
+      .container(this.x, this.y, [glowV, glowH, vertical, horizontal])
+      .setDepth(DEPTHS.attackFx)
+      .setScale(0.05)
+      .setAlpha(0.8);
+    this.cross = cross;
+
+    // Sparks off the arms, following the cross as it opens out.
+    this.sparkles = this.scene.add
+      .particles(this.x, this.y, TEXTURES.particle, {
+        speed: { min: 30, max: 170 },
+        angle: { min: 0, max: 360 },
+        lifespan: { min: 260, max: 700 },
+        scale: { start: 1.1, end: 0 },
+        alpha: { start: 1, end: 0 },
+        tint: [HOLY_PALE, HOLY_LIGHT, 0xffffff],
+        frequency: 25,
+        quantity: 3,
+        emitZone: {
+          type: 'random',
+          source: new Phaser.Geom.Rectangle(-arm, barY - height * 0.2, arm * 2, height),
+          quantity: 1,
+        },
+      })
+      .setDepth(DEPTHS.attackFx);
+
+    this.scene.tweens.add({
+      targets: cross,
+      scale: 1,
+      duration: PRIEST.wardExpandMs,
+      ease: 'Cubic.easeOut',
+    });
+    this.scene.tweens.add({
+      targets: cross,
+      alpha: 0,
+      delay: PRIEST.wardExpandMs,
+      duration: PRIEST.crossLingerMs,
+      onComplete: () => {
+        cross.destroy();
+        if (this.cross === cross) this.cross = null;
+      },
+    });
+    this.scene.time.delayedCall(PRIEST.wardExpandMs, () => this.sparkles?.stop());
+  }
+
+  /**
    * Keeps the ring drawn on him and burns the Count the moment the expanding
    * edge reaches him — once per ward, so standing inside the circle after it
    * has already passed is safe. Being invulnerable when the edge arrives (a
@@ -234,7 +360,14 @@ export class Priest extends Hunter implements CaptainTraits {
     const circle = this.wardCircle;
     if (!circle) return;
 
+    // Everything the ward draws is anchored on him, so a shove that lands
+    // mid-cast carries the whole thing with him rather than leaving it behind.
     circle.setPosition(this.x, this.y);
+    this.charge?.follow(this.x, this.y);
+    for (const ripple of this.ripples) ripple.setPosition(this.x, this.y);
+    this.cross?.setPosition(this.x, this.y);
+    this.sparkles?.setPosition(this.x, this.y);
+
     if (this.wardRadius <= 0) return; // still only the telegraph
 
     circle.setRadius(this.wardRadius);
@@ -255,6 +388,9 @@ export class Priest extends Hunter implements CaptainTraits {
     this.wardTimer = null;
     this.wardTween?.stop();
     this.wardTween = null;
+    // Only reached without firing if he died or was destroyed mid-charge.
+    this.charge?.finish(false);
+    this.charge = null;
 
     const circle = this.wardCircle;
     this.wardCircle = null;
@@ -265,6 +401,25 @@ export class Priest extends Hunter implements CaptainTraits {
         duration: 200,
         onComplete: () => circle.destroy(),
       });
+    }
+
+    // The cross and its sparks outlive the rings on purpose (see spawnCross),
+    // so they are handed their own fade rather than cut here.
+    for (const ripple of this.ripples) {
+      this.scene.tweens.add({
+        targets: ripple,
+        alpha: 0,
+        duration: 200,
+        onComplete: () => ripple.destroy(),
+      });
+    }
+    this.ripples = [];
+
+    const sparkles = this.sparkles;
+    this.sparkles = null;
+    if (sparkles) {
+      sparkles.stop();
+      this.scene.time.delayedCall(900, () => sparkles.destroy());
     }
 
     this.warding = false;

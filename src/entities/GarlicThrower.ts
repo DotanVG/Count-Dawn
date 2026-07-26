@@ -42,7 +42,7 @@ export class GarlicThrower extends Hunter {
   /** Set by GameScene: spawns the actual projectile, which the scene owns. */
   onThrow: ((fromX: number, fromY: number, toX: number, toY: number) => void) | null = null;
 
-  private aimState: ThrowerState = 'reposition';
+  protected aimState: ThrowerState = 'reposition';
   /** When the current aim state gives up / advances on its own. */
   private aimStateDeadline = 0;
   private target: GarlicTarget | null = null;
@@ -83,9 +83,12 @@ export class GarlicThrower extends Hunter {
     if (!this.isAlive) return;
     this.updateHeldGarlic();
 
-    // A hit (or the walk-in) takes precedence and cancels any aim in progress.
+    // A hit (or the walk-in) takes precedence and cancels any aim in progress —
+    // unless this thrower is one that holds its aim under fire, in which case
+    // the shove lands but the lock survives it and the state machine picks the
+    // volley back up as soon as he stops sliding (see GarlicCaptain).
     if (this.updateForcedMovement()) {
-      if (this.aimState !== 'reposition') this.enterReposition();
+      if (this.aimState !== 'reposition' && !this.keepsAimUnderFire) this.enterReposition();
       return;
     }
 
@@ -124,6 +127,24 @@ export class GarlicThrower extends Hunter {
   /** Drop the crosshair and start the cooldown over (round ended, etc.). */
   abortAim(): void {
     this.enterReposition();
+  }
+
+  /**
+   * True from the moment the crosshair locks until the last bulb has left his
+   * hand — the beats a boss refuses to have knocked out of him.
+   */
+  protected get isAiming(): boolean {
+    return this.aimState === 'locked' || this.aimState === 'volley';
+  }
+
+  /** A plain thrower loses his lock to a hit; a Captain does not. */
+  protected get keepsAimUnderFire(): boolean {
+    return false;
+  }
+
+  /** The crosshair just locked on. Bosses hang their wind-up tell here. */
+  protected onLocked(): void {
+    // Nothing for an ordinary thrower — the crosshair is his whole tell.
   }
 
   /** The crosshair and the held bulb are loose objects — both go when he does. */
@@ -207,6 +228,7 @@ export class GarlicThrower extends Hunter {
         target.lock();
         this.aimState = 'locked';
         this.aimStateDeadline = now + THROWER.throwWindupMs;
+        this.onLocked();
       }
       return;
     }

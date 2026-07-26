@@ -34,7 +34,17 @@ Who answers that request is `bossLineupForNight` (`data/balance.ts`). Ordinary n
 
 Every `PRIEST.wardIntervalMs` the Priest plants his feet, raises the cross and paints the full circle of the ward gold on the floor around himself. After `wardWindupMs` the light sweeps outward to `wardRadius`, burning the Count for `wardDamage` the moment the expanding edge passes him — once per ward, so standing inside the circle after it has gone by is safe.
 
-Three answers, in order of how much they cost: walk out of the circle while it is still being painted; dash through the edge (the dash's own invulnerability window carries him clean, exactly as it does through a garlic bulb); or land a strike on the Priest mid-cast, which cancels the ward outright.
+Only the leading ring is the attack. `wardRipples` more follow it in paler golds, each launched `wardRippleDelayMs` after the last, and a golden cross grows out of the circle to `crossOvershoot` of its radius trailing sparks, holding `crossLingerMs` after the rings have gone. None of that has a hitbox; it exists so the ward lands like something dropped in water and leaves the shape of what burned him as the last thing on screen.
+
+Two answers: walk out of the circle while it is still being painted, or dash through the edge (the dash's own invulnerability window carries him clean, exactly as it does through a garlic bulb). Damage is **not** an answer — see below.
+
+### Boss telegraphs, and committed attacks
+
+Every boss wears the same tell before it commits, drawn by `BossCharge`: a ring that closes inward onto its body and brightens as the wind-up runs out, colour-coded per threat — gold for the Priest's ward, red for a Hunter Captain's swing, green for a garlic Captain's volley.
+
+From the moment that ring appears the attack is **committed** (`Hunter.isCommitted`). Hitting the boss still shoves it, and the Priest's whole ward slides with him because every part of it is anchored on his body, but nothing cancels. A regular hunter is the opposite: a landed strike knocks him back, flinches him and drops the swing he was winding up.
+
+That split is the point. Against hunters, damage is crowd control; against bosses it never is, so the telegraph has to be loud enough that footwork can be the answer instead.
 
 ## Bat dash
 
