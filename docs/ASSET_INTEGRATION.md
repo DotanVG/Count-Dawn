@@ -1,6 +1,37 @@
 # Asset Integration
 
-How to replace the runtime-generated placeholder shapes with real assets.
+How art gets into Count Dawn: the pipeline that turns Romi's drawings into the
+sheets the game loads, and the rules for adding anything new.
+
+## The shipped pipeline
+
+Every hand-drawn asset in the game is built offline from a source drawing that
+ships beside it under [`public/assets/RAW/`](../public/assets/RAW/README.md).
+Nothing in `RAW/` is loaded at runtime; it is there so no sheet is ever orphaned
+from the art it came from.
+
+| Source | Script | Output |
+| --- | --- | --- |
+| `RAW/count/` | `tools/build_count_sheets.py` | `characters/vampire/vampire_{idle,run,attack,death}.png` |
+| `RAW/priest/` | `tools/build_priest_sheet.py` | `characters/humans/priest.png` |
+| `RAW/weapons/` | `tools/build_weapon_props.py` | `environment/weapons/*.png` |
+| `RAW/bat/` | `tools/build_bat_sheet.py` | `characters/bat/bat_fly.png` |
+
+Each takes its folder as the only argument and is idempotent. The mapping from
+loose drawings to animation frames — which pose stands in for what, and why — is
+written out at the top of each script; `build_count_sheets.py` is the one worth
+reading first, because the Count had the least art to work with.
+
+Two decisions that generalise:
+
+- **Register on a landmark, not a bounding box.** The Priest's stake swings
+  clear across his frame between poses, so a bbox crop slid him around the floor
+  while he walked. His crops are registered on his boots. The bat's are
+  registered on its eyes so only the wings move.
+- **Facing is a contract, not a guess.** Romi draws side views facing RIGHT, so
+  LEFT is the mirrored row. Getting this backwards looks fine standing still and
+  is only obvious once you hold a direction key and watch the character run away
+  from the way it faces.
 
 ## Ground rules
 
@@ -25,22 +56,27 @@ public/assets/
 
 ## How placeholder replacement works
 
-`BootScene` generates a placeholder texture for each key in `TEXTURES` — **but skips any key that already exists** (see `placeholderTextures.ts`). So to replace a placeholder you only add a `load` call in `PreloadScene` under the same key; nothing else changes. You can replace assets one at a time.
+`PreloadScene.create()` generates a placeholder texture for each key in
+`TEXTURES` — **but skips any key that already exists** (see
+`placeholderTextures.ts`). So to replace a placeholder you only add a `load`
+call in `PreloadScene` under the same key; nothing else changes, and assets can
+be replaced one at a time.
 
-### Replacing the vampire
+The blood droplet is the last placeholder still in use.
 
-In `PreloadScene.preload()` (add the method):
+### Adding a spritesheet
 
 ```ts
 import { TEXTURES } from '../utils/assetKeys';
 
-this.load.spritesheet(TEXTURES.vampire, 'assets/characters/vampire/vampire.png', {
-  frameWidth: /* your sheet's frame width */,
-  frameHeight: /* your sheet's frame height */,
+this.load.spritesheet(TEXTURES.someone, 'assets/characters/someone.png', {
+  frameWidth: 64,
+  frameHeight: 64,
 });
 ```
 
-Do **not** assume a particular frame size anywhere else — frame dimensions belong to the load call only.
+Do **not** assume a particular frame size anywhere else — frame dimensions
+belong to the load call only.
 
 ### Chroma-keying hand-drawn art
 
@@ -59,10 +95,6 @@ pixels greener than any of the paint ever gets.
 
 The rule that matters: keying may change transparency; it may never change a
 colour the artist chose.
-
-### Replacing hunters and the captain
-
-Same pattern with `TEXTURES.hunter` and `TEXTURES.boss` under `assets/characters/humans/`.
 
 ### Castle background / tilemap
 
@@ -85,6 +117,7 @@ all. When adding another prop of that kind:
   weapon rather than spinning it about its middle,
 - keep the numbers (scale, reach, cadence) in `balance.ts`; the entity should
   only own where the hand is and how the swing is drawn.
+
 ### Characters with only a couple of frames
 
 Not every character arrives as a six-sheet pack. The Priest is two frames per
@@ -108,18 +141,22 @@ Animation keys are centralized in `ANIMS` (`assetKeys.ts`). Create them once, af
 
 ```ts
 this.anims.create({
-  key: ANIMS.vampireWalk,
-  frames: this.anims.generateFrameNumbers(TEXTURES.vampire, { start: 0, end: 5 }),
+  key: ANIMS.torch,
+  frames: this.anims.generateFrameNumbers(TEXTURES.fire, { start: 0, end: 5 }),
   frameRate: 10,
   repeat: -1,
 });
 ```
 
-Then play them from the entity (e.g. in `Player.move()` when velocity is non-zero). Keep new animation names in `ANIMS`, not inline strings.
+Directional character animations do not go in `ANIMS` — they are generated per
+character/action/direction by `animKey()` and registered in bulk by
+`createCharacterAnimations()`. `ANIMS` is for the one-off, non-directional ones
+(the torch flame, the bat flap, the magic bursts). Either way, keep names out of
+inline strings.
 
 ## Physics bodies vs. sprite dimensions
 
-Physics sizing is set explicitly (e.g. `Player` calls `setCircle(20, 4, 4)`), independent of the texture. When a sprite's visual size changes, re-tune the body with `setCircle`/`setSize`/`setOffset` in the entity constructor — do not let gameplay hitboxes silently inherit new art dimensions.
+Physics sizing is set explicitly (e.g. `Player` calls `setCircle(15, 16, 23)`), independent of the texture. When a sprite's visual size changes, re-tune the body with `setCircle`/`setSize`/`setOffset` in the entity constructor — do not let gameplay hitboxes silently inherit new art dimensions.
 
 ## Audio
 

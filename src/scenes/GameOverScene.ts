@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, SCENES } from '../game/constants';
 import { isTouchDevice } from '../game/device';
 import { getAudioDirector } from '../systems/AudioDirector';
+import { RunDebrief } from '../ui/RunDebrief';
 import type { RunSummary } from '../types/game';
 
 const FONT = 'Trebuchet MS, sans-serif';
@@ -25,34 +26,37 @@ export class GameOverScene extends Phaser.Scene {
     getAudioDirector(this).playMainTitle();
 
     this.add
-      .text(cx, GAME_HEIGHT * 0.26, 'DAWN CLAIMS YOU', {
+      .text(cx, 62, 'DAWN CLAIMS YOU', {
         fontFamily: FONT,
-        fontSize: '56px',
+        fontSize: '52px',
         color: '#ff5f5f',
         fontStyle: 'bold',
       })
       .setOrigin(0.5);
 
     this.add
-      .text(cx, GAME_HEIGHT * 0.38, CAUSE_TEXT[summary.cause] ?? 'The night is over.', {
+      .text(cx, 108, CAUSE_TEXT[summary.cause] ?? 'The night is over.', {
         fontFamily: FONT,
-        fontSize: '22px',
+        fontSize: '21px',
         color: '#e8ddff',
       })
       .setOrigin(0.5);
 
+    // The last night, in its own line — the debrief below is the whole run.
     this.add
       .text(
         cx,
-        GAME_HEIGHT * 0.5,
-        `Blood collected: ${summary.bloodCollected}/${summary.bloodTarget}      Time survived: ${summary.timeSurvivedSeconds}s`,
-        { fontFamily: FONT, fontSize: '20px', color: '#9d8bbf' },
+        140,
+        `Final night: ${summary.bloodCollected}/${summary.bloodTarget} blood  ·  survived ${summary.timeSurvivedSeconds}s`,
+        { fontFamily: FONT, fontSize: '16px', color: '#7d6ea3' },
       )
       .setOrigin(0.5);
 
+    new RunDebrief(this, cx, 210, summary.stats);
+
     const touch = isTouchDevice();
     const restart = this.add
-      .text(cx, GAME_HEIGHT * 0.66, touch ? 'RESTART' : 'RESTART  (R)', {
+      .text(cx, GAME_HEIGHT - 96, touch ? 'RESTART' : 'RESTART  (R)', {
         fontFamily: FONT,
         fontSize: '28px',
         color: '#0d0716',
@@ -69,7 +73,7 @@ export class GameOverScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-M', () => this.scene.start(SCENES.game, { autostart: false }));
 
     const menuLink = this.add
-      .text(cx, GAME_HEIGHT * 0.78, touch ? 'Back to menu' : 'M - back to menu', {
+      .text(cx, GAME_HEIGHT - 42, touch ? 'Back to menu' : 'M - back to menu', {
         fontFamily: FONT,
         fontSize: touch ? '20px' : '16px',
         color: '#9d8bbf',

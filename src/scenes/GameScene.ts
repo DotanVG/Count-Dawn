@@ -63,7 +63,8 @@ import { MenuLightning } from '../ui/MenuLightning';
 import { TouchControls } from '../ui/TouchControls';
 import { TEXTURES, AUDIO } from '../utils/assetKeys';
 import { VAMPIRE_ATTACK_DURATION_MS, VAMPIRE_SUNBURN_DURATION_MS } from '../utils/animations';
-import type { EndCause, RunSummary } from '../types/game';
+import { emptyRunStats } from '../types/game';
+import type { BossKind, EndCause, HunterKind, RunStats, RunSummary } from '../types/game';
 
 type Phase = 'menu' | 'intro' | 'playing' | 'transition' | 'ended';
 
@@ -81,6 +82,13 @@ type Captain = HunterCaptain | GarlicCaptain | Priest;
 
 const FONT = 'Trebuchet MS, sans-serif';
 const COFFIN_POS = { x: 150, y: 430 };
+
+/**
+ * Slack on top of an animation's own length before the fallback that forces a
+ * run to end anyway. Long enough that it never pre-empts the animation event in
+ * normal play, short enough that a player never sits looking at a dead screen.
+ */
+const DEATH_FALLBACK_GRACE_MS = 400;
 
 /** The state the Count comes home in during the opening cinematic. */
 const CINEMATIC = {
@@ -132,6 +140,12 @@ export class GameScene extends Phaser.Scene {
   private menuLightning: MenuLightning | null = null;
   /** The opening cinematic plays once, from the menu - restarts skip it. */
   private playCinematic = true;
+  /**
+   * Whole-RUN totals for the debrief. Reset only in create(), never in
+   * beginRoundSystems — surviving a night adds to these rather than clearing
+   * them, which is the whole point of "since the very beginning".
+   */
+  private runStats: RunStats = emptyRunStats();
   /** Drives the cold open's scripted clock; see systems/coldOpen.ts. */
   private coldOpenClock: Phaser.Time.TimerEvent | null = null;
 
@@ -143,6 +157,7 @@ export class GameScene extends Phaser.Scene {
     this.phase = 'menu';
     this.isTouch = isTouchDevice();
     this.night = 1;
+    this.runStats = emptyRunStats();
     this.captains.clear();
     this.countdown = null;
     this.spawner = null;
@@ -1128,6 +1143,9 @@ export class GameScene extends Phaser.Scene {
       onComplete: () => {
         if (!this.flow.hasEnded) {
           this.flow.addBlood(pickup.amount);
+          // The run-long total, which keeps climbing past each night's quota
+          // and across the coffin — unlike flow.currentBlood, which resets.
+          this.runStats.bloodCollected += pickup.amount;
           // Noam's slurp, on arrival rather than on the swing: the Count is
           // heard drinking exactly as the meter takes the blood in. One per
           // bloodlet, so a five-droplet kill is five drinks.
@@ -1345,9 +1363,13 @@ export class GameScene extends Phaser.Scene {
       hunter instanceof GarlicCaptain ||
       hunter instanceof Priest
     ) {
+      this.runStats.bosses[this.bossKindOf(hunter)]++;
       this.captains.delete(hunter);
       if (this.captains.size === 0) this.flow.notifyBossDefeated();
     } else {
+      // Counted where he DIES rather than where his blood lands, so a hunter
+      // killed on the last tick of a night still shows up on the tally.
+      this.runStats.hunters[this.hunterKindOf(hunter)]++;
       this.scatterBloodlets(hunter.x, hunter.y);
       this.audio.playSfx(AUDIO.hunterDeath);
     }
@@ -1417,7 +1439,22 @@ export class GameScene extends Phaser.Scene {
       bloodTarget: this.flow.bloodTarget,
       timeSurvivedSeconds: Math.round(this.countdown?.elapsedSeconds ?? 0),
       timeRemainingSeconds: this.countdown?.remainingSeconds ?? 0,
+      stats: { ...this.runStats },
     };
+  }
+
+  /** Which line of the debrief a dead hunter belongs on. */
+  private hunterKindOf(hunter: Hunter): HunterKind {
+    if (hunter instanceof ArmedHunter) return hunter.weaponKind;
+    if (hunter instanceof GarlicThrower) return 'thrower';
+    return 'sword';
+  }
+
+  /** Which line of the debrief a dead boss belongs on. */
+  private bossKindOf(boss: Hunter): BossKind {
+    if (boss instanceof Priest) return 'priest';
+    if (boss instanceof GarlicCaptain) return 'garlicCaptain';
+    return 'captain';
   }
 
   /**
@@ -1448,10 +1485,23 @@ export class GameScene extends Phaser.Scene {
       callback: () => embers.explode(6, this.player.x, this.player.y - 14),
     });
 
-    this.player.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => {
+    // Reaching the game-over screen must NOT depend on an animation event.
+    // It used to, and a death landing inside a dash's 175ms let the dash's
+    // queued restore play over the sunburn — the animation never completed, the
+    // event never fired, and the run hung forever with the music still playing.
+    // Player.stopForDeath fixes that cause; this makes the whole class of it
+    // impossible. Whichever arrives first wins, and `settled` keeps the scene
+    // from being started twice.
+    let settled = false;
+    const toGameOver = (): void => {
+      if (settled) return;
+      settled = true;
       ash.remove();
       this.time.delayedCall(700, () => this.scene.start(SCENES.gameOver, summary));
-    });
+    };
+
+    this.player.once(Phaser.Animations.Events.ANIMATION_COMPLETE, toGameOver);
+    this.time.delayedCall(VAMPIRE_SUNBURN_DURATION_MS + DEATH_FALLBACK_GRACE_MS, toGameOver);
   }
 
   /**
@@ -1517,6 +1567,10 @@ export class GameScene extends Phaser.Scene {
         this.dawnOverlay.setAlpha(v * v * 0.18);
       },
       onComplete: () => {
+        // He made it into the coffin, so the night he just played counts as
+        // survived. Credited here rather than on the next night starting, so a
+        // run that ends during the transition still gets the night it earned.
+        this.runStats.nightsSurvived++;
         // The moon that rises at the end of this day belongs to the coming night.
         this.night++;
         this.playDayCycle(2600, () => {

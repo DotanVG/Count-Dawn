@@ -5,6 +5,9 @@ import type { Player } from '../entities/Player';
 import { Hunter } from '../entities/Hunter';
 import { TEXTURES, ANIMS } from '../utils/assetKeys';
 
+/** The impact burst on a struck hunter — sized to read as a hit, not a spark. */
+const HIT_BURST_SCALE = 1.8;
+
 /**
  * The player's directional melee strike: cooldown and arc hit detection
  * against all living hunters (boss included). No overlay on the player
@@ -63,7 +66,10 @@ export class CombatSystem {
 
   /** One-shot magic burst on the hunter that got hit, self-destroying when it finishes. */
   private spawnHitMagic(x: number, y: number): void {
-    const fx = this.scene.add.sprite(x, y, TEXTURES.vampireAttackMagic, 0).setDepth(DEPTHS.attackFx);
+    const fx = this.scene.add
+      .sprite(x, y, TEXTURES.vampireAttackMagic, 0)
+      .setScale(HIT_BURST_SCALE)
+      .setDepth(DEPTHS.attackFx);
     fx.play(ANIMS.hitMagic);
     fx.once(Phaser.Animations.Events.ANIMATION_COMPLETE, () => fx.destroy());
   }

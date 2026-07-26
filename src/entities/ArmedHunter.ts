@@ -244,6 +244,7 @@ export class ArmedHunter extends Hunter {
 
   /** The prop and its embers are loose objects — both go when he does. */
   override destroy(fromScene?: boolean): void {
+    if (!this.scene) return; // already destroyed; see the note in Priest.destroy
     this.swingTween?.stop();
     this.weapon.destroy();
     this.embers?.destroy();

@@ -151,6 +151,13 @@ export class Priest extends Hunter implements CaptainTraits {
   }
 
   override destroy(fromScene?: boolean): void {
+    // Phaser nulls `scene` on the first destroy and quietly ignores a second
+    // one — but this override runs BEFORE that guard, and everything below
+    // reaches through `this.scene`. A scene shutdown destroying a Priest that
+    // was already killed would throw straight out of the shutdown, which is
+    // exactly the kind of thing that leaves a run frozen.
+    if (!this.scene) return;
+
     this.charge?.destroy();
     this.charge = null;
     // Same rule as the ripples: nothing may still be animating an object we are

@@ -85,6 +85,7 @@ export class GarlicCaptain extends GarlicThrower implements CaptainTraits {
   }
 
   override destroy(fromScene?: boolean): void {
+    if (!this.scene) return; // already destroyed; see the note in Priest.destroy
     this.charge?.destroy();
     this.charge = null;
     this.healthBar.destroy();

@@ -149,6 +149,7 @@ export class GarlicThrower extends Hunter {
 
   /** The crosshair and the held bulb are loose objects — both go when he does. */
   override destroy(fromScene?: boolean): void {
+    if (!this.scene) return; // already destroyed; see the note in Priest.destroy
     this.clearTarget();
     for (const bulb of this.heldGarlics) bulb.destroy();
     super.destroy(fromScene);

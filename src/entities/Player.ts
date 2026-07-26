@@ -8,9 +8,12 @@ import { VAMPIRE_ATTACK_DURATION_MS } from '../utils/animations';
 
 /** The charge-and-burst stretch of the magic layer, used as his cast. */
 const CAST_FLARE_FRAMES = [3, 4, 5, 6, 7, 8];
-const CAST_FLARE_SCALE = 0.75;
-/** How far out along his aim the spell appears, in world pixels. */
-const CAST_FLARE_DISTANCE = 46;
+const CAST_FLARE_SCALE = 1.25;
+/**
+ * How far out along his aim the spell appears, in world pixels. It scales with
+ * the flare so a bigger burst still clears his face rather than sitting on it.
+ */
+const CAST_FLARE_DISTANCE = 62;
 
 /**
  * The vampire. Handles movement, the bat dash, directional animation, health,
@@ -32,6 +35,11 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * The dash must only undo a bat form it still owns — see setBatForm.
    */
   private batFormCause: 'flight' | 'dash' | null = null;
+  /**
+   * The dash's queued shape-restore, held so a death can cancel it. Left to
+   * run it plays his idle pose over the death animation — see stopForDeath.
+   */
+  private dashRestore?: Phaser.Time.TimerEvent;
   private facing: Dir4 = 'down';
   /** Display scale before the bat-form shrink — see setBaseScale. */
   private baseScale: number = PLAYER.spriteScale;
@@ -114,7 +122,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setBatForm(true, 'dash');
     this.spawnDashTrail();
 
-    this.scene.time.delayedCall(DASH.durationMs, () => {
+    this.dashRestore = this.scene.time.delayedCall(DASH.durationMs, () => {
+      this.dashRestore = undefined;
       if (!this.active) return;
       // Dashing into an open coffin ends the night mid-dash, and the coffin
       // flight takes the bat over. This timer is still queued from before that
@@ -340,7 +349,38 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.play(animKey('vampire', 'idle', this.facing), true);
   }
 
+  /**
+   * Silences everything that could animate over his death, so whichever death
+   * animation plays next is the last thing to touch the sprite.
+   *
+   * This is not housekeeping — it is the fix for a hard freeze. The dawn ending
+   * waits on the sunburn's ANIMATION_COMPLETE before it shows the game-over
+   * screen. Die within a dash's 175ms and the dash's queued restore played his
+   * idle pose over the sunburn, so it never completed, the event never fired,
+   * and the run sat there forever with the music still going.
+   */
+  private stopForDeath(): void {
+    this.dashRestore?.remove();
+    this.dashRestore = undefined;
+    this.dashUntil = 0;
+    this.attackAnimUntil = 0;
+    this.attackPopTween?.stop();
+    this.attackPopTween = undefined;
+    this.setVelocity(0, 0);
+
+    // Drop bat form WITHOUT going through setBatForm: that plays an idle pose,
+    // which is the very thing being guarded against here.
+    if (this.batForm) {
+      this.batForm = false;
+      this.batFormCause = null;
+      this.setFlipX(false);
+      this.applyFormScale();
+      this.emitter.emit(EVENTS.BAT_FORM_CHANGED, false, 'flight');
+    }
+  }
+
   playDeathAnim(): void {
+    this.stopForDeath();
     this.play(animKey('vampire', 'death', this.facing), true);
   }
 
@@ -350,6 +390,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * the sunrise, which is the one death the game is actually named after.
    */
   playSunburnAnim(): void {
+    this.stopForDeath();
     this.play(animKey('vampire', 'sunburn', this.facing), true);
   }
 

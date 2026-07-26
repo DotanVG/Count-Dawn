@@ -73,8 +73,25 @@ Shift on desktop, the bat button on mobile. The Count *poofs* into a bat and bur
 
 `hunterPressureForNight()` increases `maxAlive` by 2 and reduces the spawn interval by 75ms each new night, down to a 650ms floor. All values remain tunable in `src/data/balance.ts`.
 
-## Out of scope (for this prototype)
+## End of a run
 
-Procedural maps, multiple levels, permanent progression, upgrades, inventory, advanced enemy AI or full pathfinding, multiple enemy types beyond hunter + boss, and boss phases.
+Dawn and death are the only ways a run truly ends, and both show the same
+debrief (`src/ui/RunDebrief.ts`): nights survived, total blood drained across
+the whole run, and breakdowns of hunters drained and mini-bosses slain, each
+line with an animated icon of the thing it counts.
 
-Extension points exist for: touch input (`InputController`), audio (`AudioDirector` + the manifest in `data/audioManifest.ts` — see `docs/AUDIO.md`), real sprites (`docs/ASSET_INTEGRATION.md`).
+Those totals live in `RunStats`, held by `GameScene` and reset only in
+`create()` — surviving a night adds to them rather than clearing them, which is
+what makes "blood collected since the very beginning" mean what it says.
+
+**Reaching the end screen never depends on an animation finishing.** The dawn
+ending listens for the sunburn's `ANIMATION_COMPLETE` but also arms a fallback
+timer, and whichever fires first wins. An earlier version relied on the event
+alone, and a death landing inside a dash let the dash's queued shape-restore
+play over the sunburn — the animation never completed, the event never fired,
+and the run hung with the music still going.
+
+## Out of scope
+
+Procedural maps, multiple levels, permanent progression, upgrades, inventory,
+full pathfinding, and boss phases.
