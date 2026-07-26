@@ -8,11 +8,15 @@ The pack it replaces had six sheets of 4x12 frames. So most of the work here is
 deciding what stands in for what — the mapping is spelled out in FRAMES below,
 and the honest summary is:
 
-  * Facing RIGHT is facing LEFT mirrored, everywhere. Romi drew the side view
-    once, facing left, exactly like the bat.
-  * Idle is one drawing plus the same drawing a pixel lower. That one pixel is
-    the whole difference between a character standing still and a character
-    frozen, and it changes none of her paint.
+  * Facing LEFT is facing RIGHT mirrored, everywhere. Romi drew the side view
+    once, facing RIGHT — nose, fangs and chin point right and the cape trails
+    left behind him — exactly like the bat. Getting this backwards is the
+    classic silent sprite bug: it looks fine standing still and is only obvious
+    once you hold D and watch him run away from the direction he is facing.
+  * Idle is two real drawings: the standing pose, and the calmest frame of the
+    run cycle (move-4, whose silhouette is within a couple of pixels of the
+    standing pose). It reads as a weight shift rather than as a float, which is
+    all a two-frame idle has to do.
   * Running toward the camera alternates the front pose with a run frame, and
     then does it again with that run frame mirrored, so his legs swap. Running
     away is the back pose alternating with its own mirror, for the same reason.
@@ -65,9 +69,6 @@ CROP_SIZE = FRAME_SIZE * SCALE  # 320
 # placed on the centre of everything he is ever drawn doing.
 CROP_LEFT = -43
 CROP_TOP = -40
-# How far the idle's second frame sinks, in SOURCE pixels — exactly one pixel
-# of the finished frame. Any more reads as a bounce, not a breath.
-BOB = SCALE
 
 DEATH = "count-dawn-death-animation"
 
@@ -79,11 +80,13 @@ Frame = tuple[str, bool] | None
 
 FRAMES: dict[str, dict[str, list[Frame]]] = {
     "idle": {
-        # The pair is one drawing twice; the second is sunk by BOB at crop time.
-        "down": [("count-dawn-down-1", False), ("count-dawn-down-1", False)],
-        "up": [("count-dawn-up-1", False), ("count-dawn-up-1", False)],
-        "left": [("count-dawn-side-1", False), ("count-dawn-side-1", False)],
-        "right": [("count-dawn-side-1", True), ("count-dawn-side-1", True)],
+        # Standing pose, then the run's calmest frame — a shift of weight. Only
+        # the back view has nothing to pair with, so it shifts against its own
+        # mirror instead.
+        "down": [("count-dawn-down-1", False), ("count-dawn-move-4", False)],
+        "up": [("count-dawn-up-1", False), ("count-dawn-up-1", True)],
+        "left": [("count-dawn-side-1", True), ("count-dawn-move-4", True)],
+        "right": [("count-dawn-side-1", False), ("count-dawn-move-4", False)],
     },
     "run": {
         "down": [
@@ -105,14 +108,17 @@ FRAMES: dict[str, dict[str, list[Frame]]] = {
             None,
             None,
         ],
-        "left": [(f"count-dawn-move-{i}", False) for i in range(1, 7)],
-        "right": [(f"count-dawn-move-{i}", True) for i in range(1, 7)],
+        # Drawn running right, so LEFT is the mirrored row.
+        "left": [(f"count-dawn-move-{i}", True) for i in range(1, 7)],
+        "right": [(f"count-dawn-move-{i}", False) for i in range(1, 7)],
     },
     "attack": {
+        # Front-on poses, so the mirror only decides which way the cape flares.
+        # Kept on the same rule as the run so the two never disagree.
         "down": [("count-dawn-attack-" + n, False) for n in "123231"],
         "up": [("count-dawn-attack-" + n, False) for n in "123231"],
-        "left": [("count-dawn-attack-" + n, False) for n in "123231"],
-        "right": [("count-dawn-attack-" + n, True) for n in "123231"],
+        "left": [("count-dawn-attack-" + n, True) for n in "123231"],
+        "right": [("count-dawn-attack-" + n, False) for n in "123231"],
     },
     "death": {
         # 0-2 the fall, 3-4 burning, 5-6 ash. The game plays 0-2 for a death by
@@ -185,10 +191,8 @@ def downscale(img: Image.Image, size: int) -> Image.Image:
     return Image.fromarray((np.dstack([np.clip(rgb, 0, 1), alpha]) * 255).astype(np.uint8), "RGBA")
 
 
-def build_frame(source: Image.Image, mirror: bool, sink: int) -> Image.Image:
-    cropped = source.crop(
-        (CROP_LEFT, CROP_TOP - sink, CROP_LEFT + CROP_SIZE, CROP_TOP - sink + CROP_SIZE)
-    )
+def build_frame(source: Image.Image, mirror: bool) -> Image.Image:
+    cropped = source.crop((CROP_LEFT, CROP_TOP, CROP_LEFT + CROP_SIZE, CROP_TOP + CROP_SIZE))
     frame = downscale(cropped, FRAME_SIZE)
     return frame.transpose(Image.FLIP_LEFT_RIGHT) if mirror else frame
 
@@ -212,10 +216,7 @@ def main() -> None:
                 if spec is None:
                     continue
                 stem, mirror = spec
-                # Only the idle's second frame breathes; every other pair of
-                # identical entries is a real repeat, not a bob.
-                sink = BOB if action == "idle" and column == 1 else 0
-                sheet.paste(build_frame(source(stem), mirror, sink), (column * FRAME_SIZE, row * FRAME_SIZE))
+                sheet.paste(build_frame(source(stem), mirror), (column * FRAME_SIZE, row * FRAME_SIZE))
 
         out = OUT_DIR / OUT_NAMES[action]
         sheet.save(out)
