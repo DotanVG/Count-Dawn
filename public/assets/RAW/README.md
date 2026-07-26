@@ -11,12 +11,12 @@ folder.
 
 | Folder | Built by | Into |
 | ------ | -------- | ---- |
-| `priest/` | `tools/build_priest_sheet.py` | `characters/humans/priest.png` |
+| `count/` | `tools/build_count_sheets.py` | `characters/vampire/vampire_{idle,run,attack,death}.png` |
 
 Each script takes the folder as its only argument, e.g.:
 
 ```bash
-python tools/build_priest_sheet.py public/assets/RAW/priest
+python tools/build_count_sheets.py public/assets/RAW/count
 ```
 
 The scripts are idempotent — running one again over the same sources rewrites

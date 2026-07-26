@@ -14,18 +14,17 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   preload(): void {
-    // Vampire (player) — CraftPix free vampire pack, character 1.
+    // The Count (player) — Romi's art, built by tools/build_count_sheets.py.
     this.load.spritesheet(TEXTURES.vampireIdle, 'assets/characters/vampire/vampire_idle.png', CHAR_FRAME);
-    this.load.spritesheet(TEXTURES.vampireWalk, 'assets/characters/vampire/vampire_walk.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.vampireRun, 'assets/characters/vampire/vampire_run.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.vampireAttack, 'assets/characters/vampire/vampire_attack.png', CHAR_FRAME);
+    this.load.spritesheet(TEXTURES.vampireDeath, 'assets/characters/vampire/vampire_death.png', CHAR_FRAME);
+    // Spell effect only — the CraftPix pack's effects layer, no character on it.
     this.load.spritesheet(
       TEXTURES.vampireAttackMagic,
       'assets/characters/vampire/vampire_attack_magic.png',
       CHAR_FRAME,
     );
-    this.load.spritesheet(TEXTURES.vampireHurt, 'assets/characters/vampire/vampire_hurt.png', CHAR_FRAME);
-    this.load.spritesheet(TEXTURES.vampireDeath, 'assets/characters/vampire/vampire_death.png', CHAR_FRAME);
 
     // The Priest (Romi's art) — one sheet, 2 frames x 4 directions, in the
     // row order animations.ts expects: down, up, left, right.

@@ -1,16 +1,28 @@
 /**
  * Every texture / animation / audio key used by the game, in one place.
- * Character art: CraftPix free packs (see README credits). Frames are 64x64.
+ * Character art: Romi's Count, CraftPix free packs for everyone else (see
+ * README credits). Frames are 64x64.
  */
 export const TEXTURES = {
-  // Vampire (player) sheets — rows: 0=down(front), 1=up(back), 2=left, 3=right
+  /**
+   * The Count (Romi's art) — rows: 0=down(front), 1=up(back), 2=left, 3=right.
+   *
+   * There is no walk sheet and no hurt sheet, because there are no drawings
+   * for them and nothing ever played them: the Count runs or stands, and a hit
+   * on him is told by the damage flash, not by a pose.
+   */
   vampireIdle: 'vampire-idle',
-  vampireWalk: 'vampire-walk',
   vampireRun: 'vampire-run',
   vampireAttack: 'vampire-attack',
-  /** Magic-burst overlay layer from the same attack sheet — used as a standalone hit-impact effect on the target, not on the player. */
+  /**
+   * Effects-only layer from the CraftPix vampire pack's attack sheet: a blood
+   * skull that forms and bursts into a star. It is the last thing left of the
+   * bought vampire — the Count is Romi's now — and it is used purely as a
+   * spell effect, on the target when a strike lands and in front of him while
+   * he casts.
+   */
   vampireAttackMagic: 'vampire-attack-magic',
-  vampireHurt: 'vampire-hurt',
+  /** Fall (0-2), burning (3-4), ash (5-6). See ANIMS / animations.ts. */
   vampireDeath: 'vampire-death',
   /**
    * The Priest (Romi's art) — one 2x4 sheet instead of a sheet per action:
@@ -73,7 +85,12 @@ export type Dir4 = 'down' | 'up' | 'left' | 'right';
 /** Every character that has a set of directional animations registered. */
 export type CharacterKey = 'vampire' | 'hunter' | 'thrower' | 'priest';
 
-export type VampireAction = 'idle' | 'walk' | 'run' | 'attack' | 'hurt' | 'death';
+/**
+ * `death` is the fall alone — the three frames a hunter's kill earns. `sunburn`
+ * is the fall PLUS the burning and ash frames, and belongs only to being caught
+ * by the sunrise.
+ */
+export type VampireAction = 'idle' | 'run' | 'attack' | 'death' | 'sunburn';
 export type HunterAction = 'idle' | 'walk' | 'run' | 'hurt' | 'death';
 
 /** Directional animation key, e.g. animKey('vampire', 'walk', 'left'). */
@@ -85,6 +102,12 @@ export const ANIMS = {
   torch: 'torch-flame',
   /** One-shot magic burst spawned at a hunter's position when a strike lands. */
   hitMagic: 'hit-magic-burst',
+  /**
+   * The same effects layer earlier in its life — the charge and the burst —
+   * thrown out along the Count's aim as he swings. Romi's attack poses are a
+   * roar, not a cast, so this is what makes them one.
+   */
+  castFlare: 'vampire-cast-flare',
   /**
    * The bat's wing flap. Used by Player.setBatForm for BOTH the coffin
    * fly-in/out and the dash — and by the bat minions when they land.

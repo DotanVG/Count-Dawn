@@ -23,8 +23,12 @@ export const PLAYER = {
   /** Half-angle of the melee arc, in degrees, around the aim direction. */
   attackArcHalfAngleDeg: 55,
   invulnerabilityMs: 600,
-  /** Display scale — deliberately larger than the Captain: the Count IS the boss. */
-  spriteScale: 3.4,
+  /**
+   * Display scale — deliberately larger than the Captain: the Count IS the
+   * boss. A lower number than the pack he replaced used, for a Count who
+   * renders BIGGER: Romi drew him filling far more of the 64px frame.
+   */
+  spriteScale: 2.4,
 } as const;
 
 /**

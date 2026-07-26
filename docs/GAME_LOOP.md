@@ -22,6 +22,13 @@ Overlap the **activated** coffin before dawn. Both requirements must be met firs
 - **Dawn** — the countdown reaches zero outside the coffin.
 - **Death** — player health reaches zero.
 
+The two look different, because Romi drew them differently. A death by hunters
+plays `vampire-death`: the three-frame fall, and he stays down. Dawn plays
+`vampire-sunburn` instead — the same fall, then his burning frames beaten
+against each other, then the ash frames, with embers pouring off him the whole
+way. Nothing is tinted on top of either; the fire in the dawn ending is the
+fire she painted.
+
 Either way the end screen shows the cause, blood collected, and time survived, with instant restart (**R** or button).
 
 ## Boss entrance

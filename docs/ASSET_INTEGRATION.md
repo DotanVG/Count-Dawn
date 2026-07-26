@@ -42,6 +42,24 @@ this.load.spritesheet(TEXTURES.vampire, 'assets/characters/vampire/vampire.png',
 
 Do **not** assume a particular frame size anywhere else — frame dimensions belong to the load call only.
 
+### Chroma-keying hand-drawn art
+
+Romi's art arrives as JPEGs on a chroma background, and every `tools/build_*.py`
+script keys it out the same way: an alpha ramp over "greenness"
+(`g - max(r, b)`), plus a despill that clamps the green channel where the
+background bled into an edge.
+
+**Measure the ramp against the actual drawing before picking its thresholds**,
+with a greenness histogram over every frame. The bat could use a tight ramp
+because the bat is black. The Count could not: his robe is dark green, sitting
+at 10-30 greenness, and the bat's thresholds dissolved it and then drained what
+survived to charcoal. His script keys in the empty gap between where the paint
+stops (~59) and where the background starts (~230), and despills **only** the
+pixels greener than any of the paint ever gets.
+
+The rule that matters: keying may change transparency; it may never change a
+colour the artist chose.
+
 ### Replacing hunters and the captain
 
 Same pattern with `TEXTURES.hunter` and `TEXTURES.boss` under `assets/characters/humans/`.
