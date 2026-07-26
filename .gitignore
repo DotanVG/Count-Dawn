@@ -43,3 +43,6 @@ coverage/
 .cache/
 .agents/
 .claude/scheduled_tasks.lock
+
+# Playtest checklist — kept local, deliberately not shipped or deployed.
+docs/QA_CHECKLIST.md
