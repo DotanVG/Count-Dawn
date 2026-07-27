@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BLOOD as BLOOD_BALANCE } from '../data/balance';
+import { BLOOD as BLOOD_BALANCE, THROWER } from '../data/balance';
 import { TEXTURES, animKey } from '../utils/assetKeys';
 import { CAPTAIN_TINT } from '../entities/HunterCaptain';
 import type { BossKind, HunterKind, RunStats } from '../types/game';
@@ -10,8 +10,14 @@ const VALUE = '#e8ddff';
 const MUTED = '#9d8bbf';
 const BLOOD = '#f0b7bd';
 
-/** Row spacing inside a column, and how far the icon sits left of its label. */
-const ROW_H = 38;
+/**
+ * Row spacing inside a column, and how far the icon sits left of its label.
+ * Wide enough for the boss column's character icons (scale up to 1.9 on a
+ * 64px frame) to clear each other — the old 38px gap was sized for the
+ * weapon icons alone and let neighbouring bosses overlap.
+ */
+const ROW_H = 60;
+const ROW_1_OFFSET = 34;
 const ICON_DX = -22;
 
 /**
@@ -39,7 +45,11 @@ const HUNTER_ICONS: Record<HunterKind, IconSpec> = {
   spike: { texture: TEXTURES.weaponSpike, scale: 0.6, float: true },
   pitchfork: { texture: TEXTURES.weaponPitchfork, scale: 0.6, float: true },
   torch: { texture: TEXTURES.weaponTorch1, scale: 0.6, float: true, flicker: TEXTURES.weaponTorch2 },
-  thrower: { texture: TEXTURES.farmer, anim: animKey('farmer', 'walk', 'down'), scale: 1.8 },
+  // A bulb, not the farmer who throws it — every other row here is the weapon,
+  // not the man swinging it, and the garlic deserves the same treatment. Its
+  // source art is 192px against the other props' 64px, so the scale is a third
+  // of theirs to land on the same on-screen size (matches THROWER.garlicScale).
+  thrower: { texture: TEXTURES.garlic, scale: THROWER.garlicScale, float: true },
 };
 
 const HUNTER_LABELS: Record<HunterKind, string> = {
@@ -161,7 +171,7 @@ export class RunDebrief {
     );
 
     rows.forEach((row, i) => {
-      const rowY = y + 28 + i * ROW_H;
+      const rowY = y + ROW_1_OFFSET + i * ROW_H;
       // Zeroes are kept rather than hidden: a column that changes shape between
       // runs is harder to read at a glance than one with a 0 in it, and seeing
       // "Priests 0" is itself information about how far you got.
