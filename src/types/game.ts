@@ -1,11 +1,15 @@
 /** Why the run ended. */
 export type EndCause = 'victory' | 'dawn' | 'death';
 
-/** The kinds of hunter that can be drained, in the order the debrief lists them. */
-export type HunterKind = 'sword' | 'spike' | 'pitchfork' | 'torch' | 'thrower';
+/**
+ * The kinds of hunter that can be drained, in the order the debrief lists them.
+ * The `sword` swordsman is gone with the bought pack — every melee hunter now
+ * carries one of Romi's three weapons, so the weapon IS the kind.
+ */
+export type HunterKind = 'spike' | 'pitchfork' | 'torch' | 'thrower';
 
 /** The kinds of mini-boss, in the order the debrief lists them. */
-export type BossKind = 'priest' | 'captain' | 'garlicCaptain';
+export type BossKind = 'priest' | 'captain' | 'garlicCaptain' | 'crossCaptain';
 
 /**
  * Totals for a whole RUN, not a night — they survive the coffin and keep
@@ -40,8 +44,8 @@ export function emptyRunStats(): RunStats {
   return {
     nightsSurvived: 0,
     bloodCollected: 0,
-    hunters: { sword: 0, spike: 0, pitchfork: 0, torch: 0, thrower: 0 },
-    bosses: { priest: 0, captain: 0, garlicCaptain: 0 },
+    hunters: { spike: 0, pitchfork: 0, torch: 0, thrower: 0 },
+    bosses: { priest: 0, captain: 0, garlicCaptain: 0, crossCaptain: 0 },
   };
 }
 

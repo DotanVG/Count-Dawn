@@ -12,9 +12,11 @@ from the art it came from.
 
 | Source | Script | Output |
 | --- | --- | --- |
-| `RAW/count/` | `tools/build_count_sheets.py` | `characters/vampire/vampire_{idle,run,attack,death}.png` |
+| `RAW/count/` | `tools/build_count_sheets.py` | `characters/vampire/vampire_{idle,run,bite,attack,death}.png` |
+| `RAW/{pilgrim,huntress,farmer}/` | `tools/build_hunter_sheets.py` | `characters/humans/{pilgrim,huntress,farmer}.png` |
 | `RAW/priest/` | `tools/build_priest_sheet.py` | `characters/humans/priest.png` |
-| `RAW/weapons/` | `tools/build_weapon_props.py` | `environment/weapons/*.png` |
+| `RAW/weapons/` (black key) | `tools/build_weapon_props.py` | `environment/weapons/{wooden_spike,pitchfork,torch_*}.png` |
+| `RAW/weapons/gold-cross.jpeg`, `RAW/blood/` (green key) | `tools/build_green_props.py` | `environment/weapons/gold_cross.png`, `environment/blood/*.png` |
 | `RAW/bat/` | `tools/build_bat_sheet.py` | `characters/bat/bat_fly.png` |
 
 Each takes its folder as the only argument and is idempotent. The mapping from
@@ -62,7 +64,10 @@ public/assets/
 call in `PreloadScene` under the same key; nothing else changes, and assets can
 be replaced one at a time.
 
-The blood droplet is the last placeholder still in use.
+The particle dot is the last placeholder still in use. The blood droplet's
+generator is still there but is dead code in practice: Romi's droplet loads over
+that key, and the generated one only survives as a fallback if the blood assets
+ever go missing.
 
 ### Adding a spritesheet
 
@@ -106,8 +111,8 @@ colour the artist chose.
 Not everything a character carries is a spritesheet. Romi's three hunter
 weapons load as plain **images** and are pinned to a hunter's fist every frame
 by [`ArmedHunter`](../src/entities/ArmedHunter.ts), which also animates the
-swing — because the unarmed pack those hunters wear ships no attack sheet at
-all. When adding another prop of that kind:
+swing — because none of her characters has an attack sheet at all. When adding
+another prop of that kind:
 
 - put the source drawing through a `tools/build_*.py` script (see
   `build_weapon_props.py`) so the background is keyed to alpha and the output
@@ -116,24 +121,45 @@ all. When adding another prop of that kind:
 - give it an origin at its **grip**, not its centre, so rotating it swings the
   weapon rather than spinning it about its middle,
 - keep the numbers (scale, reach, cadence) in `balance.ts`; the entity should
-  only own where the hand is and how the swing is drawn.
+  only own where the hand is and how the swing is drawn,
+- put WHERE the hand is on the character, not the direction: `HunterLook.handY`
+  exists because Romi draws the huntress carrying her arms about five texture
+  rows lower than the pilgrim, and a weapon has to hang off the hand that is
+  actually painted rather than off an average of everybody's.
 
 ### Characters with only a couple of frames
 
-Not every character arrives as a six-sheet pack. The Priest is two frames per
-direction, full stop, and every animation the `Hunter` base class asks him for
-is built from that same pair at a different rate and frame order — see
-`PRIEST_ACTIONS` in [`animations.ts`](../src/utils/animations.ts). If a new
-character is in the same position, follow that shape rather than padding the
-sheet out with duplicates: it keeps the fact that he has two poses visible in
-one place instead of hidden inside a sheet.
+Every human in the game is two frames per direction, full stop — pilgrim,
+huntress, farmer and Priest alike — and every animation the `Hunter` base class
+asks for is built from that same pair at a different rate and frame order. See
+`TWO_FRAME_ACTIONS` and `registerTwoFrame` in
+[`animations.ts`](../src/utils/animations.ts). Follow that shape for anything new
+rather than padding a sheet out with duplicates: it keeps the fact that there are
+two poses visible in one place instead of hidden inside a sheet.
 
-Hand-drawn characters also rarely sit in the frame the way a bought pack does.
-Romi's Priest fills the 64px frame almost top to bottom where the CraftPix men
-occupy rows 22-43 of it, so his entity overrides both `visibleTopY` (or his
-health bar floats) and the physics circle (or his hitbox sits at his knees),
-and his `spriteScale` is far lower than a Captain's for a sprite that renders
-bigger. Expect to re-tune all three whenever new art replaces old.
+There is no body attack animation anywhere in that set, which is why a Captain's
+wind-up tell hangs off `playSwing` rather than off `ANIMATION_START`, and why a
+corpse falls by tween instead of by animation. Two frames cannot sell falling
+over; rotating them can.
+
+Hand-drawn characters also rarely sit in the frame the way a bought pack did.
+Where the old CraftPix men filled rows 22-43 of the 64px frame, Romi's hunters
+run 17-48 and the Priest almost the whole height. Four things are measured off
+that geometry and have to move together whenever it changes:
+
+1. `spriteScale` (a LOWER number than the pack used, for sprites that render
+   bigger),
+2. the physics circle — size it to keep the same ON-SCREEN radius, because the
+   hitbox is how often a hunter's body touches the Count and that should not
+   change just because the art did,
+3. `visibleTopY`, or health bars float,
+4. `ArmedHunter`'s `CARRY` offsets, or the weapons stop landing in the hands.
+
+`tools/build_hunter_sheets.py` documents the one time this was deliberately
+traded the other way: the hunters were first built into the exact rows the bought
+pack filled, so that nothing else had to move at all — and it threw away so much
+of the drawing that the huntress had no face. Fidelity won; the four numbers were
+re-tuned.
 
 ## Registering animations
 

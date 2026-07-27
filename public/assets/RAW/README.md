@@ -11,19 +11,28 @@ folder.
 
 | Folder | Built by | Into |
 | ------ | -------- | ---- |
-| `count/` | `tools/build_count_sheets.py` | `characters/vampire/vampire_{idle,run,attack,death}.png` |
+| `count/` | `tools/build_count_sheets.py` | `characters/vampire/vampire_{idle,run,bite,attack,death}.png` |
+| `pilgrim/`, `huntress/`, `farmer/` | `tools/build_hunter_sheets.py` | `characters/humans/{pilgrim,huntress,farmer}.png` |
 | `priest/` | `tools/build_priest_sheet.py` | `characters/humans/priest.png` |
-| `weapons/` | `tools/build_weapon_props.py` | `environment/weapons/*.png` |
+| `weapons/` | `tools/build_weapon_props.py` (black key) | `environment/weapons/{wooden_spike,pitchfork,torch_*}.png` |
+| `weapons/gold-cross.jpeg`, `blood/` | `tools/build_green_props.py` (green key) | `environment/weapons/gold_cross.png`, `environment/blood/*.png` |
 | `bat/` | `tools/build_bat_sheet.py` | `characters/bat/bat_fly.png` |
 | `cover/` | — (used as delivered) | `ui/cover/*.jpeg` |
 | `props/` | — (keyed by hand) | `environment/props/*.png` |
+
+The weapons folder feeds two scripts because Romi delivered its contents on two
+different backgrounds: the spike, pitchfork and torch came on black, the gold
+cross on the same chroma green as everyone else. `garlic.jpeg` lives here too —
+it is a weapon, thrown by the farmer, and the coffin is the prop.
 
 Each build script takes its folder as the only argument, e.g.:
 
 ```bash
 python tools/build_count_sheets.py public/assets/RAW/count
+python tools/build_hunter_sheets.py public/assets/RAW
 python tools/build_priest_sheet.py public/assets/RAW/priest
 python tools/build_weapon_props.py public/assets/RAW/weapons
+python tools/build_green_props.py public/assets/RAW
 python tools/build_bat_sheet.py public/assets/RAW/bat
 ```
 
@@ -51,5 +60,12 @@ Every script keys Romi's background out with an alpha ramp over "greenness"
 (`g - max(r, b)`) plus a despill on the pixels the background bled into.
 **Measure the ramp against the actual drawing before changing its thresholds.**
 The bat tolerates a tight ramp because the bat is black; the Count does not,
-because his robe is dark green and a tight ramp dissolves it. See
-`docs/ASSET_INTEGRATION.md`.
+because his robe is dark green and a tight ramp dissolves it.
+
+The **despill** needs choosing too, not just the ramp. The usual rule caps green
+at `max(r, b)`, which is blind to red-on-green: a blood edge pixel is a red/green
+blend, which is YELLOW, and yellow has a high red channel — so the rule reads it
+as paint and leaves an olive rim around every splatter. Romi's blood keeps green
+within ~3 of blue, so its cap is BLUE. The gold cross cannot use that rule (gold's
+green sits ~72 above its blue) but its green never exceeds its red, so red is its
+cap. See `tools/build_green_props.py` and `docs/ASSET_INTEGRATION.md`.

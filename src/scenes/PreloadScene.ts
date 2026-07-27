@@ -17,6 +17,9 @@ export class PreloadScene extends Phaser.Scene {
     // The Count (player) — Romi's art, built by tools/build_count_sheets.py.
     this.load.spritesheet(TEXTURES.vampireIdle, 'assets/characters/vampire/vampire_idle.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.vampireRun, 'assets/characters/vampire/vampire_run.png', CHAR_FRAME);
+    this.load.spritesheet(TEXTURES.vampireBite, 'assets/characters/vampire/vampire_bite.png', CHAR_FRAME);
+    // The roar. Loaded but not currently bound to an input — it is the special,
+    // waiting on the lightning (see Player.playSpecialAttackAnim).
     this.load.spritesheet(TEXTURES.vampireAttack, 'assets/characters/vampire/vampire_attack.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.vampireDeath, 'assets/characters/vampire/vampire_death.png', CHAR_FRAME);
     // Spell effect only — the CraftPix pack's effects layer, no character on it.
@@ -26,24 +29,14 @@ export class PreloadScene extends Phaser.Scene {
       CHAR_FRAME,
     );
 
-    // The Priest (Romi's art) — one sheet, 2 frames x 4 directions, in the
-    // row order animations.ts expects: down, up, left, right.
+    // Every human in the hall (Romi's art) — one 2x4 sheet each, all in the row
+    // order animations.ts expects: down, up, left, right. The pilgrim and the
+    // huntress are the basic hunters, the farmer throws garlic, and any of the
+    // three can turn up as a Captain; the Priest is the fifth-night boss.
+    this.load.spritesheet(TEXTURES.pilgrim, 'assets/characters/humans/pilgrim.png', CHAR_FRAME);
+    this.load.spritesheet(TEXTURES.huntress, 'assets/characters/humans/huntress.png', CHAR_FRAME);
+    this.load.spritesheet(TEXTURES.farmer, 'assets/characters/humans/farmer.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.priest, 'assets/characters/humans/priest.png', CHAR_FRAME);
-
-    // Hunters — CraftPix free male base pack, sword variant.
-    this.load.spritesheet(TEXTURES.hunterIdle, 'assets/characters/humans/hunter_idle.png', CHAR_FRAME);
-    this.load.spritesheet(TEXTURES.hunterWalk, 'assets/characters/humans/hunter_walk.png', CHAR_FRAME);
-    this.load.spritesheet(TEXTURES.hunterRun, 'assets/characters/humans/hunter_run.png', CHAR_FRAME);
-    this.load.spritesheet(TEXTURES.hunterAttack, 'assets/characters/humans/hunter_attack.png', CHAR_FRAME);
-    this.load.spritesheet(TEXTURES.hunterHurt, 'assets/characters/humans/hunter_hurt.png', CHAR_FRAME);
-    this.load.spritesheet(TEXTURES.hunterDeath, 'assets/characters/humans/hunter_death.png', CHAR_FRAME);
-
-    // Garlic throwers — same pack, unarmed variant (no attack sheet exists).
-    this.load.spritesheet(TEXTURES.throwerIdle, 'assets/characters/humans/thrower_idle.png', CHAR_FRAME);
-    this.load.spritesheet(TEXTURES.throwerWalk, 'assets/characters/humans/thrower_walk.png', CHAR_FRAME);
-    this.load.spritesheet(TEXTURES.throwerRun, 'assets/characters/humans/thrower_run.png', CHAR_FRAME);
-    this.load.spritesheet(TEXTURES.throwerHurt, 'assets/characters/humans/thrower_hurt.png', CHAR_FRAME);
-    this.load.spritesheet(TEXTURES.throwerDeath, 'assets/characters/humans/thrower_death.png', CHAR_FRAME);
 
     // Bat form (Romi's art) — 2 frames, right-facing, mirrored in code for left.
     this.load.spritesheet(TEXTURES.bat, 'assets/characters/bat/bat_fly.png', CHAR_FRAME);
@@ -70,12 +63,28 @@ export class PreloadScene extends Phaser.Scene {
     this.load.image(TEXTURES.weaponPitchfork, 'assets/environment/weapons/pitchfork.png');
     this.load.image(TEXTURES.weaponTorch1, 'assets/environment/weapons/torch_1.png');
     this.load.image(TEXTURES.weaponTorch2, 'assets/environment/weapons/torch_2.png');
+    // Thrown, not swung: the farmer's garlic and the huntress Captain's crosses.
+    this.load.image(TEXTURES.garlic, 'assets/environment/weapons/garlic.png');
+    this.load.image(TEXTURES.weaponGoldCross, 'assets/environment/weapons/gold_cross.png');
 
-    // Props — Romi's coffin (3 states) + the garlic thrown by the throwers.
+    // Blood (Romi's art) — the droplet the Count drinks, plus the floor marks a
+    // corpse leaves behind. See BLOOD_DECALS / BLOOD_SPOTS in assetKeys.ts.
+    this.load.image(TEXTURES.blood, 'assets/environment/blood/droplet.png');
+    this.load.image(TEXTURES.bloodSpot1, 'assets/environment/blood/spot_1.png');
+    this.load.image(TEXTURES.bloodSpot2, 'assets/environment/blood/spot_2.png');
+    this.load.image(TEXTURES.bloodSplatter1, 'assets/environment/blood/splatter_1.png');
+    this.load.image(TEXTURES.bloodSplatter2, 'assets/environment/blood/splatter_2.png');
+    this.load.image(TEXTURES.bloodSplatter3, 'assets/environment/blood/splatter_3.png');
+    this.load.image(TEXTURES.bloodSplatter4, 'assets/environment/blood/splatter_4.png');
+    this.load.image(TEXTURES.bloodStreak, 'assets/environment/blood/streak.png');
+    this.load.image(TEXTURES.bloodSpray, 'assets/environment/blood/spray.png');
+    this.load.image(TEXTURES.bloodGore1, 'assets/environment/blood/gore_1.png');
+    this.load.image(TEXTURES.bloodGore2, 'assets/environment/blood/gore_2.png');
+
+    // Props — Romi's coffin (3 states).
     this.load.image(TEXTURES.coffinClosed, 'assets/environment/props/coffin_closed.png');
     this.load.image(TEXTURES.coffinHalf, 'assets/environment/props/coffin_half.png');
     this.load.image(TEXTURES.coffinOpen, 'assets/environment/props/coffin_open.png');
-    this.load.image(TEXTURES.garlic, 'assets/environment/props/garlic.png');
 
     // Castle — CraftPix free top-down dungeon pack.
     this.load.image(TEXTURES.tiles, 'assets/environment/castle/walls_floor.png');

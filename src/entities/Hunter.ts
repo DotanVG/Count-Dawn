@@ -11,21 +11,46 @@ export interface HunterStats {
 }
 
 /**
- * Which spritesheet family a hunter wears. Passed through the constructor
- * (not a subclass field) because the base constructor already plays an
- * animation — subclass field initializers would still be undefined by then.
+ * Which of Romi's humans a hunter is. Passed through the constructor (not a
+ * subclass field) because the base constructor already plays an animation —
+ * subclass field initializers would still be undefined by then.
+ *
+ * One `sheet` rather than the walk/death pair this used to carry: every
+ * character is a single 2x4 sheet now, so there was never a second texture to
+ * name.
  */
 export interface HunterLook {
   charKey: CharacterKey;
-  walkTexture: string;
-  deathTexture: string;
+  sheet: string;
+  /**
+   * Where this character's fist sits, as a fraction of display height below the
+   * sprite's centre. Per character because Romi drew them differently: the
+   * huntress carries her arms a good five texture rows lower than the pilgrim,
+   * and a weapon has to hang off the hand that is actually painted rather than
+   * off an average of everybody's.
+   */
+  handY: number;
 }
 
-const SWORDSMAN_LOOK: HunterLook = {
-  charKey: 'hunter',
-  walkTexture: TEXTURES.hunterWalk,
-  deathTexture: TEXTURES.hunterDeath,
+/** The two basic hunters. A melee spawn is one or the other, rolled per hunter. */
+export const PILGRIM_LOOK: HunterLook = {
+  charKey: 'pilgrim',
+  sheet: TEXTURES.pilgrim,
+  handY: 0.03,
 };
+export const HUNTRESS_LOOK: HunterLook = {
+  charKey: 'huntress',
+  sheet: TEXTURES.huntress,
+  handY: 0.115,
+};
+/** The garlic farmer — the one of them who throws instead of swinging. */
+export const FARMER_LOOK: HunterLook = {
+  charKey: 'farmer',
+  sheet: TEXTURES.farmer,
+  handY: 0.06,
+};
+
+export const BASIC_LOOKS: readonly HunterLook[] = [PILGRIM_LOOK, HUNTRESS_LOOK];
 
 /**
  * A regular human hunter: walks straight at the player, damages on contact,
@@ -68,9 +93,9 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     x: number,
     y: number,
     stats: HunterStats = HUNTER,
-    look: HunterLook = SWORDSMAN_LOOK,
+    look: HunterLook = PILGRIM_LOOK,
   ) {
-    super(scene, x, y, look.walkTexture, 0);
+    super(scene, x, y, look.sheet, 0);
     this.look = look;
     this.health = stats.health;
     this.contactDamage = stats.contactDamage;
@@ -78,7 +103,13 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     scene.add.existing(this);
     scene.physics.add.existing(this);
     this.setScale(HUNTER.spriteScale);
-    this.setCircle(10, 22, 28);
+    // Body in unscaled 64x64 texture space: a circle over the torso and legs.
+    // Romi's humans stand from about row 17 to row 48 of the frame (see
+    // tools/build_hunter_sheets.py), lower and taller than the bought pack sat,
+    // and this is sized to land on the same on-screen radius they had — the
+    // hitbox is how often a hunter's body actually touches the Count, and that
+    // should not change just because the art did.
+    this.setCircle(12, 19, 28);
     this.setDepth(DEPTHS.hunter);
     this.play(animKey(look.charKey, 'walk', 'down'));
   }
@@ -159,13 +190,13 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
-   * Top of the PAINTED sprite, which is not the top of its frame: the source
-   * art leaves rows 0-21 of every 64px frame empty above the head. Anything
-   * that hangs over a hunter (the Captain's health bar) has to anchor here,
-   * or it floats a scaled 10px of nothing above him.
+   * Top of the PAINTED sprite, which is not the top of its frame: Romi's humans
+   * start around row 17 of every 64px frame, leaving everything above it empty.
+   * Anything that hangs over a hunter (a Captain's health bar) has to anchor
+   * here, or it floats a scaled 15px of nothing above him.
    */
   get visibleTopY(): number {
-    return this.y - 10 * this.scaleY;
+    return this.y - 15 * this.scaleY;
   }
 
   /** Direct pursuit — intentionally no steering or pathfinding. */
@@ -347,15 +378,31 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
-   * Spawns a non-colliding corpse playing the death animation, fading out.
-   * Called by the scene when this hunter dies, right before removal.
+   * Spawns a non-colliding corpse, fading out. Called by the scene when this
+   * hunter dies, right before removal.
+   *
+   * None of Romi's humans has a death sheet — two frames per direction is all
+   * any of them has — so the fall is a TWEEN rather than an animation: he keels
+   * over sideways and sinks a little as he fades. Two frames on their own cannot
+   * sell falling down, and rotating him can, which is also how the Priest goes
+   * (he overrides this only to fall slower and heavier).
    */
   spawnCorpse(): void {
     const corpse = this.scene.add
-      .sprite(this.x, this.y, this.look.deathTexture, 0)
+      .sprite(this.x, this.y, this.look.sheet, 0)
       .setScale(this.scaleX, this.scaleY)
       .setDepth(DEPTHS.corpse);
     corpse.play(animKey(this.look.charKey, 'death', this.facing));
+    // Away from whichever way he was facing, so he does not fall through
+    // himself, and never straight up- or down-screen where it reads as nothing.
+    const away = this.facing === 'right' ? -1 : 1;
+    this.scene.tweens.add({
+      targets: corpse,
+      angle: away * Phaser.Math.Between(72, 96),
+      y: corpse.y + 6 * this.scaleY,
+      duration: 360,
+      ease: 'Quad.easeIn',
+    });
     this.scene.tweens.add({
       targets: corpse,
       alpha: 0,

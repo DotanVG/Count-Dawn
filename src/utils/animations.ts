@@ -5,16 +5,12 @@ import { TEXTURES, ANIMS, animKey, type CharacterKey, type Dir4 } from './assetK
 /**
  * Registers every character + environment animation once, after loading.
  *
- * All packs use 64x64 frames in 4 rows (one per direction) but with
- * DIFFERENT row orders, verified pixel-by-pixel from the sheets:
- *   vampire: row 0 = down, 1 = up,   2 = left, 3 = right
- *   hunter:  row 0 = down, 1 = left, 2 = right, 3 = up
- *   thrower: same base pack as the hunter (unarmed variant) — same row order,
- *            re-verified on the unarmed sheets rather than assumed.
+ * Everything is 64x64 frames in 4 rows, one per direction, and now that the
+ * bought packs are gone every sheet in the game is built by a tools/build_*.py
+ * script to the SAME row order: 0 = down, 1 = up, 2 = left, 3 = right. The
+ * per-pack row shuffling that used to live here went with them.
  */
 const VAMPIRE_ROWS: Record<Dir4, number> = { down: 0, up: 1, left: 2, right: 3 };
-const HUNTER_ROWS: Record<Dir4, number> = { down: 0, left: 1, right: 2, up: 3 };
-const THROWER_ROWS: Record<Dir4, number> = HUNTER_ROWS;
 
 const DIRS: Dir4[] = ['down', 'up', 'left', 'right'];
 
@@ -36,7 +32,11 @@ interface SheetSpec {
 
 const VAMPIRE_ATTACK_FRAMES = 6;
 const VAMPIRE_ATTACK_FRAME_RATE = 15;
-/** Full swing+magic-burst duration — Player holds the attack pose this long so it plays out completely. */
+/**
+ * Full attack duration — Player holds the pose this long so it plays out
+ * completely. The bite and the roar are deliberately the same length, so
+ * swapping which one a click fires changes nothing about the combat's timing.
+ */
 export const VAMPIRE_ATTACK_DURATION_MS = (VAMPIRE_ATTACK_FRAMES / VAMPIRE_ATTACK_FRAME_RATE) * 1000;
 
 /**
@@ -61,6 +61,18 @@ const VAMPIRE_SHEETS: SheetSpec[] = [
     repeat: -1,
     shortRows: COUNT_RUN_SHORT_ROWS,
   },
+  // The bite: his regular attack. Six frames, opening and closing on the same
+  // lunge crouch.
+  {
+    texture: TEXTURES.vampireBite,
+    action: 'bite',
+    frames: VAMPIRE_ATTACK_FRAMES,
+    frameRate: VAMPIRE_ATTACK_FRAME_RATE,
+    repeat: 0,
+  },
+  // The roar: registered, loaded, and currently unbound. It is the SPECIAL, and
+  // it stays here rather than being deleted because the next iteration hangs
+  // the BeatEmPie lightning off it — see Player.playSpecialAttackAnim.
   {
     texture: TEXTURES.vampireAttack,
     action: 'attack',
@@ -89,75 +101,54 @@ export const VAMPIRE_SUNBURN_DURATION_MS =
   (COUNT_SUNBURN.length / COUNT_SUNBURN_FRAME_RATE) * 1000;
 
 /**
- * The pack's idle sheet is 12 columns wide, but the BACK-TURNED row only holds
- * four painted frames — columns 4-11 of that row are fully transparent. Played
- * as a 12-frame loop the hunter vanished for a solid second out of every one
- * and a half whenever he stood still facing away from the camera. It was most
- * obvious on the garlic thrower, whose carried bulb is a separate image and so
- * kept hovering there on its own with no one holding it.
+ * Every human Romi drew is a TWO-FRAME character: one pose per direction and a
+ * second that differs by a step, and that pair has to cover everything the
+ * Hunter base class asks a character for. So instead of a sheet per action they
+ * each get ONE 2x4 sheet, and every action is the same two frames played
+ * differently — `from` picks which of the pair leads, which is the whole
+ * difference between standing, walking, and driving a weapon down.
+ *
+ * This replaced the CraftPix packs outright. Those had six sheets and twelve
+ * columns each; there is no dressing that up as equivalent, and the honest
+ * trade is that the hall now moves in twos and is drawn by hand.
  */
-const IDLE_BACK_TURNED_FRAMES: Partial<Record<Dir4, number>> = { up: 4 };
+const TWO_FRAME_ROWS: Record<Dir4, number> = { down: 0, up: 1, left: 2, right: 3 };
+const TWO_FRAME_COLUMNS = 2;
 
-const HUNTER_SHEETS: SheetSpec[] = [
-  {
-    texture: TEXTURES.hunterIdle,
-    action: 'idle',
-    frames: 12,
-    frameRate: 8,
-    repeat: -1,
-    shortRows: IDLE_BACK_TURNED_FRAMES,
-  },
-  { texture: TEXTURES.hunterWalk, action: 'walk', frames: 6, frameRate: 10, repeat: -1 },
-  { texture: TEXTURES.hunterRun, action: 'run', frames: 8, frameRate: 12, repeat: -1 },
-  { texture: TEXTURES.hunterAttack, action: 'attack', frames: 8, frameRate: 14, repeat: 0 },
-  { texture: TEXTURES.hunterHurt, action: 'hurt', frames: 5, frameRate: 14, repeat: 0 },
-  { texture: TEXTURES.hunterDeath, action: 'death', frames: 7, frameRate: 10, repeat: 0 },
-];
+interface TwoFrameAction {
+  action: string;
+  /** Which of the pair the animation opens on. */
+  from: 0 | 1;
+  frameRate: number;
+  repeat: number;
+}
 
-/** The unarmed variant ships no attack sheet — the throw is animated by code. */
-const THROWER_SHEETS: SheetSpec[] = [
-  {
-    texture: TEXTURES.throwerIdle,
-    action: 'idle',
-    frames: 12,
-    frameRate: 8,
-    repeat: -1,
-    shortRows: IDLE_BACK_TURNED_FRAMES, // same pack, same padded back row
-  },
-  { texture: TEXTURES.throwerWalk, action: 'walk', frames: 6, frameRate: 10, repeat: -1 },
-  { texture: TEXTURES.throwerRun, action: 'run', frames: 8, frameRate: 12, repeat: -1 },
-  { texture: TEXTURES.throwerHurt, action: 'hurt', frames: 5, frameRate: 14, repeat: 0 },
-  { texture: TEXTURES.throwerDeath, action: 'death', frames: 7, frameRate: 10, repeat: 0 },
-];
-
-/**
- * The Priest is a two-frame character: Romi drew one lowered pose and one
- * raised pose per direction, and that pair has to cover everything the Hunter
- * base class asks a character for. So instead of a sheet per action he gets
- * ONE sheet, and each action is the same two frames played differently —
- * `from`/`to` pick which of the pair leads, which is the whole difference
- * between him breathing, him walking, and him bringing the stake down.
- */
-const PRIEST_ROWS: Record<Dir4, number> = { down: 0, up: 1, left: 2, right: 3 };
-const PRIEST_FRAMES = 2;
-
-const PRIEST_ACTIONS: { action: string; from: 0 | 1; frameRate: number; repeat: number }[] = [
-  // Standing his ground: the stake drifts up and settles, slowly.
+const TWO_FRAME_ACTIONS: TwoFrameAction[] = [
+  // Standing: a slow shift of weight. Fast enough and two frames read as a
+  // twitch rather than as breathing.
   { action: 'idle', from: 0, frameRate: 2.2, repeat: -1 },
   { action: 'walk', from: 0, frameRate: 4, repeat: -1 },
   { action: 'run', from: 0, frameRate: 6, repeat: -1 },
-  // The strike reads the other way round — raised first, then driven down.
+  // A strike reads the other way round — raised first, then driven down.
   { action: 'attack', from: 1, frameRate: 5, repeat: 0 },
   { action: 'hurt', from: 1, frameRate: 8, repeat: 0 },
   { action: 'death', from: 1, frameRate: 3, repeat: 0 },
 ];
 
+/** Every one of Romi's humans, and the sheet each wears. */
+const TWO_FRAME_CHARACTERS: { character: CharacterKey; texture: string }[] = [
+  { character: 'pilgrim', texture: TEXTURES.pilgrim },
+  { character: 'huntress', texture: TEXTURES.huntress },
+  { character: 'farmer', texture: TEXTURES.farmer },
+  { character: 'priest', texture: TEXTURES.priest },
+];
+
 export function createCharacterAnimations(scene: Phaser.Scene): void {
   registerSheets(scene, 'vampire', VAMPIRE_SHEETS, VAMPIRE_ROWS);
   registerCountDeath(scene);
-  registerSheets(scene, 'hunter', HUNTER_SHEETS, HUNTER_ROWS);
-  registerSheets(scene, 'thrower', THROWER_SHEETS, THROWER_ROWS);
-  registerPriest(scene);
+  for (const { character, texture } of TWO_FRAME_CHARACTERS) {
+    registerTwoFrame(scene, character, texture);
+  }
 
   // Bat form: Romi's two hand-painted frames, wings up then wings spread,
   // registered on the eyes so only the wings move. Unlike every character
@@ -229,16 +220,16 @@ function registerCountDeath(scene: Phaser.Scene): void {
   }
 }
 
-function registerPriest(scene: Phaser.Scene): void {
-  for (const spec of PRIEST_ACTIONS) {
+function registerTwoFrame(scene: Phaser.Scene, character: CharacterKey, texture: string): void {
+  for (const spec of TWO_FRAME_ACTIONS) {
     for (const dir of DIRS) {
-      const key = animKey('priest', spec.action, dir);
+      const key = animKey(character, spec.action, dir);
       if (scene.anims.exists(key)) continue;
-      const row = PRIEST_ROWS[dir] * PRIEST_FRAMES;
+      const row = TWO_FRAME_ROWS[dir] * TWO_FRAME_COLUMNS;
       const order = spec.from === 0 ? [row, row + 1] : [row + 1, row];
       scene.anims.create({
         key,
-        frames: order.map((frame) => ({ key: TEXTURES.priest, frame })),
+        frames: order.map((frame) => ({ key: texture, frame })),
         frameRate: spec.frameRate,
         repeat: spec.repeat,
       });

@@ -280,12 +280,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
-   * Called by CombatSystem the moment an attack fires. Holds the attack pose
-   * for the FULL swing+magic-burst animation (400ms) so every frame actually
-   * plays instead of being cut short by movement resuming — the flashy
-   * charge/star-burst frames near the end were getting skipped entirely
-   * before. The sprite itself also pops bigger for the swing (instead of a
-   * separate overlay effect) so the small attack frames read as impact.
+   * Called by CombatSystem the moment an attack fires: the BITE, which is what
+   * a click gets you. Holds the pose for the full 400ms so every frame actually
+   * plays instead of being cut short by movement resuming, and pops the sprite
+   * bigger for the strike so the small frames read as impact.
    *
    * Does nothing in bat form. The strike itself still lands — CombatSystem
    * owns that — but a bat has no vampire pose to strike in, and playing one
@@ -294,6 +292,21 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * updateAnimation.
    */
   playAttackAnim(): void {
+    this.playStrike('bite');
+  }
+
+  /**
+   * The SPECIAL: the rear-up-and-roar Romi drew first, which the bite replaced
+   * as the regular attack. Nothing calls this yet — it is waiting on the
+   * BeatEmPie lightning, which is the point of keeping the pose rather than
+   * deleting it. It is a whole method rather than a flag so that wiring it up
+   * later is a call site and not a rewrite.
+   */
+  playSpecialAttackAnim(): void {
+    this.playStrike('attack');
+  }
+
+  private playStrike(action: 'bite' | 'attack'): void {
     if (this.batForm) return;
 
     this.spawnCastFlare();
@@ -301,7 +314,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     // Held input can fire again before the previous animation finishes.
     // Force each accepted attack to restart instead of leaving the sprite
     // parked on the completed animation's final frame between strikes.
-    this.play(animKey('vampire', 'attack', this.facing), false);
+    this.play(animKey('vampire', action, this.facing), false);
 
     this.attackPopTween?.stop();
     this.attackPopTween = this.scene.tweens.add({

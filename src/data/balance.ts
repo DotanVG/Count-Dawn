@@ -83,7 +83,7 @@ export const THROWER = {
   contactDamage: 5,
   moveSpeed: 78,
   bloodDroplets: 4,
-  spriteScale: 2,
+  spriteScale: 1.55,
   /** Fraction of regular spawns replaced by a thrower, while under the cap. */
   spawnChance: 0.35,
   /**
@@ -128,6 +128,34 @@ export const THROWER = {
   garlicHeldScale: 0.12,
 } as const;
 
+/**
+ * The gold crosses the huntress Captain throws like shuriken. Unlike a garlic
+ * bulb, which is lobbed at the point the crosshair locked and splashes there, a
+ * cross keeps going along the line it was thrown on — so it is dodged sideways
+ * rather than backwards, and the fan is what stops standing still from working.
+ *
+ * Damage stays on the flat economy at 5. What a cross buys over a bulb is that
+ * three of them arrive at once across a wedge.
+ */
+export const CROSS = {
+  damage: 5,
+  speed: 520,
+  /** Crosses per volley, thrown in a fan. */
+  perVolley: 3,
+  /** Beat between them; short enough that the fan reads as one attack. */
+  volleyGapMs: 110,
+  /** Half-angle of the fan, in radians, around the locked line. */
+  spread: 0.22,
+  /** Display scale of the 64px prop. */
+  scale: 0.5,
+  /** Body radius in unscaled texture pixels — the arms are not the hitbox. */
+  bodyRadius: 11,
+  /** Whole turns it makes over its life. */
+  spins: 3,
+  /** How long it flies before giving up, if it never leaves the hall. */
+  lifetimeMs: 2200,
+} as const;
+
 export const HUNTER = {
   health: 50,
   /** Every regular hit — sword or garlic — costs the same 5 HP. */
@@ -146,7 +174,13 @@ export const HUNTER = {
   meleeHitDelayMs: 340,
   /** The swing lands if the target is still within meleeRange * this factor. */
   meleeHitReachFactor: 1.35,
-  spriteScale: 2,
+  /**
+   * Romi's hunters stand ~31 of the 64px frame tall where the bought pack filled
+   * ~21, so this comes DOWN and they still render BIGGER: about 48px against the
+   * old 44. Every one of her humans shares this geometry, so the Captains'
+   * scale below is the same number times a boss multiplier.
+   */
+  spriteScale: 1.55,
   /** Each new night adds this many simultaneous hunters. */
   maxAlivePerNight: 2,
   /** Each new night shortens the spawn delay by this many milliseconds. */
@@ -167,7 +201,7 @@ export const ARMED = {
   contactDamage: 5,
   moveSpeed: 105,
   bloodDroplets: 5,
-  spriteScale: 2,
+  spriteScale: 1.55,
   /** Fraction of the melee spawns that arrive carrying a weapon. */
   spawnChance: 0.45,
 } as const;
@@ -240,8 +274,8 @@ export const BOSS = {
   /** Double a regular hunter's hit — the mini-boss is the one that really hurts. */
   contactDamage: 10,
   moveSpeed: 90,
-  /** Bigger than his men, smaller than the Count. */
-  spriteScale: 2.8,
+  /** Bigger than his men, smaller than the Count and than the Priest. */
+  spriteScale: 2.2,
   /** One extra Captain joins the squad every five nights. */
   nightsPerExtraCaptain: 5,
   /** Each Captain independently has this chance to be a garlic thrower. */
@@ -297,6 +331,12 @@ export const PRIEST = {
    */
   crossOvershoot: 1.35,
   crossLingerMs: 420,
+  /**
+   * How long after the light starts sweeping the cross begins to rise. Small,
+   * but it is the difference between the ring and the cross opening out as one
+   * shape and the cross coming up THROUGH the ring.
+   */
+  crossRiseDelayMs: 150,
 } as const;
 
 /**
@@ -337,6 +377,16 @@ export const BLOOD = {
    * real pile of corpses rather than one unlucky hunter.
    */
   overflowHealPerBlood: 0.5,
+  /**
+   * Display scale for Romi's droplet. Her drawing is 45px of paint in a 64px
+   * frame where the placeholder it replaced was a generated 16px square, so
+   * every place that draws a bloodlet multiplies its old scale by this and comes
+   * out the size it always was.
+   */
+  dropletScale: 0.36,
+  /** How long a corpse's floor stain sits at full strength before it fades. */
+  decalLingerMs: 4200,
+  decalFadeMs: 2600,
 } as const;
 
 export function bloodTargetForNight(night: number): number {

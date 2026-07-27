@@ -103,16 +103,16 @@ FRAMES: dict[str, dict[str, list[Frame]]] = {
             None,
             None,
         ],
-        # The back pose against its own mirror, twice. Mirroring is safe here
-        # where it is not on the `down` row: a back view flipped is still a back
-        # view, so it reads as his legs swapping rather than as him turning.
-        # Two entries would say the same thing, but a two-frame row gets slowed
-        # to the six-frame row's cycle length and he would waddle away at 4fps.
+        # The back pose against a SECOND back pose — `look-up-alt`, drawn later,
+        # which is what finally gave the away-from-camera run a real frame
+        # instead of only its own mirror. Both are then mirrored, so his legs
+        # swap as well as his posture changing. Mirroring is safe on this row
+        # where it is not on `down`: a back view flipped is still a back view.
         "up": [
             ("count-dawn-up-1", False),
+            ("look-up-alt", False),
             ("count-dawn-up-1", True),
-            ("count-dawn-up-1", False),
-            ("count-dawn-up-1", True),
+            ("look-up-alt", True),
             None,
             None,
         ],
@@ -127,6 +127,21 @@ FRAMES: dict[str, dict[str, list[Frame]]] = {
         "up": [("count-dawn-attack-" + n, False) for n in "123231"],
         "left": [("count-dawn-attack-" + n, True) for n in "123231"],
         "right": [("count-dawn-attack-" + n, False) for n in "123231"],
+    },
+    "bite": {
+        # The Count's regular attack, and the only one of his moves Romi drew as
+        # a real sequence: he drops into a lunge, throws his head back with his
+        # mouth open, drives it home, and comes up grinning. `bite-lunge` is
+        # both the first and the last frame — the crouch he starts from is the
+        # stance he settles back into — which is what the source filename says.
+        #
+        # Drawn facing RIGHT like everything else of his, so LEFT is the
+        # mirrored row and the front/back rows take it as-is, on the same rule
+        # the roar attack uses.
+        "down": [("bite-lunge", False)] + [(f"bite-{i}", False) for i in (1, 2, 3, 4)] + [("bite-lunge", False)],
+        "up": [("bite-lunge", False)] + [(f"bite-{i}", False) for i in (1, 2, 3, 4)] + [("bite-lunge", False)],
+        "left": [("bite-lunge", True)] + [(f"bite-{i}", True) for i in (1, 2, 3, 4)] + [("bite-lunge", True)],
+        "right": [("bite-lunge", False)] + [(f"bite-{i}", False) for i in (1, 2, 3, 4)] + [("bite-lunge", False)],
     },
     "death": {
         # 0-2 the fall, 3-4 burning, 5-6 ash. The game plays 0-2 for a death by
@@ -154,8 +169,36 @@ OUT_NAMES = {
     "idle": "vampire_idle.png",
     "run": "vampire_run.png",
     "attack": "vampire_attack.png",
+    "bite": "vampire_bite.png",
     "death": "vampire_death.png",
 }
+
+# Stems that need re-registering before the shared crop box is applied, because
+# they were drawn in a later session and sit somewhere else on the canvas: the
+# bite frames land 30-43px left of everything else, and `look-up-alt` about 7px.
+# Left alone they make the Count jump sideways the instant he attacks.
+#
+# The landmark is his SHOES — the dark red-brown pair, always both visible and
+# always on the floor. His bounding box is useless for this (an arm thrown out
+# to one side moves it), and the lowest-foot-only band is worse, because which
+# foot is lowest changes mid-stride.
+#
+# Everything not listed here keeps the shared box exactly as before, so the
+# sheets that already shipped rebuild byte-identical.
+REGISTER_ON_SHOES = {"bite-1", "bite-2", "bite-3", "bite-4", "look-up-alt"}
+SHOE_REFERENCE = "count-dawn-side-1"
+
+
+def shoe_centroid(img: Image.Image) -> tuple[float, float]:
+    """Centre-x and lowest row of his shoes, in source pixels."""
+    a = np.asarray(img).astype(int)
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    opaque = a[..., 3] > 128
+    shoes = opaque & (r > 90) & (r < 190) & (g > 30) & (g < 105) & (b > 25) & (b < 95) & (r > g + 40)
+    ys, xs = np.nonzero(shoes)
+    if len(xs) == 0:
+        return 0.0, 0.0
+    return float(xs.mean()), float(ys.max())
 
 
 def keyed(path: Path) -> Image.Image:
@@ -199,8 +242,10 @@ def downscale(img: Image.Image, size: int) -> Image.Image:
     return Image.fromarray((np.dstack([np.clip(rgb, 0, 1), alpha]) * 255).astype(np.uint8), "RGBA")
 
 
-def build_frame(source: Image.Image, mirror: bool) -> Image.Image:
-    cropped = source.crop((CROP_LEFT, CROP_TOP, CROP_LEFT + CROP_SIZE, CROP_TOP + CROP_SIZE))
+def build_frame(source: Image.Image, mirror: bool, shift: tuple[int, int] = (0, 0)) -> Image.Image:
+    left = CROP_LEFT - shift[0]
+    top = CROP_TOP - shift[1]
+    cropped = source.crop((left, top, left + CROP_SIZE, top + CROP_SIZE))
     frame = downscale(cropped, FRAME_SIZE)
     return frame.transpose(Image.FLIP_LEFT_RIGHT) if mirror else frame
 
@@ -214,6 +259,13 @@ def main() -> None:
             cache[stem] = keyed(src / f"{stem}.jpeg")
         return cache[stem]
 
+    reference = shoe_centroid(source(SHOE_REFERENCE))
+    shifts: dict[str, tuple[int, int]] = {}
+    for stem in sorted(REGISTER_ON_SHOES):
+        cx, cy = shoe_centroid(source(stem))
+        shifts[stem] = (round(cx - reference[0]), round(cy - reference[1]))
+        print(f"re-registered {stem} on his shoes: shift {shifts[stem]}")
+
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for action, rows in FRAMES.items():
         columns = max(len(frames) for frames in rows.values())
@@ -224,7 +276,8 @@ def main() -> None:
                 if spec is None:
                     continue
                 stem, mirror = spec
-                sheet.paste(build_frame(source(stem), mirror), (column * FRAME_SIZE, row * FRAME_SIZE))
+                frame = build_frame(source(stem), mirror, shifts.get(stem, (0, 0)))
+                sheet.paste(frame, (column * FRAME_SIZE, row * FRAME_SIZE))
 
         out = OUT_DIR / OUT_NAMES[action]
         sheet.save(out)

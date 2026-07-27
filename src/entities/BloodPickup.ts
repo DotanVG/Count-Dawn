@@ -18,6 +18,11 @@ export class BloodPickup extends Phaser.Physics.Arcade.Sprite {
     scene.add.existing(this);
     scene.physics.add.existing(this);
     this.setDepth(DEPTHS.pickup);
+    this.setScale(BLOOD.dropletScale);
+    // Romi's droplet is 45x20 of paint sitting low and right in a 64px frame.
+    // Left at the frame's own bounds the pickup radius would be triple the
+    // droplet, and blood would leap into the Count from a body away.
+    this.setCircle(11, 30, 18);
   }
 
   /**

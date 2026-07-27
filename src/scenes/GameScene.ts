@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import {
-  ARMED,
   BLOOD,
   BOSS,
+  CROSS,
   HUNTER,
   NIGHT,
   PLAYER,
@@ -29,10 +29,12 @@ import { EVENTS } from '../game/events';
 import { isTouchDevice } from '../game/device';
 import { setVampireCursorVisible } from '../game/vampireCursor';
 import { Player } from '../entities/Player';
-import { Hunter } from '../entities/Hunter';
+import { Hunter, BASIC_LOOKS, PILGRIM_LOOK } from '../entities/Hunter';
 import { ArmedHunter } from '../entities/ArmedHunter';
 import { HunterCaptain } from '../entities/HunterCaptain';
 import { GarlicCaptain } from '../entities/GarlicCaptain';
+import { CrossCaptain } from '../entities/CrossCaptain';
+import { GoldCross } from '../entities/GoldCross';
 import { GarlicThrower } from '../entities/GarlicThrower';
 import { Priest } from '../entities/Priest';
 import { Garlic } from '../entities/Garlic';
@@ -61,7 +63,7 @@ import { DawnSky } from '../world/DawnSky';
 import { HUD } from '../ui/HUD';
 import { MenuLightning } from '../ui/MenuLightning';
 import { TouchControls } from '../ui/TouchControls';
-import { TEXTURES, AUDIO } from '../utils/assetKeys';
+import { TEXTURES, AUDIO, BLOOD_DECALS } from '../utils/assetKeys';
 import { VAMPIRE_ATTACK_DURATION_MS, VAMPIRE_SUNBURN_DURATION_MS } from '../utils/animations';
 import { emptyRunStats } from '../types/game';
 import type { BossKind, EndCause, HunterKind, RunStats, RunSummary } from '../types/game';
@@ -78,7 +80,7 @@ interface GameSceneData {
  * Priest is not a Captain by rank, but he holds the same slot in a night's
  * lineup and the coffin waits on him identically.
  */
-type Captain = HunterCaptain | GarlicCaptain | Priest;
+type Captain = HunterCaptain | GarlicCaptain | CrossCaptain | Priest;
 
 const FONT = 'Trebuchet MS, sans-serif';
 const COFFIN_POS = { x: 150, y: 430 };
@@ -127,6 +129,8 @@ export class GameScene extends Phaser.Scene {
   private hunters!: Phaser.Physics.Arcade.Group;
   private pickups!: Phaser.Physics.Arcade.Group;
   private garlics!: Phaser.Physics.Arcade.Group;
+  /** The huntress Captain's thrown crosses, in flight. */
+  private crosses!: Phaser.Physics.Arcade.Group;
   private inputController!: InputController;
   private combat!: CombatSystem;
   private spawner: SpawnSystem | null = null;
@@ -178,6 +182,7 @@ export class GameScene extends Phaser.Scene {
     this.hunters = this.physics.add.group();
     this.pickups = this.physics.add.group();
     this.garlics = this.physics.add.group();
+    this.crosses = this.physics.add.group();
 
     this.inputController = new InputController(this);
     this.combat = new CombatSystem(
@@ -254,6 +259,7 @@ export class GameScene extends Phaser.Scene {
     if (this.phase !== 'playing') return; // dawn may have just ended the run
 
     this.updatePlayerControl();
+    this.updateCrosses();
     this.hud?.setDashCharge(this.player.dashCooldownProgress);
 
     for (const hunter of this.getAttackTargets()) {
@@ -706,12 +712,13 @@ export class GameScene extends Phaser.Scene {
             origin.y + Phaser.Math.Between(-18, 18),
             TEXTURES.blood,
           )
-          .setDepth(DEPTHS.hud + 1);
+          .setDepth(DEPTHS.hud + 1)
+          .setScale(BLOOD.dropletScale);
         this.tweens.add({
           targets: droplet,
           x: HUD_ANCHORS.bloodBar.x,
           y: HUD_ANCHORS.bloodBar.y,
-          scale: 0.6,
+          scale: BLOOD.dropletScale * 0.6,
           duration: COLD_OPEN.bloodletFlightMs,
           ease: 'Quad.easeIn',
           onComplete: () => {
@@ -925,10 +932,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * Sword swings damage the player when they land (invulnerability still
-   * applies). A share of every night's spawns arrive as garlic throwers
-   * instead — same entrance, completely different threat — and a share of the
-   * melee that remains walks in carrying one of Romi's weapons.
+   * Swings damage the player when they land (invulnerability still applies). A
+   * share of every night's spawns arrive as garlic farmers instead — same
+   * entrance, completely different threat — and everything else walks in
+   * carrying one of Romi's weapons.
    */
   private createHunter(spawnX: number, spawnY: number, arrivalX: number, arrivalY: number): Hunter {
     const hunter = this.canSpawnThrower()
@@ -942,19 +949,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * A melee spawn is either a sword hunter or one of the unarmed men carrying
-   * a weapon Romi drew. They cost the same as a sword hunter and hit for the
-   * same flat 5 — the weapon buys reach and cadence, not damage — so no cap is
-   * needed the way the throwers need one; they simply take a share of the
-   * melee budget. Which weapons are on the table grows by night, so the hall
-   * gains one new silhouette at a time (see weaponsForNight).
+   * A melee spawn is a pilgrim or a huntress, carrying one of Romi's three
+   * weapons. There is no unarmed flavour to fall back to any more — the
+   * swordsman went with the bought pack — so which of the two faces turns up is
+   * the only roll, and the weapon is the thing that changes how he fights (see
+   * WEAPONS: reach and cadence, never damage).
    */
   private createMeleeHunter(spawnX: number, spawnY: number): Hunter {
-    const available = weaponsForNight(this.night);
-    if (available.length === 0 || Math.random() >= ARMED.spawnChance) {
-      return new Hunter(this, spawnX, spawnY);
-    }
-    return new ArmedHunter(this, spawnX, spawnY, Phaser.Utils.Array.GetRandom(available));
+    const weapon = Phaser.Utils.Array.GetRandom(weaponsForNight(this.night));
+    const look = Phaser.Utils.Array.GetRandom([...BASIC_LOOKS]);
+    return new ArmedHunter(this, spawnX, spawnY, weapon, look);
   }
 
   /**
@@ -979,6 +983,29 @@ export class GameScene extends Phaser.Scene {
   private createThrower(spawnX: number, spawnY: number): GarlicThrower {
     const thrower = new GarlicThrower(this, spawnX, spawnY);
     return this.configureThrower(thrower);
+  }
+
+  /**
+   * The huntress Captain throws crosses, not bulbs, so she gets her own wiring
+   * on the same `onThrow` seam: a fan of them along the line her lock gave her,
+   * each one flying flat until it hits him or leaves the hall.
+   */
+  private configureCrossCaptain(captain: CrossCaptain): CrossCaptain {
+    let shot = 0;
+    captain.onThrow = (fromX, fromY, toX, toY) => {
+      if (this.phase !== 'playing') return;
+      // Fan the volley around the locked line: middle one straight down it, the
+      // others a fixed spread either side, so the wedge is the same every time
+      // and can be learned.
+      const middle = (CROSS.perVolley - 1) / 2;
+      const offset = (shot % CROSS.perVolley) - middle;
+      shot++;
+      const angle = Phaser.Math.Angle.Between(fromX, fromY, toX, toY) + offset * CROSS.spread;
+      const cross = new GoldCross(this, fromX, fromY, angle);
+      this.crosses.add(cross);
+      cross.launch(); // must follow the group add — see GoldCross.launch()
+    };
+    return captain;
   }
 
   private configureThrower<T extends GarlicThrower>(thrower: T): T {
@@ -1065,6 +1092,16 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.garlics, (_player, garlicObj) => {
       if (this.player.isInvulnerable) return; // dashed clean through it
       (garlicObj as Garlic).hitPlayer();
+    });
+
+    // A cross that reaches him bursts on the spot. One that misses keeps going
+    // and leaves the hall — unlike a bulb, it never resolves where it was aimed.
+    this.physics.add.overlap(this.player, this.crosses, (_player, crossObj) => {
+      const cross = crossObj as GoldCross;
+      if (cross.isSpent) return;
+      if (this.player.isInvulnerable) return; // dashed clean through it
+      cross.hitPlayer();
+      if (this.phase === 'playing') this.player.takeDamage(CROSS.damage);
     });
 
     this.physics.add.overlap(this.player, this.coffin, () => {
@@ -1190,7 +1227,7 @@ export class GameScene extends Phaser.Scene {
       const droplet = this.add
         .image(from.x, from.y, TEXTURES.blood)
         .setDepth(DEPTHS.hud + 3)
-        .setScale(0.8);
+        .setScale(BLOOD.dropletScale * 0.8);
 
       this.tweens.addCounter({
         from: 0,
@@ -1304,13 +1341,27 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** A Captain, half of them armed with garlic instead of a sword. */
+  /**
+   * A Captain is one of Romi's three hunters grown into a mini-boss, and which
+   * one decides how he fights, exactly as the folder names promised:
+   *
+   *   farmer   -> garlic, a bulb in each hand (GarlicCaptain)
+   *   huntress -> gold crosses, thrown like shuriken (CrossCaptain)
+   *   pilgrim  -> the weapon his men carry, swung harder (HunterCaptain)
+   *
+   * Only the RANGED two are gated, and on the same thrower cap the ordinary
+   * farmers share, so a night cannot stack ranged pressure past what the cap
+   * allows. Everything else falls through to the melee pilgrim.
+   */
   private createCaptain(spawnX: number, spawnY: number): Captain {
-    const canUseGarlic =
-      this.countAliveThrowers() < throwerCapForNight(this.night) &&
-      Math.random() < BOSS.garlicCaptainChance;
-    return canUseGarlic
-      ? this.configureThrower(new GarlicCaptain(this, spawnX, spawnY, this.emitter))
-      : new HunterCaptain(this, spawnX, spawnY, this.emitter);
+    const rangedAllowed = this.countAliveThrowers() < throwerCapForNight(this.night);
+    if (rangedAllowed && Math.random() < BOSS.garlicCaptainChance) {
+      return Math.random() < 0.5
+        ? this.configureThrower(new GarlicCaptain(this, spawnX, spawnY, this.emitter))
+        : this.configureCrossCaptain(new CrossCaptain(this, spawnX, spawnY, this.emitter));
+    }
+    const weapon = Phaser.Utils.Array.GetRandom(weaponsForNight(this.night));
+    return new HunterCaptain(this, spawnX, spawnY, this.emitter, PILGRIM_LOOK, weapon);
   }
 
   /**
@@ -1358,9 +1409,11 @@ export class GameScene extends Phaser.Scene {
 
   private onHunterKilled(hunter: Hunter): void {
     hunter.spawnCorpse();
+    this.stampBloodDecal(hunter.x, hunter.y, hunter.displayHeight);
     if (
       hunter instanceof HunterCaptain ||
       hunter instanceof GarlicCaptain ||
+      hunter instanceof CrossCaptain ||
       hunter instanceof Priest
     ) {
       this.runStats.bosses[this.bossKindOf(hunter)]++;
@@ -1377,6 +1430,55 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** Dead hunters burst into a handful of +1 bloodlets around the corpse. */
+  /**
+   * A crossed cross keeps flying until it hits him or leaves the hall. Nothing
+   * else in the game needs an out-of-bounds check — a garlic bulb resolves at
+   * the point it was aimed at, so it always ends somewhere — which is why this
+   * lives here rather than on the projectile's own physics body.
+   */
+  private updateCrosses(): void {
+    if (this.crosses.getLength() === 0) return;
+    const bounds = new Phaser.Geom.Rectangle(
+      ARENA.left - 40,
+      ARENA.top - 40,
+      ARENA.right - ARENA.left + 80,
+      ARENA.bottom - ARENA.top + 80,
+    );
+    for (const cross of this.crosses.getChildren()) {
+      (cross as GoldCross).updateFlight(bounds);
+    }
+  }
+
+  /**
+   * The stain a corpse leaves. One of Romi's marks, picked at random and turned
+   * to a random angle so no two kills leave the same shape, laid flat on the
+   * floor UNDER everything and fading slowly — long after the body itself has
+   * gone, which is what makes a hall the Count has worked through look worked
+   * through.
+   */
+  private stampBloodDecal(x: number, y: number, hunterHeight: number): void {
+    const decal = this.add
+      .image(
+        Phaser.Math.Clamp(x, ARENA.left + 12, ARENA.right - 12),
+        // Down at his feet, not at his middle: blood pools on the floor.
+        Phaser.Math.Clamp(y + hunterHeight * 0.18, ARENA.top + 12, ARENA.bottom - 12),
+        Phaser.Utils.Array.GetRandom([...BLOOD_DECALS]),
+      )
+      .setDepth(DEPTHS.groundFx)
+      .setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2))
+      .setScale(Phaser.Math.FloatBetween(0.5, 0.8))
+      .setAlpha(0);
+
+    this.tweens.add({ targets: decal, alpha: 0.85, duration: 120 });
+    this.tweens.add({
+      targets: decal,
+      alpha: 0,
+      delay: BLOOD.decalLingerMs,
+      duration: BLOOD.decalFadeMs,
+      onComplete: () => decal.destroy(),
+    });
+  }
+
   private scatterBloodlets(x: number, y: number): void {
     // The corpse itself can be outside the hall (killed mid-entrance, or shoved
     // against a wall), so the spawn point is clamped as well as the landing
@@ -1413,6 +1515,7 @@ export class GameScene extends Phaser.Scene {
 
     // Nothing is aiming at a Count who has already lost (or won) the night.
     this.garlics.clear(true, true);
+    this.crosses.clear(true, true);
     for (const target of this.getAttackTargets()) {
       if (target instanceof GarlicThrower) target.abortAim();
     }
@@ -1446,13 +1549,13 @@ export class GameScene extends Phaser.Scene {
   /** Which line of the debrief a dead hunter belongs on. */
   private hunterKindOf(hunter: Hunter): HunterKind {
     if (hunter instanceof ArmedHunter) return hunter.weaponKind;
-    if (hunter instanceof GarlicThrower) return 'thrower';
-    return 'sword';
+    return 'thrower';
   }
 
   /** Which line of the debrief a dead boss belongs on. */
   private bossKindOf(boss: Hunter): BossKind {
     if (boss instanceof Priest) return 'priest';
+    if (boss instanceof CrossCaptain) return 'crossCaptain';
     if (boss instanceof GarlicCaptain) return 'garlicCaptain';
     return 'captain';
   }
@@ -1516,6 +1619,7 @@ export class GameScene extends Phaser.Scene {
     this.hunters.clear(true, true);
     this.pickups.clear(true, true);
     this.garlics.clear(true, true);
+    this.crosses.clear(true, true);
 
     this.coffin.setOpen(true);
     this.setBatForm(true); // he flies back to the coffin as a bat too

@@ -10,8 +10,9 @@ import { captainTookDamage, type CaptainTraits } from './HunterCaptain';
 
 const PRIEST_LOOK: HunterLook = {
   charKey: 'priest',
-  walkTexture: TEXTURES.priest,
-  deathTexture: TEXTURES.priest,
+  sheet: TEXTURES.priest,
+  // He never carries a swung prop — his stake is painted into his own frames.
+  handY: 0,
 };
 
 /**
@@ -22,6 +23,22 @@ const PRIEST_LOOK: HunterLook = {
 const HOLY_LIGHT = 0xffd76b;
 const HOLY_GLOW = 0xffa32b;
 const HOLY_PALE = 0xfff3c4;
+/**
+ * Romi drew the cross leaning, which is right for one flying end over end (the
+ * huntress Captain throws it that way) and wrong for one standing in the middle
+ * of a consecration. Rotating it back by this much stands it upright — measured
+ * by rendering the built PNG through a sweep of angles and taking the one that
+ * reads as a crucifix rather than an X.
+ *
+ * Negative because Phaser turns clockwise on positive radians and the drawing
+ * leans clockwise already.
+ */
+const CROSS_UPRIGHT_ROTATION = -0.46;
+/** Its painted height once upright, in source pixels — the scale is set off this. */
+const CROSS_UPRIGHT_HEIGHT = 63;
+/** How much wider the soft copy behind the blade is, for the glow. */
+const CROSS_GLOW_SPREAD = 1.35;
+
 /** Yellows for the trailing ripples, deepest first — see spawnCross's siblings. */
 const RIPPLE_SHADES = [HOLY_PALE, HOLY_LIGHT, HOLY_GLOW];
 
@@ -311,31 +328,38 @@ export class Priest extends Hunter implements CaptainTraits {
    * thing on screen is the shape of what just burned him. Sparks trail off both
    * arms the whole way out.
    *
-   * Two crossed bars in a Container rather than an image: it has to scale from
-   * nothing to bigger than the ward, and geometry stays crisp where a 64px
-   * sprite blown up that far would not.
+   * This is ROMI'S cross now — the same drawing the huntress Captain throws —
+   * where it used to be four rectangles in a Container. Two copies of it: a
+   * soft oversized one behind for the glow, and the sharp one in front. It is
+   * still a Container so that one scale tween drives both and the ward can drag
+   * the whole thing along when he is shoved mid-cast.
+   *
+   * Her drawing is tilted about 21 degrees off vertical, which is right for a
+   * cross flying end over end and wrong for one standing in the middle of a
+   * consecration, so it is counter-rotated to stand up straight.
    */
   private spawnCross(): void {
     const reach = PRIEST.wardRadius * PRIEST.crossOvershoot;
-    // Tall enough to read as a crucifix standing in the middle of the ward,
-    // short enough not to run off the top of the hall — and translucent, so he
-    // is visible through his own light rather than hidden behind it.
-    const height = reach * 1.15;
-    const arm = reach * 0.52;
-    const thickness = Math.max(6, reach * 0.07);
-    const shaftY = -height * 0.12;
-    const barY = -height * 0.3;
+    // Sized off the cross's UPRIGHT painted height, so it finishes standing as
+    // tall as the drawn one used to — tall enough to read as a crucifix over the
+    // ward, short enough not to run off the top of the hall.
+    const full = (reach * 1.15) / CROSS_UPRIGHT_HEIGHT;
 
-    const vertical = this.scene.add.rectangle(0, shaftY, thickness, height, HOLY_LIGHT);
-    const horizontal = this.scene.add.rectangle(0, barY, arm * 2, thickness, HOLY_LIGHT);
-    const glowV = this.scene.add.rectangle(0, shaftY, thickness * 2.2, height, HOLY_GLOW, 0.35);
-    const glowH = this.scene.add.rectangle(0, barY, arm * 2, thickness * 2.2, HOLY_GLOW, 0.35);
+    const glow = this.scene.add
+      .image(0, 0, TEXTURES.weaponGoldCross)
+      .setScale(full * CROSS_GLOW_SPREAD)
+      .setTint(HOLY_GLOW)
+      .setAlpha(0.4);
+    const blade = this.scene.add.image(0, 0, TEXTURES.weaponGoldCross).setScale(full);
 
     const cross = this.scene.add
-      .container(this.x, this.y, [glowV, glowH, vertical, horizontal])
+      .container(this.x, this.y, [glow, blade])
       .setDepth(DEPTHS.attackFx)
+      .setRotation(CROSS_UPRIGHT_ROTATION)
       .setScale(0.05)
-      .setAlpha(0.8);
+      // Translucent, so he stays visible through his own light rather than
+      // hidden behind it.
+      .setAlpha(0.85);
     this.cross = cross;
 
     // Sparks off the arms, following the cross as it opens out.
@@ -351,7 +375,7 @@ export class Priest extends Hunter implements CaptainTraits {
         quantity: 3,
         emitZone: {
           type: 'random',
-          source: new Phaser.Geom.Rectangle(-arm, barY - height * 0.2, arm * 2, height),
+          source: new Phaser.Geom.Circle(0, 0, reach * 0.5),
           quantity: 1,
         },
       })
@@ -361,13 +385,16 @@ export class Priest extends Hunter implements CaptainTraits {
       this.scene.tweens.add({
         targets: cross,
         scale: 1,
+        // Held back a beat so the ring leads and the cross comes up THROUGH it,
+        // rather than the two opening out together as one shape.
+        delay: PRIEST.crossRiseDelayMs,
         duration: PRIEST.wardExpandMs,
         ease: 'Cubic.easeOut',
       }),
       this.scene.tweens.add({
         targets: cross,
         alpha: 0,
-        delay: PRIEST.wardExpandMs,
+        delay: PRIEST.crossRiseDelayMs + PRIEST.wardExpandMs,
         duration: PRIEST.crossLingerMs,
         onComplete: () => {
           cross.destroy();
@@ -375,7 +402,10 @@ export class Priest extends Hunter implements CaptainTraits {
         },
       }),
     ];
-    this.scene.time.delayedCall(PRIEST.wardExpandMs, () => this.sparkles?.stop());
+    this.scene.time.delayedCall(
+      PRIEST.crossRiseDelayMs + PRIEST.wardExpandMs,
+      () => this.sparkles?.stop(),
+    );
   }
 
   /**

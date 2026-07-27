@@ -3,9 +3,12 @@ import { COLORS } from '../game/constants';
 import { TEXTURES } from './assetKeys';
 
 /**
- * Runtime-generated textures for props with no pack art yet (blood droplet,
- * particle dot). Runs AFTER PreloadScene's loading, and skips any key a real
- * asset already claimed — so shipping art always wins.
+ * Runtime-generated textures for props with no art yet. Runs AFTER
+ * PreloadScene's loading and skips any key a real asset already claimed, so
+ * shipping art always wins — which is why the blood droplet below is dead code
+ * in practice now that Romi's droplet loads over it, and is kept only so the
+ * game still runs if the blood assets are ever missing. The particle dot is the
+ * one that is genuinely still generated.
  */
 export function createPlaceholderTextures(scene: Phaser.Scene): void {
   generate(scene, TEXTURES.blood, 16, 16, (g) => {

@@ -3,14 +3,10 @@ import { THROWER } from '../data/balance';
 import { ARENA } from '../game/constants';
 import { TEXTURES, animKey } from '../utils/assetKeys';
 import { angleToDir4 } from '../utils/direction';
-import { Hunter, type HunterLook, type HunterStats } from './Hunter';
+import { Hunter, FARMER_LOOK, type HunterLook, type HunterStats } from './Hunter';
 import { GarlicTarget } from './GarlicTarget';
 
-const THROWER_LOOK: HunterLook = {
-  charKey: 'thrower',
-  walkTexture: TEXTURES.throwerWalk,
-  deathTexture: TEXTURES.throwerDeath,
-};
+
 
 /**
  * `reposition` — shuffling back into the standoff band between throws.
@@ -21,6 +17,14 @@ type ThrowerState = 'reposition' | 'tracking' | 'locked' | 'volley';
 
 interface GarlicThrowerOptions {
   stats?: HunterStats;
+  /** Defaults to the farmer. A Captain can wear a different face. */
+  look?: HunterLook;
+  /**
+   * Skip the bulbs carried in hand. The farmer walks in visibly armed because
+   * seeing the garlic coming is the whole tell; the huntress Captain throws
+   * crosses that only exist once they leave her (see CrossCaptain).
+   */
+  hideHeldProp?: boolean;
   spriteScale?: number;
   garlicPerThrow?: number;
   garlicThrowGapMs?: number;
@@ -61,15 +65,17 @@ export class GarlicThrower extends Hunter {
   private volleyShotsFired = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number, options: GarlicThrowerOptions = {}) {
-    super(scene, x, y, options.stats ?? THROWER, THROWER_LOOK);
+    super(scene, x, y, options.stats ?? THROWER, options.look ?? FARMER_LOOK);
     this.garlicPerThrow = options.garlicPerThrow ?? 1;
     this.garlicThrowGapMs = options.garlicThrowGapMs ?? 0;
     this.baseSpriteScale = options.spriteScale ?? THROWER.spriteScale;
     this.setScale(this.baseSpriteScale);
     for (let i = 0; i < this.garlicPerThrow; i++) {
-      this.heldGarlics.push(
-        scene.add.image(x, y, TEXTURES.garlic).setScale(THROWER.garlicHeldScale).setDepth(this.depth + 1),
-      );
+      if (!options.hideHeldProp) {
+        this.heldGarlics.push(
+          scene.add.image(x, y, TEXTURES.garlic).setScale(THROWER.garlicHeldScale).setDepth(this.depth + 1),
+        );
+      }
       this.heldHiddenUntil.push(0);
     }
     this.enterReposition();

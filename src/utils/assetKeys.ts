@@ -25,34 +25,42 @@ export const TEXTURES = {
   /** Fall (0-2), burning (3-4), ash (5-6). See ANIMS / animations.ts. */
   vampireDeath: 'vampire-death',
   /**
-   * The Priest (Romi's art) — one 2x4 sheet instead of a sheet per action:
-   * two frames per direction is everything he has, so every animation he owns
-   * is built from the same pair at a different rate (see animations.ts).
+   * The bite — his REGULAR attack, and the only one of his moves Romi drew as a
+   * real sequence: drop into a lunge, head back, drive it home, come up
+   * grinning. `vampireAttack` above is the rear-up-and-roar, kept as the
+   * SPECIAL for a later iteration (the BeatEmPie lightning goes on it).
    */
+  vampireBite: 'vampire-bite',
+  /**
+   * Everyone Romi drew who walks on two legs and dies to the Count. All four
+   * are one 2x4 sheet rather than a sheet per action, because two frames per
+   * direction is everything any of them has — see the two-frame registration in
+   * animations.ts, which builds idle, walk, run, attack, hurt and death out of
+   * that same pair at different rates.
+   *
+   * `pilgrim` and `huntress` are the basic hunters; `farmer` throws garlic;
+   * `priest` is the fifth-night boss. Any of them can turn up as a Captain,
+   * scaled up and tinted (see HunterCaptain).
+   */
+  pilgrim: 'pilgrim',
+  huntress: 'huntress',
+  farmer: 'farmer',
   priest: 'priest',
-  // Hunter (sword male) sheets — rows: 0=down(front), 1=left, 2=right, 3=up(back)
-  hunterIdle: 'hunter-idle',
-  hunterWalk: 'hunter-walk',
-  hunterRun: 'hunter-run',
-  hunterAttack: 'hunter-attack',
-  hunterHurt: 'hunter-hurt',
-  hunterDeath: 'hunter-death',
-  // Garlic thrower (unarmed male) sheets — same pack/rows as the hunter, no attack sheet exists.
-  throwerIdle: 'thrower-idle',
-  throwerWalk: 'thrower-walk',
-  throwerRun: 'thrower-run',
-  throwerHurt: 'thrower-hurt',
-  throwerDeath: 'thrower-death',
   /**
    * Romi's hunter weapons — held props, not spritesheets: one drawing each for
-   * the spike and the pitchfork, two for the torch so its flame can flicker.
-   * ArmedHunter parents them to a hunter's hand and swings them in code,
-   * because the unarmed pack they are carried by has no attack sheet.
+   * the spike, the pitchfork and the gold cross, two for the torch so its flame
+   * can flicker. ArmedHunter parents them to a hunter's hand and swings them in
+   * code, because none of her hunters has an attack sheet.
    */
   weaponSpike: 'weapon-spike',
   weaponPitchfork: 'weapon-pitchfork',
   weaponTorch1: 'weapon-torch-1',
   weaponTorch2: 'weapon-torch-2',
+  /**
+   * Thrown like a shuriken by the huntress Captain, and stood in the middle of
+   * the Priest's ward as it opens out.
+   */
+  weaponGoldCross: 'weapon-gold-cross',
   // Environment
   tiles: 'castle-tiles',
   fire: 'fire-animation',
@@ -71,8 +79,27 @@ export const TEXTURES = {
   coffinClosed: 'coffin-closed',
   coffinHalf: 'coffin-half',
   coffinOpen: 'coffin-open',
-  /** Thrown by the garlic thrower once his target locks onto the Count. */
+  /**
+   * Thrown by the garlic farmer once his target locks onto the Count. It lives
+   * under environment/weapons/ with the rest of what the hunters throw and
+   * swing, not under props/ — it is a weapon, and the coffin is a prop.
+   */
   garlic: 'garlic',
+  /**
+   * Romi's blood. `blood` is the droplet the Count drinks; the rest are floor
+   * marks stamped where a hunter died, picked at random per corpse so no two
+   * kills leave the same stain (see BLOOD_DECALS).
+   */
+  bloodSpot1: 'blood-spot-1',
+  bloodSpot2: 'blood-spot-2',
+  bloodSplatter1: 'blood-splatter-1',
+  bloodSplatter2: 'blood-splatter-2',
+  bloodSplatter3: 'blood-splatter-3',
+  bloodSplatter4: 'blood-splatter-4',
+  bloodStreak: 'blood-streak',
+  bloodSpray: 'blood-spray',
+  bloodGore1: 'blood-gore-1',
+  bloodGore2: 'blood-gore-2',
   /**
    * Bat form (Romi's art) — a 2-frame 64x64 flap. Replaces the vampire sprite
    * for the dash and the coffin fly-in/fly-out (see Player.setBatForm), and is
@@ -83,23 +110,43 @@ export const TEXTURES = {
    * ANIMS.batFly, covers every direction.
    */
   bat: 'bat',
-  // Still runtime-generated placeholders
+  /** Romi's droplet, the one the Count actually drinks. */
   blood: 'tex-blood',
+  // Still a runtime-generated placeholder
   particle: 'tex-particle',
 } as const;
 
+/** The floor marks a corpse can leave, one picked at random per kill. */
+export const BLOOD_DECALS = [
+  TEXTURES.bloodSplatter1,
+  TEXTURES.bloodSplatter2,
+  TEXTURES.bloodSplatter3,
+  TEXTURES.bloodSplatter4,
+  TEXTURES.bloodStreak,
+  TEXTURES.bloodSpray,
+  TEXTURES.bloodGore1,
+  TEXTURES.bloodGore2,
+] as const;
+
+/** The smaller marks, for a hit that lands without killing. */
+export const BLOOD_SPOTS = [TEXTURES.bloodSpot1, TEXTURES.bloodSpot2] as const;
+
 export type Dir4 = 'down' | 'up' | 'left' | 'right';
 
-/** Every character that has a set of directional animations registered. */
-export type CharacterKey = 'vampire' | 'hunter' | 'thrower' | 'priest';
+/**
+ * Every character that has a set of directional animations registered. The
+ * bought CraftPix `hunter`/`thrower` families are gone — every human in the
+ * hall is one of Romi's now.
+ */
+export type CharacterKey = 'vampire' | 'pilgrim' | 'huntress' | 'farmer' | 'priest';
 
 /**
  * `death` is the fall alone — the three frames a hunter's kill earns. `sunburn`
  * is the fall PLUS the burning and ash frames, and belongs only to being caught
  * by the sunrise.
  */
-export type VampireAction = 'idle' | 'run' | 'attack' | 'death' | 'sunburn';
-export type HunterAction = 'idle' | 'walk' | 'run' | 'hurt' | 'death';
+export type VampireAction = 'idle' | 'run' | 'bite' | 'attack' | 'death' | 'sunburn';
+export type HunterAction = 'idle' | 'walk' | 'run' | 'attack' | 'hurt' | 'death';
 
 /** Directional animation key, e.g. animKey('vampire', 'walk', 'left'). */
 export function animKey(character: CharacterKey, action: string, dir: Dir4): string {

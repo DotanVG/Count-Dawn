@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { BLOOD as BLOOD_BALANCE } from '../data/balance';
 import { TEXTURES, animKey } from '../utils/assetKeys';
 import { CAPTAIN_TINT } from '../entities/HunterCaptain';
 import type { BossKind, HunterKind, RunStats } from '../types/game';
@@ -32,34 +33,39 @@ interface IconSpec {
 }
 
 const HUNTER_ICONS: Record<HunterKind, IconSpec> = {
-  sword: { texture: TEXTURES.hunterWalk, anim: animKey('hunter', 'walk', 'down'), scale: 1.8 },
-  // The props have no animation of their own, so they bob; the torch also
-  // flickers between its two flame frames, exactly as it does in the hall.
+  // A melee kill is counted by the WEAPON, so the icon is the weapon. The props
+  // have no animation of their own, so they bob; the torch also flickers between
+  // its two flame frames, exactly as it does in the hall.
   spike: { texture: TEXTURES.weaponSpike, scale: 0.6, float: true },
   pitchfork: { texture: TEXTURES.weaponPitchfork, scale: 0.6, float: true },
   torch: { texture: TEXTURES.weaponTorch1, scale: 0.6, float: true, flicker: TEXTURES.weaponTorch2 },
-  thrower: { texture: TEXTURES.throwerWalk, anim: animKey('thrower', 'walk', 'down'), scale: 1.8 },
+  thrower: { texture: TEXTURES.farmer, anim: animKey('farmer', 'walk', 'down'), scale: 1.8 },
 };
 
 const HUNTER_LABELS: Record<HunterKind, string> = {
-  sword: 'Swordsmen',
   spike: 'Spike',
   pitchfork: 'Pitchfork',
   torch: 'Torch',
-  thrower: 'Garlic throwers',
+  thrower: 'Garlic farmers',
 };
 
 const BOSS_ICONS: Record<BossKind, IconSpec> = {
   priest: { texture: TEXTURES.priest, anim: animKey('priest', 'idle', 'down'), scale: 1.5 },
   captain: {
-    texture: TEXTURES.hunterIdle,
-    anim: animKey('hunter', 'idle', 'down'),
+    texture: TEXTURES.pilgrim,
+    anim: animKey('pilgrim', 'idle', 'down'),
     scale: 1.9,
     tint: CAPTAIN_TINT,
   },
   garlicCaptain: {
-    texture: TEXTURES.throwerIdle,
-    anim: animKey('thrower', 'idle', 'down'),
+    texture: TEXTURES.farmer,
+    anim: animKey('farmer', 'idle', 'down'),
+    scale: 1.9,
+    tint: CAPTAIN_TINT,
+  },
+  crossCaptain: {
+    texture: TEXTURES.huntress,
+    anim: animKey('huntress', 'idle', 'down'),
     scale: 1.9,
     tint: CAPTAIN_TINT,
   },
@@ -67,13 +73,14 @@ const BOSS_ICONS: Record<BossKind, IconSpec> = {
 
 const BOSS_LABELS: Record<BossKind, string> = {
   priest: 'Priests',
-  captain: 'Hunter Captains',
+  captain: 'Pilgrim Captains',
   garlicCaptain: 'Garlic Captains',
+  crossCaptain: 'Huntress Captains',
 };
 
 /** Listed in the order the debrief reads them out. */
-const HUNTER_ORDER: HunterKind[] = ['sword', 'spike', 'pitchfork', 'torch', 'thrower'];
-const BOSS_ORDER: BossKind[] = ['priest', 'captain', 'garlicCaptain'];
+const HUNTER_ORDER: HunterKind[] = ['spike', 'pitchfork', 'torch', 'thrower'];
+const BOSS_ORDER: BossKind[] = ['priest', 'captain', 'garlicCaptain', 'crossCaptain'];
 
 /**
  * The end-of-run debrief: what the Count actually did across the whole run,
@@ -224,6 +231,6 @@ export class RunDebrief {
 
   /** The blood droplet beside the headline, bobbing the way a bloodlet does. */
   private bloodDrop(x: number, y: number): void {
-    this.container.add(this.makeIcon(x, y, { texture: TEXTURES.blood, scale: 2.2, float: true }, false));
+    this.container.add(this.makeIcon(x, y, { texture: TEXTURES.blood, scale: 2.2 * BLOOD_BALANCE.dropletScale, float: true }, false));
   }
 }

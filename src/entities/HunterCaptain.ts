@@ -1,13 +1,22 @@
 import Phaser from 'phaser';
-import { BOSS, HUNTER, KNOCKBACK } from '../data/balance';
+import { BOSS, HUNTER, KNOCKBACK, type WeaponKind } from '../data/balance';
 import { DEPTHS } from '../game/constants';
 import { EVENTS, type GameEventEmitter } from '../game/events';
+import type { CharacterKey, Dir4 } from '../utils/assetKeys';
 import { BossHealthBar } from '../ui/BossHealthBar';
+import { ArmedHunter } from './ArmedHunter';
 import { BossCharge } from './BossCharge';
-import { Hunter } from './Hunter';
+import { Hunter, PILGRIM_LOOK, type HunterLook } from './Hunter';
 
 /** Tint that separates the Captain from his men (dark blood-red armor look). */
 export const CAPTAIN_TINT = 0xff9a7a;
+
+/** What a Captain is called over his health bar, by which of them he is. */
+export const CAPTAIN_NAMES: Partial<Record<CharacterKey, string>> = {
+  pilgrim: 'Pilgrim Captain',
+  huntress: 'Huntress Captain',
+  farmer: 'Garlic Captain',
+};
 
 /**
  * Everything that makes a hunter a Captain, worn identically by both flavours:
@@ -41,10 +50,14 @@ export function captainTookDamage(
 }
 
 /**
- * The boss. Same sheet as a hunter but much larger, tinted, tougher; carries
- * his own health bar above his head.
+ * The melee boss: one of Romi's basic hunters — a pilgrim or a huntress —
+ * scaled up, tinted, and much tougher, carrying the same weapon his men carry
+ * and swinging it the same way. He extends ArmedHunter rather than Hunter
+ * because there is no unarmed hunter left to be: every one of them arrives with
+ * a spike, a fork or a torch, and a Captain who turned up empty-handed would be
+ * the only human in the hall without one.
  */
-export class HunterCaptain extends Hunter implements CaptainTraits {
+export class HunterCaptain extends ArmedHunter implements CaptainTraits {
   readonly maxHealth = BOSS.health;
   readonly healthBar: BossHealthBar;
   /** He rocks back a little, but the Count can't shove him around the hall. */
@@ -58,15 +71,14 @@ export class HunterCaptain extends Hunter implements CaptainTraits {
     x: number,
     y: number,
     private readonly emitter: GameEventEmitter,
+    look: HunterLook = PILGRIM_LOOK,
+    weapon: WeaponKind = 'pitchfork',
   ) {
-    super(scene, x, y, BOSS);
+    super(scene, x, y, weapon, look, BOSS);
     this.setScale(BOSS.spriteScale);
     this.normalDepth = DEPTHS.boss;
     this.applyBaseTint();
-    this.healthBar = new BossHealthBar(scene, 'Hunter Captain');
-    this.on(Phaser.Animations.Events.ANIMATION_START, (anim: Phaser.Animations.Animation) => {
-      if (anim.key.startsWith('hunter-attack')) this.beginChargeTell();
-    });
+    this.healthBar = new BossHealthBar(scene, CAPTAIN_NAMES[look.charKey] ?? 'Hunter Captain');
   }
 
   protected override applyBaseTint(): void {
@@ -89,10 +101,16 @@ export class HunterCaptain extends Hunter implements CaptainTraits {
   }
 
   /**
-   * The wind-up ring, hung off the attack animation actually starting rather
-   * than off a hook in the base class — the swing is played from inside
-   * Hunter.pursue, and this is the seam that needs nothing added there.
+   * The tell rides the swing itself. It used to hang off ANIMATION_START, which
+   * worked while a Captain's attack was a body animation; an ArmedHunter never
+   * plays one — the strike lives on the prop — so there is no animation to
+   * listen for and this is the seam instead.
    */
+  protected override playSwing(dir: Dir4, aimAngle: number): void {
+    this.beginChargeTell();
+    super.playSwing(dir, aimAngle);
+  }
+
   private beginChargeTell(): void {
     this.charge?.destroy();
     this.charge = new BossCharge(

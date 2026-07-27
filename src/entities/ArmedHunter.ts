@@ -2,14 +2,7 @@ import Phaser from 'phaser';
 import { ARMED, WEAPONS, type WeaponKind } from '../data/balance';
 import { DEPTHS } from '../game/constants';
 import { TEXTURES, type Dir4 } from '../utils/assetKeys';
-import { Hunter, type HunterLook } from './Hunter';
-
-/** Same unarmed body the garlic throwers wear — the weapon is a separate prop. */
-const ARMED_LOOK: HunterLook = {
-  charKey: 'thrower',
-  walkTexture: TEXTURES.throwerWalk,
-  deathTexture: TEXTURES.throwerDeath,
-};
+import { Hunter, PILGRIM_LOOK, type HunterLook, type HunterStats } from './Hunter';
 
 /** Romi drew one frame each for the spike and fork, two for the torch's flame. */
 const WEAPON_TEXTURES: Record<WeaponKind, string[]> = {
@@ -20,29 +13,23 @@ const WEAPON_TEXTURES: Record<WeaponKind, string[]> = {
 
 /**
  * Where the prop sits while he is just carrying it: which side of his body the
- * hand is on (as a fraction of his display size), how the shaft leans, and
- * whether the weapon passes in front of him or behind his back.
+ * hand is on (as a fraction of his display width), how the shaft leans, and
+ * whether the weapon passes in front of him or behind his back. How far DOWN
+ * the fist is belongs to the character, not the direction — see
+ * HunterLook.handY.
  *
- * The hunter is a SMALL painting inside his frame — 12x21 of a 64x64 sheet,
- * with his fist around texture row 34 — so these offsets are deliberately
- * tight. Pushed out any further and the prop stops reading as held and starts
- * reading as a totem standing next to him.
+ * Romi's hunters are about 18x31 of a 64x64 sheet, so there is more body to
+ * hang a weapon off than the bought pack's 12x21 had, and these are wider than
+ * they used to be to match. Still deliberately inside the silhouette: pushed
+ * out any further and the prop stops reading as held and starts reading as a
+ * totem standing next to him.
  */
-const CARRY: Record<Dir4, { handX: number; handY: number; lean: number; behind: boolean }> = {
-  down: { handX: 0.04, handY: 0.035, lean: 0.3, behind: false },
-  up: { handX: -0.04, handY: 0.03, lean: -0.3, behind: true },
-  left: { handX: -0.05, handY: 0.035, lean: -0.55, behind: false },
-  right: { handX: 0.06, handY: 0.035, lean: 0.55, behind: false },
+const CARRY: Record<Dir4, { handX: number; lean: number; behind: boolean }> = {
+  down: { handX: 0.07, lean: 0.3, behind: false },
+  up: { handX: -0.07, lean: -0.3, behind: true },
+  left: { handX: -0.08, lean: -0.55, behind: false },
+  right: { handX: 0.09, lean: 0.55, behind: false },
 };
-
-/**
- * The walk cycle lifts him off the floor and sets him back down again — its
- * painted top runs 23, 21, 22 texture rows and repeats. A prop pinned to a
- * fixed offset does not ride that, so his fist bobs and the weapon does not,
- * and the join slides by a couple of pixels every step. This is that bob, in
- * unscaled texture rows, indexed by position in the cycle.
- */
-const BODY_BOB = [2, 0, 1];
 
 /**
  * The props are drawn point-up, so the sprite pivots about his fist and the
@@ -78,15 +65,17 @@ function lerpAngle(from: number, to: number, t: number): number {
 
 /**
  * A hunter carrying one of Romi's three weapons: a wooden spike, a pitchfork
- * or a burning torch.
+ * or a burning torch. This is now the ORDINARY hunter — the pilgrim and the
+ * huntress both arrive armed, and there is no unarmed swordsman left to be the
+ * default.
  *
- * He is drawn from the same UNARMED pack as the garlic throwers, which ships
- * no attack sheet — so unlike the sword hunters, none of his swing lives in
- * his body's animation. The prop is a separate image pinned to his fist every
- * frame, and one counter (`swingT`) drives the whole strike: at 0 the weapon
- * rests against his shoulder, at 1 it is fully extended at the Count. A
- * `Back.easeIn` on that counter dips it briefly below zero at the start, which
- * is the wind-up, and the yoyo back to 0 is the recovery.
+ * None of Romi's humans has an attack sheet — two frames per direction is all
+ * any of them has — so none of the swing lives in the body's animation. The
+ * prop is a separate image pinned to his fist every frame, and one counter
+ * (`swingT`) drives the whole strike: at 0 the weapon rests against his
+ * shoulder, at 1 it is fully extended at the Count. A `Back.easeIn` on that
+ * counter dips it briefly below zero at the start, which is the wind-up, and
+ * the yoyo back to 0 is the recovery.
  *
  * What the three weapons actually change is reach and cadence, never damage —
  * the flat 5-per-hit economy holds (see WEAPONS in balance.ts). The pitchfork
@@ -108,8 +97,15 @@ export class ArmedHunter extends Hunter {
   private swingUntil = 0;
   private frameIndex = -1;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, kind: WeaponKind) {
-    super(scene, x, y, ARMED, ARMED_LOOK);
+  constructor(
+    scene: Phaser.Scene,
+    x: number,
+    y: number,
+    kind: WeaponKind,
+    look: HunterLook = PILGRIM_LOOK,
+    stats: HunterStats = ARMED,
+  ) {
+    super(scene, x, y, stats, look);
     const spec = WEAPONS[kind];
     this.weaponKind = kind;
     this.textures = WEAPON_TEXTURES[kind];
@@ -293,11 +289,14 @@ export class ArmedHunter extends Hunter {
     const rotation = lerpAngle(rest, strike, aimT);
 
     const lunge = this.displayHeight * LUNGE[this.motion] * Math.max(0, t);
-    // Ride his walk cycle so the join with his fist holds still (see BODY_BOB).
-    const frame = this.anims.currentFrame;
-    const bob = frame ? BODY_BOB[frame.index % BODY_BOB.length] * this.scaleY : 0;
+    // No walk-cycle bob to ride any more: the bought pack's sheets lifted him
+    // off the floor and set him down again, so a prop at a fixed offset slid
+    // against his fist every step and had to be corrected frame by frame.
+    // Romi's sheets are registered on the FEET (tools/build_hunter_sheets.py),
+    // so his painted top does not move within a direction and neither does his
+    // hand.
     const x = this.x + this.displayWidth * carry.handX + Math.cos(this.swingAim) * lunge;
-    const y = this.y + this.displayHeight * carry.handY + bob + Math.sin(this.swingAim) * lunge;
+    const y = this.y + this.displayHeight * this.look.handY + Math.sin(this.swingAim) * lunge;
 
     this.weapon
       .setPosition(x, y)

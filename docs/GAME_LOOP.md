@@ -35,7 +35,20 @@ Either way the end screen shows the cause, blood collected, and time survived, w
 
 `GameFlowSystem` emits one boss-spawn request when collected blood first reaches the current round's target. `CountdownSystem` only owns dawn, timer ticks, and the final warning; it has no Captain timing logic.
 
-Who answers that request is `bossLineupForNight` (`data/balance.ts`). Ordinary nights send Hunter Captains, one more every fifth night, each with an even chance of carrying garlic instead of a sword. **Every fifth night sends the Priest instead**: he takes both the step up the night was going to make and the slot it would have added, so night 5 is the Priest alone where two Captains would have stood, night 10 is the Priest plus one Captain, night 15 the Priest plus two. The lineup never exceeds the Captain count it replaces — a Priest night is a new fight, not a bigger one.
+Who answers that request is `bossLineupForNight` (`data/balance.ts`). Ordinary nights send Captains, one more every fifth night. Which of Romi's hunters a Captain is grown from decides how it fights, exactly as her folder names promised: a **farmer** Captain throws garlic with a bulb in each hand, a **huntress** Captain throws gold crosses like shuriken, and anything else is a **pilgrim** Captain swinging the same weapon his men carry. Both ranged flavours are gated on the same alive-thrower cap the ordinary farmers share, so a night cannot stack ranged pressure past what that cap allows. **Every fifth night sends the Priest instead**: he takes both the step up the night was going to make and the slot it would have added, so night 5 is the Priest alone where two Captains would have stood, night 10 is the Priest plus one Captain, night 15 the Priest plus two. The lineup never exceeds the Captain count it replaces — a Priest night is a new fight, not a bigger one.
+
+### The huntress Captain's crosses
+
+She reuses the garlic thrower's entire state machine — hold a standoff, paint a
+crosshair, lock, volley — because the shape of the threat is the same shape.
+What differs is the projectile, and the difference matters: a bulb is lobbed at
+the point the crosshair locked and splashes there whether or not it hit, so it is
+beaten by backing off. A cross is thrown along the line the lock gave her and
+keeps going (`GoldCross`), so it is beaten by stepping SIDEWAYS — and
+`CROSS.perVolley` of them arrive in a fan, which is what stops standing still
+from working.
+
+A cross that leaves the hall is simply gone; nothing resolves where it was aimed.
 
 ### The Priest's ward
 
@@ -47,7 +60,7 @@ Two answers: walk out of the circle while it is still being painted, or dash thr
 
 ### Boss telegraphs, and committed attacks
 
-Every boss wears the same tell before it commits, drawn by `BossCharge`: a ring that closes inward onto its body and brightens as the wind-up runs out, colour-coded per threat — gold for the Priest's ward, red for a Hunter Captain's swing, green for a garlic Captain's volley.
+Every boss wears the same tell before it commits, drawn by `BossCharge`: a ring that closes inward onto its body and brightens as the wind-up runs out, colour-coded per threat — red for a pilgrim Captain's swing, green for a garlic Captain's volley, and gold for both the Priest's ward and the huntress Captain's crosses. The two gold tells are deliberately the same colour: gold means holy in this game, and which of the two is coming is never in doubt, because one is a Priest standing in a painted circle and the other is a huntress at the far end of the hall.
 
 From the moment that ring appears the attack is **committed** (`Hunter.isCommitted`). Hitting the boss still shoves it, and the Priest's whole ward slides with him because every part of it is anchored on his body, but nothing cancels. A regular hunter is the opposite: a landed strike knocks him back, flinches him and drops the swing he was winding up.
 

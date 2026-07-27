@@ -26,13 +26,14 @@ Surviving does not end the run. The lid shuts, your blood drains into your healt
 
 | | |
 | --- | --- |
-| **Swordsmen** | Walk in, close, and swing. The baseline. |
+| **Pilgrims and huntresses** | The basic hunters, and every one of them arrives armed. Which of the two faces walks in is cosmetic; the weapon is what changes the fight. |
 | **Wooden spike** | Fast, close jabs. |
-| **Pitchfork** | Stabs from outside sword range — the reason to keep moving. |
-| **Burning torch** | Chops in an arc, trailing embers, and keeps burning on the floor after you kill him. |
-| **Garlic throwers** | Never close. They paint a green crosshair that crawls from their feet onto you, lock, and lob a bulb at the spot. From night two on, one fewer than the night number. |
-| **Hunter Captain** | Bigger, tougher, hits twice as hard, shrugs off knockback. |
+| **Pitchfork** | Stabs from outside arm's reach — the reason to keep moving. |
+| **Burning torch** | Chops in an arc, trailing embers the whole time it is carried. |
+| **Garlic farmers** | Never close. They paint a green crosshair that crawls from their feet onto you, lock, and lob a bulb at the spot. From night two on, one fewer than the night number. |
+| **Pilgrim Captain** | Bigger, tougher, hits twice as hard, shrugs off knockback — swinging the same weapon his men carry. |
 | **Garlic Captain** | A Captain with a bulb in each hand. |
+| **Huntress Captain** | The only hunter with the gold crosses, and she throws them like shuriken: a fan of three that flies flat and keeps going. Dodged sideways, not backwards. |
 | **The Priest** | Every fifth night, in place of the Captains. Carries a wooden stake, and every few seconds plants his feet and drives out a ward of holy light. |
 
 A weapon buys **reach and cadence, never damage** — every regular hit costs 5 HP whatever swung it. Captains and the Priest hit for 10.
@@ -114,8 +115,10 @@ Romi's original drawings ship under [`public/assets/RAW/`](public/assets/RAW/REA
 
 ```bash
 python tools/build_count_sheets.py public/assets/RAW/count
+python tools/build_hunter_sheets.py public/assets/RAW
 python tools/build_priest_sheet.py public/assets/RAW/priest
 python tools/build_weapon_props.py public/assets/RAW/weapons
+python tools/build_green_props.py public/assets/RAW
 python tools/build_bat_sheet.py public/assets/RAW/bat
 ```
 
@@ -174,7 +177,7 @@ Pending:
 
 **Dotan Veretzky** — design, programming, game architecture.
 
-**Romi Elbom** — all original art: the Count, the Priest, the three hunter weapons (wooden spike, pitchfork, burning torch), the bat, the coffin, the garlic, and the cover art in all its title variants.
+**Romi Elbom** — all original art: the Count, every hunter who walks into the hall (pilgrim, huntress, garlic farmer, Priest), the four hunter weapons (wooden spike, pitchfork, burning torch, gold cross), the blood, the bat, the coffin, the garlic, and the cover art in all its title variants.
 
 **Noam Ouzana** — original soundtrack and sound design: the **Main Title** theme and the **Level Music** that plays through every night, plus the WOOSH of the Count's swing and the SLURP of him drinking.
 [soundcloud.com/ouzana](https://soundcloud.com/ouzana)
@@ -185,12 +188,15 @@ Pending:
 
 Character and environment art from [CraftPix](https://craftpix.net) under the [CraftPix file license](https://craftpix.net/file-licenses/) (free packs, game use permitted):
 
-- **Free Base 4-Direction Male Character Pixel Art** — hunters and Hunter Captain (sword variant), garlic throwers and weapon carriers (unarmed variant).
-  [craftpix.net](https://craftpix.net/freebies/free-base-4-direction-male-character-pixel-art/)
 - **Free Vampire 4-Direction Pixel Character Sprite Pack** — the effects-only magic layer, all that remains in use now that the Count is Romi's. It is the burst on a landed strike and the spell he throws as he swings.
   [craftpix.net](https://craftpix.net/freebies/free-vampire-4-direction-pixel-character-sprite-pack/)
 - **Free 2D Top-Down Pixel Dungeon Asset Pack** — castle tiles and torch flames.
   [craftpix.net](https://craftpix.net/freebies/free-2d-top-down-pixel-dungeon-asset-pack/)
+
+Every human in the hall is Romi's now — the pilgrim, the huntress, the garlic
+farmer and the Priest — so the CraftPix character pack that used to dress them
+is no longer used at all. Only its effects-only magic layer and the dungeon
+tileset remain.
 
 **No AI-generated art or audio is used anywhere in this project.**
 
