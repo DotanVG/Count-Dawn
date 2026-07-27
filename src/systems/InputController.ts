@@ -17,6 +17,7 @@ export class InputController {
     arrowLeft: Phaser.Input.Keyboard.Key;
     arrowRight: Phaser.Input.Keyboard.Key;
     dash: Phaser.Input.Keyboard.Key;
+    ultimate: Phaser.Input.Keyboard.Key;
   };
 
   /**
@@ -52,6 +53,8 @@ export class InputController {
       arrowLeft: kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT),
       arrowRight: kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT),
       dash: kb.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT),
+      // Space, freed up now that it no longer auto-attacks (see consumeMouseAttackPressed).
+      ultimate: kb.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
     };
   }
 
@@ -78,6 +81,11 @@ export class InputController {
   /** Shift, edge-triggered: holding it must not chain dashes on every frame. */
   isDashJustPressed(): boolean {
     return Phaser.Input.Keyboard.JustDown(this.keys.dash);
+  }
+
+  /** Space, edge-triggered: fires the Ultimate once Wrath is full (see GameScene.tryUseUltimate). */
+  isUltimateJustPressed(): boolean {
+    return Phaser.Input.Keyboard.JustDown(this.keys.ultimate);
   }
 
   /** False until the player has actually moved or clicked the mouse. */

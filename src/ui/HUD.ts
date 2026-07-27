@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { BLOOD, NIGHT, PLAYER, bossLineupForNight } from '../data/balance';
+import { BLOOD, NIGHT, PLAYER, WRATH, bossLineupForNight } from '../data/balance';
 import { DEPTHS, GAME_WIDTH, GAME_HEIGHT } from '../game/constants';
 import { EVENTS } from '../game/events';
 import { TEXTURES } from '../utils/assetKeys';
@@ -62,7 +62,11 @@ const BLOOD_RED = 0xc41e2f;
 const BLOOD_FULL_GLOW = 0xff6b7a;
 const HP_FULL_GLOW = 0x7dff9b;
 const DASH_PURPLE = 0x9d6bff;
+const WRATH_YELLOW = 0xffd23d;
+const WRATH_DARK = 0x241830;
 const BAR_W = 216;
+/** Smaller than the HP/blood bars — Wrath is a bonus meter, not a survival stat. */
+const WRATH_BAR_W = 150;
 
 /**
  * Health ratio at or below which the bar turns orange, then red - even
@@ -111,6 +115,8 @@ export class HUD {
   private dashLabel: Phaser.GameObjects.Text;
   private bloodBarFill: Phaser.GameObjects.Rectangle;
   private bloodText: Phaser.GameObjects.Text;
+  private wrathBarFill: Phaser.GameObjects.Rectangle;
+  private wrathText: Phaser.GameObjects.Text;
   /** The announcement that pops centre-screen, then flies to the corner. */
   private bannerPop: Phaser.GameObjects.Text;
   /** The copy that rests in the corner between announcements. */
@@ -136,6 +142,13 @@ export class HUD {
   private lowHealthTween: Phaser.Tweens.Tween | null = null;
   /** Last ratio handed to setHealth, so particle bursts can match the bar. */
   private healthRatio = 1;
+  /** Ring around the Wrath meter, shown only once the Ultimate is charged. */
+  private wrathGlow: Phaser.GameObjects.Rectangle;
+  private wrathGlowTween: Phaser.Tweens.Tween | null = null;
+  /** Dark motes orbiting the Wrath meter on an ellipse, only while charged. */
+  private wrathOrbitDots: Phaser.GameObjects.Arc[] = [];
+  private wrathOrbitTween: Phaser.Tweens.Tween | null = null;
+  private wrathMotes: Phaser.GameObjects.Particles.ParticleEmitter;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -212,6 +225,56 @@ export class HUD {
       .setDepth(DEPTHS.hud + 2)
       .setVisible(false);
 
+    // Wrath meter (top-middle, between health and blood): fills from blood the
+    // Count has no use for — see WRATH in balance.ts. Smaller than the other
+    // two on purpose; it is a bonus resource, not something survival hinges on.
+    const wrathX = GAME_WIDTH / 2 - WRATH_BAR_W / 2;
+    const wrathBg = scene.add
+      .rectangle(wrathX - 2, 24, WRATH_BAR_W + 4, 18, 0x000000, 0.55)
+      .setOrigin(0, 0.5)
+      .setDepth(DEPTHS.hud);
+    this.wrathBarFill = scene.add
+      .rectangle(wrathX, 24, 0, 14, WRATH_YELLOW)
+      .setOrigin(0, 0.5)
+      .setDepth(DEPTHS.hud + 1);
+    this.wrathText = scene.add
+      .text(GAME_WIDTH / 2, 40, '', { fontFamily: FONT, fontSize: '13px', color: '#ffe9a3' })
+      .setOrigin(0.5, 0)
+      .setDepth(DEPTHS.hud + 1);
+
+    // Charged flourish: a yellow ring, matching the other two bars' full glow,
+    // plus dark motes swinging around the box on an ellipse — bigger and
+    // brighter at the bottom of the loop, smaller and dimmer at the top, which
+    // is the cheapest way two flat circles read as orbiting IN FRONT of and
+    // BEHIND the meter instead of flatly around it.
+    this.wrathGlow = scene.add
+      .rectangle(wrathX - 6, 24, WRATH_BAR_W + 12, 26)
+      .setOrigin(0, 0.5)
+      .setStrokeStyle(3, WRATH_YELLOW, 0.9)
+      .setFillStyle(WRATH_YELLOW, 0)
+      .setDepth(DEPTHS.hud + 2)
+      .setVisible(false);
+    for (let i = 0; i < 3; i++) {
+      this.wrathOrbitDots.push(
+        scene.add
+          .circle(GAME_WIDTH / 2, 24, 4, i % 2 === 0 ? WRATH_DARK : DASH_PURPLE, 0.9)
+          .setDepth(DEPTHS.hud + 3)
+          .setVisible(false),
+      );
+    }
+    this.wrathMotes = scene.add
+      .particles(GAME_WIDTH / 2, 24, TEXTURES.particle, {
+        speed: { min: 8, max: 34 },
+        lifespan: { min: 400, max: 800 },
+        scale: { start: 0.8, end: 0 },
+        alpha: { start: 0.8, end: 0 },
+        tint: [WRATH_DARK, DASH_PURPLE, 0x4a2e6b],
+        frequency: 90,
+        quantity: 1,
+        emitting: false,
+      })
+      .setDepth(DEPTHS.hud + 2);
+
     // Night + objective. Two texts for one piece of information: the banner
     // announces a change big and centred, then flies into the corner slot and
     // hands off to the resting copy that lives there between announcements.
@@ -272,6 +335,7 @@ export class HUD {
 
     this.setHealth(PLAYER.maxHealth, PLAYER.maxHealth);
     this.setBlood(0, BLOOD.target);
+    this.setWrath(0, WRATH.target);
 
     this.appearTargets = [
       this.timerText,
@@ -284,6 +348,9 @@ export class HUD {
       bloodBg,
       this.bloodBarFill,
       this.bloodText,
+      wrathBg,
+      this.wrathBarFill,
+      this.wrathText,
     ];
 
     emitter.on(EVENTS.COUNTDOWN_TICK, this.onTick, this);
@@ -791,6 +858,78 @@ export class HUD {
       repeat: -1,
       ease: 'Sine.easeInOut',
     });
+  }
+
+  /**
+   * Wrath meter: fills from blood the Count has no use for (see WRATH in
+   * balance.ts). Reads "WRATH READY" once charged rather than a fraction —
+   * a full meter is a thing to spend, not a number to watch.
+   */
+  setWrath(current: number, target: number): void {
+    const ratio = Phaser.Math.Clamp(current / target, 0, 1);
+    this.wrathBarFill.width = WRATH_BAR_W * ratio;
+    this.wrathText.setText(ratio >= 1 ? 'WRATH READY' : `Wrath ${Math.floor(current)}/${target}`);
+    this.setWrathFullGlow(ratio >= 1);
+  }
+
+  /** Live right edge of the Wrath bar's current fill; see bloodBarEdge. */
+  get wrathBarEdge(): { x: number; y: number } {
+    return { x: GAME_WIDTH / 2 - WRATH_BAR_W / 2 + this.wrathBarFill.width, y: 24 };
+  }
+
+  /**
+   * The charged flourish: the yellow ring every full bar gets, plus three dark
+   * motes swinging around the box on an ellipse (bigger and brighter at the
+   * bottom of the loop than the top — the cheapest way two flat circles read
+   * as passing in front of, then behind, the meter) and a steady drift of
+   * dark particles off the box itself.
+   */
+  private setWrathFullGlow(on: boolean): void {
+    if (on === (this.wrathGlowTween !== null)) return;
+
+    if (!on) {
+      this.wrathGlowTween?.stop();
+      this.wrathGlowTween = null;
+      this.wrathGlow.setVisible(false);
+      this.wrathOrbitTween?.stop();
+      this.wrathOrbitTween = null;
+      for (const dot of this.wrathOrbitDots) dot.setVisible(false);
+      this.wrathMotes.stop();
+      return;
+    }
+
+    this.wrathGlow.setVisible(true).setAlpha(1).setScale(1);
+    this.wrathGlowTween = this.scene.tweens.add({
+      targets: this.wrathGlow,
+      alpha: { from: 1, to: 0.35 },
+      scaleY: { from: 1, to: 1.18 },
+      duration: 620,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+
+    for (const dot of this.wrathOrbitDots) dot.setVisible(true);
+    const centerX = GAME_WIDTH / 2;
+    const orbitX = WRATH_BAR_W / 2 + 16;
+    const orbitY = 15;
+    this.wrathOrbitTween = this.scene.tweens.addCounter({
+      from: 0,
+      to: Math.PI * 2,
+      duration: 1500,
+      repeat: -1,
+      onUpdate: (tween) => {
+        const base = tween.getValue() ?? 0;
+        this.wrathOrbitDots.forEach((dot, i) => {
+          const a = base + (i / this.wrathOrbitDots.length) * Math.PI * 2;
+          const depth = Math.sin(a) * 0.5 + 0.5; // 0 at the top of the loop, 1 at the bottom
+          dot.setPosition(centerX + Math.cos(a) * orbitX, 24 + Math.sin(a) * orbitY);
+          dot.setScale(0.6 + 0.6 * depth).setAlpha(0.5 + 0.5 * depth);
+        });
+      },
+    });
+
+    this.wrathMotes.start();
   }
 
   private onObjective(objective: Objective): void {

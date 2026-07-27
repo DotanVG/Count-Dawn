@@ -8,6 +8,7 @@ import {
   PLAYER,
   PRIEST,
   THROWER,
+  WRATH,
   bloodTargetForNight,
   bossLineupForNight,
   captainCountForNight,
@@ -64,7 +65,7 @@ import { DawnSky } from '../world/DawnSky';
 import { HUD } from '../ui/HUD';
 import { MenuLightning } from '../ui/MenuLightning';
 import { TouchControls } from '../ui/TouchControls';
-import { TEXTURES, AUDIO, BLOOD_DECALS } from '../utils/assetKeys';
+import { TEXTURES, ANIMS, AUDIO, BLOOD_DECALS } from '../utils/assetKeys';
 import { VAMPIRE_ATTACK_DURATION_MS, VAMPIRE_SUNBURN_DURATION_MS } from '../utils/animations';
 import { emptyRunStats } from '../types/game';
 import type { BossKind, EndCause, HunterKind, RunStats, RunSummary } from '../types/game';
@@ -104,6 +105,23 @@ const PLAYER_SPAWN = {
   x: (ARENA.left + ARENA.right) / 2,
   y: (ARENA.top + ARENA.bottom) / 2,
 };
+
+/**
+ * Screen-space blood splatter (spawnScreenBloodSplatter): bigger and less
+ * transparent the more of a burst it is reading, picked from the same random
+ * decal art the floor stains use (see stampBloodDecal) but drawn huge, faint
+ * and fixed to the camera rather than small, opaque and pinned to the floor —
+ * this reads as blood on the SCREEN, not blood in the room.
+ */
+const SCREEN_SPLATTER_TIERS = [
+  { scale: [1.6, 2.1] as const, alpha: [0.16, 0.22] as const },
+  { scale: [2.2, 2.8] as const, alpha: [0.22, 0.28] as const },
+  { scale: [2.9, 3.6] as const, alpha: [0.28, 0.36] as const },
+] as const;
+/** How long a burst of kills stays "recent" for the next kill to add to it. */
+const KILL_BURST_WINDOW_MS = 900;
+/** Simultaneous-kill counts that step the splatter up through SCREEN_SPLATTER_TIERS. */
+const KILL_BURST_TIER_THRESHOLDS = [3, 5, 7] as const;
 
 /**
  * One castle hall, played as an endless sequence of nights. The scene
@@ -153,6 +171,17 @@ export class GameScene extends Phaser.Scene {
   private runStats: RunStats = emptyRunStats();
   /** Drives the cold open's scripted clock; see systems/coldOpen.ts. */
   private coldOpenClock: Phaser.Time.TimerEvent | null = null;
+  /**
+   * Blood the Count has no use for (see WRATH in balance.ts). Persists across
+   * nights like runStats — reset only in create(), never in
+   * beginRoundSystems — and is spent all at once on the Ultimate.
+   */
+  private wrath = 0;
+  /** True for the Ultimate's whole duration, so a second press can't restart it mid-swing. */
+  private ultimateActive = false;
+  private ultDarkenOverlay!: Phaser.GameObjects.Rectangle;
+  /** Timestamps of recent kills, for spawnScreenBloodSplatter's burst sizing. */
+  private recentKillTimes: number[] = [];
 
   constructor() {
     super(SCENES.game);
@@ -163,6 +192,9 @@ export class GameScene extends Phaser.Scene {
     this.isTouch = isTouchDevice();
     this.night = 1;
     this.runStats = emptyRunStats();
+    this.wrath = 0;
+    this.ultimateActive = false;
+    this.recentKillTimes = [];
     this.captains.clear();
     this.countdown = null;
     this.spawner = null;
@@ -208,6 +240,13 @@ export class GameScene extends Phaser.Scene {
       .rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, COLORS.dawn, 0)
       .setOrigin(0)
       .setDepth(DEPTHS.dawnOverlay);
+
+    // The Ultimate's screen darken — a touch dimmer for its whole duration,
+    // nowhere near the pause menu's near-black (see WRATH.screenDarkenAlpha).
+    this.ultDarkenOverlay = this.add
+      .rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0d0716, 0)
+      .setOrigin(0)
+      .setDepth(DEPTHS.ultOverlay);
 
     this.setupCollisions();
     this.wireEvents();
@@ -310,6 +349,7 @@ export class GameScene extends Phaser.Scene {
       if (this.touch.consumeAutoAttackPressed()) {
         this.autoAttackNearest();
       }
+      if (this.touch.consumeUltimatePressed()) this.tryUseUltimate();
       return;
     }
 
@@ -332,6 +372,8 @@ export class GameScene extends Phaser.Scene {
     if (this.inputController.consumeMouseAttackPressed()) {
       this.combat.tryAttack(this.getAttackTargets());
     }
+
+    if (this.inputController.isUltimateJustPressed()) this.tryUseUltimate();
   }
 
   /** Mobile's ⚔ button: turn toward the nearest living hunter and strike, once per press. */
@@ -375,10 +417,12 @@ export class GameScene extends Phaser.Scene {
       ? [
           'Joystick - Move    Tap - Strike toward tap    Sword - Strike nearest',
           'Bat button - Dash (short invulnerable burst)    Pause - Pause button',
+          'Lightning button - Ultimate, once the Wrath meter is full',
         ]
       : [
           'Move - WASD / Arrows    Aim - Mouse    Attack - Click',
           'Bat dash - Shift (short invulnerable burst)    Pause - Esc / P',
+          'Ultimate - Space, once the Wrath meter is full',
         ];
     const controls = this.add
       .text(cx, 545, instructions, {
@@ -761,8 +805,16 @@ export class GameScene extends Phaser.Scene {
 
         // He sleeps: health refills, the blood is spent, the clock winds back
         // up to a full night - all of it WHILE the day passes overhead, not
-        // queued up behind it.
-        this.hud?.playCoffinTransfer(1, CINEMATIC.startHealth / PLAYER.maxHealth, 0, () => {});
+        // queued up behind it. He came home almost dead (12 HP), so this
+        // scripted transfer's own math sends none of the night's blood to
+        // Wrath — see the real transfer below for the actual rule.
+        const wrathFromColdOpen = Math.max(
+          0,
+          bloodTargetForNight(this.night) - (PLAYER.maxHealth - CINEMATIC.startHealth),
+        );
+        this.hud?.playCoffinTransfer(1, CINEMATIC.startHealth / PLAYER.maxHealth, 0, () => {
+          if (wrathFromColdOpen > 0) this.gainWrath(wrathFromColdOpen);
+        });
         this.playDayCycle(2200, () => {
           this.hud?.resetForNewRound(bloodTargetForNight(this.night));
           this.riseFromCoffin(() => this.startPlaying());
@@ -1205,23 +1257,34 @@ export class GameScene extends Phaser.Scene {
    * only flies the droplet and cashes it in on arrival.
    */
   private hopBloodToHealth(bloodAmount: number): void {
+    // HP already full is the one case healing this blood would do nothing
+    // with — rather than fly a ribbon that visibly arrives and heals for
+    // zero, it flies to the Wrath meter instead and actually charges it
+    // (see WRATH in balance.ts). Decided once, before the flight starts: HP
+    // does not change again until this flight's own completion callback.
+    const toWrath = this.player.health >= PLAYER.maxHealth;
+
     // The live fill edges, not the bars' fixed midpoint anchors — the meter
     // is full at this exact moment (that is what "overflow" means), so the
     // blood bar's edge sits at its far right rather than its middle, and the
-    // droplet has to land where the health bar's own fill actually ends.
+    // droplet has to land where the destination bar's own fill actually ends.
     const from = this.hud?.bloodBarEdge ?? HUD_ANCHORS.bloodBar;
-    const to = this.hud?.healthBarEdge ?? HUD_ANCHORS.healthBar;
+    const to = toWrath
+      ? (this.hud?.wrathBarEdge ?? { x: GAME_WIDTH / 2, y: 24 })
+      : (this.hud?.healthBarEdge ?? HUD_ANCHORS.healthBar);
     const duration = 700;
 
     // A visible ribbon of blood crossing the top of the screen, not a lone
     // dot: three strands on their own swirl phases, each trailing particles,
-    // so it reads unmistakably as the blood meter feeding the health bar.
+    // so it reads unmistakably as the blood meter feeding whichever meter is
+    // actually taking it. Tinted gold/purple rather than red when it is
+    // headed for Wrath, so the two destinations never look the same.
     const trail = this.add
       .particles(0, 0, TEXTURES.particle, {
         speed: { min: 10, max: 50 },
         lifespan: { min: 260, max: 520 },
         scale: { start: 0.9, end: 0 },
-        tint: [0xc41e2f, 0xff4d4d, 0xff8f9a],
+        tint: toWrath ? [0xffd23d, 0x9d6bff, 0x241830] : [0xc41e2f, 0xff4d4d, 0xff8f9a],
         emitting: false,
       })
       .setDepth(DEPTHS.hud + 2);
@@ -1235,7 +1298,8 @@ export class GameScene extends Phaser.Scene {
       const droplet = this.add
         .image(from.x, from.y, TEXTURES.blood)
         .setDepth(DEPTHS.hud + 3)
-        .setScale(BLOOD.dropletScale * 0.8);
+        .setScale(BLOOD.dropletScale * 0.8)
+        .setTint(toWrath ? 0xffd23d : undefined);
 
       this.tweens.addCounter({
         from: 0,
@@ -1258,12 +1322,194 @@ export class GameScene extends Phaser.Scene {
           droplet.destroy();
           if (++finished < strands) return;
           this.time.delayedCall(600, () => trail.destroy());
-          // heal() emits PLAYER_HEALED, which is what repaints the bar and
-          // fires the puff in whichever colour the bar has just become.
-          this.player.heal(bloodAmount * BLOOD.overflowHealPerBlood);
+          if (toWrath) {
+            this.gainWrath(bloodAmount);
+          } else {
+            // heal() emits PLAYER_HEALED, which is what repaints the bar and
+            // fires the puff in whichever colour the bar has just become.
+            this.player.heal(bloodAmount * BLOOD.overflowHealPerBlood);
+          }
         },
       });
     }
+  }
+
+  // ── The Ultimate ────────────────────────────────────────────────────────
+
+  /**
+   * Blood the Count has no use for feeds Wrath instead of being wasted — see
+   * WRATH in balance.ts. Silently caps at the target; spending it back to
+   * zero is what fireUltimate does.
+   */
+  private gainWrath(amount: number): void {
+    if (this.wrath >= WRATH.target) return;
+    this.wrath = Math.min(WRATH.target, this.wrath + amount);
+    this.hud?.setWrath(this.wrath, WRATH.target);
+    this.touch?.setUltimateAvailable(this.wrath >= WRATH.target);
+  }
+
+  /** Space (desktop) or the mobile ⚡ button, once Wrath reads full. */
+  private tryUseUltimate(): void {
+    if (this.phase !== 'playing' || this.ultimateActive) return;
+    if (this.wrath < WRATH.target) return;
+    this.fireUltimate();
+  }
+
+  /**
+   * The Ultimate: the Count rears up into the special pose Romi drew first
+   * (Player.playSpecialAttackAnim, unused until now), the hall darkens a
+   * touch, ~30 bats spawn out of dark magic and swirl the room, and a beat
+   * later lightning spreads across the whole hall and kills everything still
+   * standing in it, mini-bosses included.
+   */
+  private fireUltimate(): void {
+    this.ultimateActive = true;
+    this.wrath = 0;
+    this.hud?.setWrath(0, WRATH.target);
+    this.touch?.setUltimateAvailable(false);
+
+    this.player.playSpecialAttackAnim();
+    this.cameras.main.shake(160, 0.006);
+
+    this.tweens.add({
+      targets: this.ultDarkenOverlay,
+      alpha: WRATH.screenDarkenAlpha,
+      duration: 240,
+      yoyo: true,
+      hold: Math.max(0, WRATH.durationMs - 480),
+      onComplete: () => {
+        this.ultimateActive = false;
+      },
+    });
+
+    this.spawnBatSwarm();
+    // The strike lands a beat into the pose, not on its very first frame.
+    this.time.delayedCall(320, () => this.lightningKillAll());
+  }
+
+  /**
+   * ~30 bats, each launched out of its own burst of dark purple/black
+   * particles, swirling the hall on its own Lissajous-ish path for the
+   * Ultimate's duration before fading out. The flap sound is staggered by a
+   * few tens of milliseconds per bat with pitch/level variance (see
+   * AUDIO.batDashSound's manifest entry) so thirty plays read as a swarm
+   * rather than one sound stamped out thirty times in the same frame.
+   */
+  private spawnBatSwarm(): void {
+    const centerX = (ARENA.left + ARENA.right) / 2;
+    const centerY = (ARENA.top + ARENA.bottom) / 2;
+    const maxRadius = Math.min(ARENA.right - ARENA.left, ARENA.bottom - ARENA.top) / 2 - 40;
+
+    for (let i = 0; i < WRATH.batCount; i++) {
+      const spawnDelay = Phaser.Math.Between(0, 260);
+      this.time.delayedCall(spawnDelay, () => {
+        const angle0 = Phaser.Math.FloatBetween(0, Math.PI * 2);
+        const startX = centerX + Math.cos(angle0) * Phaser.Math.FloatBetween(20, maxRadius);
+        const startY = centerY + Math.sin(angle0) * Phaser.Math.FloatBetween(20, maxRadius);
+
+        const puff = this.add
+          .particles(startX, startY, TEXTURES.particle, {
+            speed: { min: 30, max: 90 },
+            lifespan: { min: 220, max: 420 },
+            scale: { start: 1.6, end: 0 },
+            alpha: { start: 0.9, end: 0 },
+            tint: [0x241830, 0x9d6bff, 0x4a2e6b],
+            emitting: false,
+          })
+          .setDepth(DEPTHS.attackFx);
+        puff.explode(10);
+        this.time.delayedCall(500, () => puff.destroy());
+
+        const bat = this.add
+          .sprite(startX, startY, TEXTURES.bat, 0)
+          .setDepth(DEPTHS.attackFx + 1)
+          .setScale(Phaser.Math.FloatBetween(0.9, 1.3))
+          .setAlpha(0);
+        bat.play(ANIMS.batFly);
+        this.tweens.add({ targets: bat, alpha: 1, duration: 160 });
+
+        const freqX = Phaser.Math.FloatBetween(1.2, 2.4);
+        const freqY = Phaser.Math.FloatBetween(1.6, 2.8);
+        const phaseX = Phaser.Math.FloatBetween(0, Math.PI * 2);
+        const phaseY = Phaser.Math.FloatBetween(0, Math.PI * 2);
+        const swirlRadius = Phaser.Math.FloatBetween(60, maxRadius);
+        const flightMs = WRATH.durationMs - spawnDelay;
+
+        this.tweens.addCounter({
+          from: 0,
+          to: 1,
+          duration: flightMs,
+          onUpdate: (tween) => {
+            if (!bat.active) return;
+            const t = tween.getValue() ?? 0;
+            const x = centerX + Math.cos(t * Math.PI * 2 * freqX + phaseX) * swirlRadius;
+            const y = centerY + Math.sin(t * Math.PI * 2 * freqY + phaseY) * swirlRadius * 0.6;
+            bat.setFlipX(x < bat.x);
+            bat.setPosition(x, y);
+          },
+          onComplete: () => {
+            if (!bat.active) return;
+            this.tweens.add({
+              targets: bat,
+              alpha: 0,
+              scale: bat.scaleX * 0.6,
+              duration: 260,
+              onComplete: () => bat.destroy(),
+            });
+          },
+        });
+
+        this.time.delayedCall(Phaser.Math.Between(0, 90), () => {
+          this.audio.playSfx(AUDIO.batDashSound, { volumeScale: 0.5 });
+        });
+      });
+    }
+  }
+
+  /**
+   * The lightning: a camera flash and shake, a jagged bolt down onto every
+   * living thing in the hall, and then every one of them dies where it
+   * stands — the same kill pipeline a melee hit uses (corpse, blood, decal,
+   * stats), just fired for the whole roster at once rather than one target.
+   */
+  private lightningKillAll(): void {
+    this.cameras.main.flash(260, 220, 200, 255);
+    this.cameras.main.shake(420, 0.01);
+
+    const targets = this.getAttackTargets().filter((t) => t.active && t.isAlive);
+    for (const target of targets) {
+      this.spawnLightningBolt(target.x, target.y);
+      this.onHunterKilled(target);
+    }
+  }
+
+  /** One jagged bolt from above the hall down to (x, y), flashed and gone. */
+  private spawnLightningBolt(x: number, y: number): void {
+    const originY = ARENA.top - 30;
+    const segments = 6;
+    const graphics = this.add.graphics().setDepth(DEPTHS.attackFx + 2);
+
+    const drawBolt = (width: number, color: number, alpha: number): void => {
+      graphics.lineStyle(width, color, alpha);
+      graphics.beginPath();
+      graphics.moveTo(x + Phaser.Math.Between(-20, 20), originY);
+      for (let i = 1; i <= segments; i++) {
+        const t = i / segments;
+        const jitter = i === segments ? 0 : Phaser.Math.Between(-24, 24);
+        graphics.lineTo(x + jitter, Phaser.Math.Linear(originY, y, t));
+      }
+      graphics.strokePath();
+    };
+    drawBolt(5, 0xe8ddff, 1);
+    drawBolt(2, 0x9d6bff, 0.9);
+
+    this.tweens.add({
+      targets: graphics,
+      alpha: 0,
+      delay: 70,
+      duration: 200,
+      onComplete: () => graphics.destroy(),
+    });
   }
 
   private coffinHintMessage(): string {
@@ -1448,15 +1694,20 @@ export class GameScene extends Phaser.Scene {
   private onHunterKilled(hunter: Hunter): void {
     hunter.spawnCorpse();
     this.stampBloodDecal(hunter.x, hunter.y, hunter.displayHeight);
-    if (
+    const isBoss =
       hunter instanceof HunterCaptain ||
       hunter instanceof GarlicCaptain ||
       hunter instanceof CrossCaptain ||
-      hunter instanceof Priest
-    ) {
+      hunter instanceof Priest;
+
+    if (isBoss) {
       this.runStats.bosses[this.bossKindOf(hunter)]++;
       this.captains.delete(hunter);
       if (this.captains.size === 0) this.flow.notifyBossDefeated();
+      // A mini-boss only ever dies once the blood meter is already full (see
+      // BOSS_SPAWN_REQUESTED), so this flood is guaranteed overflow — it tops
+      // off HP, or once that is full too, fills Wrath (see hopBloodToHealth).
+      this.scatterBloodlets(hunter.x, hunter.y, hunter instanceof Priest ? PRIEST.bloodDroplets : BOSS.bloodDroplets);
     } else {
       // Counted where he DIES rather than where his blood lands, so a hunter
       // killed on the last tick of a night still shows up on the tally.
@@ -1464,10 +1715,56 @@ export class GameScene extends Phaser.Scene {
       this.scatterBloodlets(hunter.x, hunter.y);
       this.audio.playSfx(AUDIO.hunterDeath);
     }
+    this.registerKillForSplatter(isBoss);
     this.hunters.remove(hunter, true, true);
   }
 
-  /** Dead hunters burst into a handful of +1 bloodlets around the corpse. */
+  /**
+   * Screen-space blood splatter, scaled by how many kills just landed close
+   * together in time — a lone kill or two is just the usual floor decal, but
+   * several at once (or any mini-boss) floods the screen itself. See
+   * SCREEN_SPLATTER_TIERS / KILL_BURST_TIER_THRESHOLDS.
+   */
+  private registerKillForSplatter(isBoss: boolean): void {
+    const now = this.time.now;
+    this.recentKillTimes = this.recentKillTimes.filter((t) => now - t < KILL_BURST_WINDOW_MS);
+    this.recentKillTimes.push(now);
+
+    if (isBoss) {
+      this.spawnScreenBloodSplatter(SCREEN_SPLATTER_TIERS.length - 1);
+      return;
+    }
+    const burst = this.recentKillTimes.length;
+    const tier = KILL_BURST_TIER_THRESHOLDS.filter((t) => burst >= t).length - 1;
+    if (tier >= 0) this.spawnScreenBloodSplatter(tier);
+  }
+
+  /** One big, faint, camera-fixed splatter — blood on the screen, not the room. */
+  private spawnScreenBloodSplatter(tier: number): void {
+    const { scale, alpha } = SCREEN_SPLATTER_TIERS[Phaser.Math.Clamp(tier, 0, SCREEN_SPLATTER_TIERS.length - 1)];
+    const splatter = this.add
+      .image(
+        Phaser.Math.Between(GAME_WIDTH * 0.15, GAME_WIDTH * 0.85),
+        Phaser.Math.Between(GAME_HEIGHT * 0.2, GAME_HEIGHT * 0.85),
+        Phaser.Utils.Array.GetRandom([...BLOOD_DECALS]),
+      )
+      .setScrollFactor(0)
+      .setDepth(DEPTHS.screenFx)
+      .setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2))
+      .setScale(Phaser.Math.FloatBetween(scale[0], scale[1]))
+      .setAlpha(0);
+
+    const peak = Phaser.Math.FloatBetween(alpha[0], alpha[1]);
+    this.tweens.add({ targets: splatter, alpha: peak, duration: 140 });
+    this.tweens.add({
+      targets: splatter,
+      alpha: 0,
+      delay: 2200,
+      duration: 1400,
+      onComplete: () => splatter.destroy(),
+    });
+  }
+
   /**
    * A crossed cross keeps flying until it hits him or leaves the hall. Nothing
    * else in the game needs an out-of-bounds check — a garlic bulb resolves at
@@ -1517,16 +1814,19 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private scatterBloodlets(x: number, y: number): void {
+  /** Dead hunters burst into a handful of +1 bloodlets around the corpse; a mini-boss floods far more. */
+  private scatterBloodlets(x: number, y: number, count: number = HUNTER.bloodDroplets): void {
     // The corpse itself can be outside the hall (killed mid-entrance, or shoved
     // against a wall), so the spawn point is clamped as well as the landing
     // point - otherwise the droplets are born somewhere unreachable.
     const fromX = Phaser.Math.Clamp(x, ARENA.left + 10, ARENA.right - 10);
     const fromY = Phaser.Math.Clamp(y, ARENA.top + 10, ARENA.bottom - 10);
 
-    for (let i = 0; i < HUNTER.bloodDroplets; i++) {
-      const angle = (Math.PI * 2 * i) / HUNTER.bloodDroplets + Phaser.Math.FloatBetween(-0.4, 0.4);
-      const dist = Phaser.Math.Between(14, 38);
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 * i) / count + Phaser.Math.FloatBetween(-0.4, 0.4);
+      // A big flood reaches further out than a handful of drops would, or a
+      // mini-boss's 25+ droplets would all pile up in the same tight ring.
+      const dist = Phaser.Math.Between(14, count > HUNTER.bloodDroplets ? 90 : 38);
       const px = Phaser.Math.Clamp(fromX + Math.cos(angle) * dist, ARENA.left + 10, ARENA.right - 10);
       const py = Phaser.Math.Clamp(fromY + Math.sin(angle) * dist, ARENA.top + 10, ARENA.bottom - 10);
       const pickup = new BloodPickup(this, fromX, fromY);
@@ -1677,10 +1977,19 @@ export class GameScene extends Phaser.Scene {
         const bloodRatio = Phaser.Math.Clamp(this.flow.currentBlood / this.flow.bloodTarget, 0, 1);
         const healthRatio = Phaser.Math.Clamp(this.player.health / PLAYER.maxHealth, 0, 1);
         const secondsLeft = this.countdown?.remainingSeconds ?? 0;
+        // Overnight healing is a real 1-blood-per-HP rate, unlike the flat
+        // BLOOD.overflowHealPerBlood the round itself uses — so whatever this
+        // night's blood doesn't spend healing him back to full is blood with
+        // nothing left to buy, same rule as any other overflow (see
+        // hopBloodToHealth): it goes to Wrath instead of being wasted.
+        const missingHp = PLAYER.maxHealth - this.player.health;
+        const wrathFromOvernight = Math.max(0, this.flow.bloodTarget - missingHp);
         // He heals WHILE the sky turns, not before it: the sleep and the day
         // passing are one beat, so they run together and the cycle owns the
         // handoff into the next night.
-        this.hud?.playCoffinTransfer(bloodRatio, healthRatio, secondsLeft, () => {});
+        this.hud?.playCoffinTransfer(bloodRatio, healthRatio, secondsLeft, () => {
+          if (wrathFromOvernight > 0) this.gainWrath(wrathFromOvernight);
+        });
         this.playNightCycle();
       },
     });

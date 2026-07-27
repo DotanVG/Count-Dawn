@@ -98,6 +98,10 @@ export const AUDIO_MANIFEST: readonly AudioAsset[] = [
     group: 'sfx',
     files: ['assets/audio/sfx/bat-sound-1.mp3'],
     defaultVolume: 0.6,
+    // Also the Ultimate's one-shot flutter, played up to 30 times in a burst
+    // (see GameScene.spawnBatSwarm) — without variance that reads as one
+    // sound stamped out thirty times rather than a swarm of individual bats.
+    variance: { detuneCents: 260, volumeJitter: 0.22 },
   },
   {
     key: AUDIO.coffinOpen,

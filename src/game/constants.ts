@@ -71,6 +71,10 @@ export const DEPTHS = {
   player: 10,
   attackFx: 12,
   dawnOverlay: 50,
+  /** Screen-space blood splatter on a big kill burst — over everything in the hall, under the HUD. */
+  screenFx: 90,
+  /** The Ultimate's screen darken, over the splatter too, still clear of the HUD. */
+  ultOverlay: 91,
   hud: 100,
   menu: 200,
 } as const;

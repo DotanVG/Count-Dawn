@@ -290,6 +290,14 @@ export const BOSS = {
   garlicCaptainChance: 0.5,
   /** Delay between a garlic Captain's two throws; the target keeps tracking. */
   garlicThrowGapMs: 180,
+  /**
+   * A mini-boss kill floods the floor with blood — five times a regular
+   * hunter's HUNTER.bloodDroplets. A Captain only ever dies after the meter is
+   * already full (bosses do not spawn until it is), so every one of these is
+   * guaranteed overflow: it either tops off the Count's health or, once that
+   * is full too, fills the Wrath meter (see WRATH).
+   */
+  bloodDroplets: 25,
 } as const;
 
 /**
@@ -346,6 +354,37 @@ export const PRIEST = {
    * shape and the cross coming up THROUGH the ring.
    */
   crossRiseDelayMs: 150,
+  /**
+   * Heavier than a Captain's flood, since a Priest night only ever sends one
+   * (or one plus a smaller Captain escort) — see bossLineupForNight.
+   */
+  bloodDroplets: 30,
+} as const;
+
+/**
+ * The Wrath meter: a third bar, between the health and blood bars, that fills
+ * from blood the Count has no use for — overflow that arrives while HP is
+ * ALREADY full (see GameScene.hopBloodToHealth) plus whatever is left over
+ * from the overnight top-off (see GameScene.playVictoryOutro). A full meter
+ * spends itself on one Ultimate: a bolt of lightning that kills everything
+ * still standing in the hall, a swarm of bats, and a screen-wide accompanying
+ * darkening — Player.playSpecialAttackAnim carries the pose.
+ *
+ * `target` is a first estimate, not a measured one: a Captain only ever dies
+ * once the blood meter is already full (bosses do not spawn before then), so
+ * BOSS.bloodDroplets/PRIEST.bloodDroplets landing as overflow is the main way
+ * this fills. At 25-30 blood per mini-boss against a target of 60, roughly
+ * two Captain kills (or one Priest night) earns a charge — tune this once
+ * real run totals are in.
+ */
+export const WRATH = {
+  target: 60,
+  /** Bats spawned for the Ultimate's swarm. */
+  batCount: 30,
+  /** How long the lightning + bat swarm hold the screen. */
+  durationMs: 2600,
+  /** Screen darkens by this much for the duration — noticeably dimmer, nowhere near the pause menu's black. */
+  screenDarkenAlpha: 0.18,
 } as const;
 
 /**
