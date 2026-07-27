@@ -27,8 +27,10 @@ export const PLAYER = {
    * Display scale — deliberately larger than the Captain: the Count IS the
    * boss. A lower number than the pack he replaced used, for a Count who
    * renders BIGGER: Romi drew him filling far more of the 64px frame.
+   * Nudged down slightly (and every human nudged up to match) to close the
+   * gap between him and the crowd a touch.
    */
-  spriteScale: 2.4,
+  spriteScale: 2.3,
 } as const;
 
 /**
@@ -83,7 +85,8 @@ export const THROWER = {
   contactDamage: 5,
   moveSpeed: 78,
   bloodDroplets: 4,
-  spriteScale: 1.55,
+  /** Nudged up slightly to close the gap with the Count (see PLAYER.spriteScale). */
+  spriteScale: 1.6,
   /** Fraction of regular spawns replaced by a thrower, while under the cap. */
   spawnChance: 0.35,
   /**
@@ -179,8 +182,9 @@ export const HUNTER = {
    * ~21, so this comes DOWN and they still render BIGGER: about 48px against the
    * old 44. Every one of her humans shares this geometry, so the Captains'
    * scale below is the same number times a boss multiplier.
+   * Nudged up slightly to close the gap with the Count (see PLAYER.spriteScale).
    */
-  spriteScale: 1.55,
+  spriteScale: 1.6,
   /** Each new night adds this many simultaneous hunters. */
   maxAlivePerNight: 2,
   /** Each new night shortens the spawn delay by this many milliseconds. */
@@ -201,7 +205,8 @@ export const ARMED = {
   contactDamage: 5,
   moveSpeed: 105,
   bloodDroplets: 5,
-  spriteScale: 1.55,
+  /** Nudged up slightly to close the gap with the Count (see PLAYER.spriteScale). */
+  spriteScale: 1.6,
   /** Fraction of the melee spawns that arrive carrying a weapon. */
   spawnChance: 0.45,
 } as const;
@@ -274,8 +279,11 @@ export const BOSS = {
   /** Double a regular hunter's hit — the mini-boss is the one that really hurts. */
   contactDamage: 10,
   moveSpeed: 90,
-  /** Bigger than his men, smaller than the Count and than the Priest. */
-  spriteScale: 2.2,
+  /**
+   * Bigger than his men, smaller than the Count and than the Priest.
+   * Nudged up slightly to close the gap with the Count (see PLAYER.spriteScale).
+   */
+  spriteScale: 2.25,
   /** One extra Captain joins the squad every five nights. */
   nightsPerExtraCaptain: 5,
   /** Each Captain independently has this chance to be a garlic thrower. */
@@ -302,8 +310,9 @@ export const PRIEST = {
    * Romi drew him nearly frame-filling where the CraftPix men sit small inside
    * theirs, so this is a much lower number than BOSS.spriteScale for a sprite
    * that renders BIGGER: about 77px tall against a Captain's 62.
+   * Nudged up slightly to close the gap with the Count (see PLAYER.spriteScale).
    */
-  spriteScale: 2,
+  spriteScale: 2.05,
   /** Priests turn up on this night and every multiple of it. */
   everyNights: 5,
   /** Beat between wards, measured from the end of the last one. */
