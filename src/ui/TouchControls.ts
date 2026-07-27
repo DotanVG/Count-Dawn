@@ -19,6 +19,12 @@ export interface TouchCallbacks {
  * button that only appears once Wrath is charged, and tap-anywhere-else to
  * strike in that direction (also once per tap, mirroring desktop mouse
  * clicks). Adapted from BeatEmPie.
+ *
+ * Two idle-vs-active tells so the controls read as alive rather than static
+ * chrome: every button flashes brighter and pops on press (flashButton), and
+ * the joystick breathes a slow alpha pulse while NOT being held, which stops
+ * dead the instant a touch grabs it (joyBlinkTween) — the pulse IS the "use
+ * me to move" hint, so it has no reason to keep going once that has happened.
  */
 export class TouchControls {
   private moveVec = { x: 0, y: 0 };
@@ -37,6 +43,10 @@ export class TouchControls {
   private ultButtonLabel!: Phaser.GameObjects.Text;
   /** Circular keep-out zones (buttons) where a tap must NOT trigger a strike. */
   private controlZones: { x: number; y: number; r: number }[] = [];
+  /** Slow breathing pulse on the joystick while it is NOT being held — the
+   *  tell that it is there to be used, not just idle chrome. Paused the
+   *  instant a touch grabs it and resumed on release. */
+  private joyBlinkTween!: Phaser.Tweens.Tween;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -58,6 +68,14 @@ export class TouchControls {
       .circle(joyX, joyY, this.radius * 0.45, THUMB_COLOR, 0.45)
       .setDepth(DEPTHS.hud + 10)
       .setScrollFactor(0);
+    this.joyBlinkTween = scene.tweens.add({
+      targets: [this.base, this.thumb],
+      alpha: { from: 1, to: 0.35 },
+      duration: 1500,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
 
     // Strike button: one press, one strike toward the nearest hunter.
     this.makeButton(GAME_WIDTH - 130, GAME_HEIGHT - 140, 72, '⚔', () => {
@@ -105,10 +123,24 @@ export class TouchControls {
       .setScrollFactor(0);
     btn.on('pointerdown', (p: Phaser.Input.Pointer, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
       e.stopPropagation();
+      this.flashButton(btn);
       onDown(p);
     });
     this.controlZones.push({ x, y, r });
     return { circle: btn, text };
+  }
+
+  /** Brighter fill and a quick pop on press, easing back to resting — the tap actually landed. */
+  private flashButton(btn: Phaser.GameObjects.Arc): void {
+    this.scene.tweens.killTweensOf(btn);
+    btn.setScale(1.15);
+    this.scene.tweens.add({ targets: btn, scale: 1, duration: 220, ease: 'Quad.easeOut' });
+    this.scene.tweens.addCounter({
+      from: 0.75,
+      to: 0.28,
+      duration: 220,
+      onUpdate: (tween) => btn.setFillStyle(JOY_COLOR, tween.getValue() ?? 0.28),
+    });
   }
 
   /** True once per ⚔ press; reading it clears the latch — GameScene strikes the nearest hunter. */
@@ -153,6 +185,11 @@ export class TouchControls {
     const joyDist = Math.hypot(pointer.x - this.base.x, pointer.y - this.base.y);
     if (this.joyPointerId < 0 && joyDist <= this.radius * 1.35) {
       this.joyPointerId = pointer.id;
+      // Held: steady and fully lit, not blinking — the blink is the "use me"
+      // tell, and it stops making that point the moment it is in use.
+      this.joyBlinkTween.pause();
+      this.base.setAlpha(1);
+      this.thumb.setAlpha(1);
       return;
     }
 
@@ -182,5 +219,6 @@ export class TouchControls {
     this.joyPointerId = -1;
     this.moveVec = { x: 0, y: 0 };
     this.thumb.setPosition(this.base.x, this.base.y);
+    this.joyBlinkTween.resume();
   }
 }
