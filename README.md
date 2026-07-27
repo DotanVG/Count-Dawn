@@ -22,6 +22,12 @@ Each night runs on one clock:
 
 Surviving does not end the run. The lid shuts, your blood drains into your health bar, the sun crosses the sky and sets, a new moon rises, and the Count flies back out for a harder night. **Dawn or death are the only ways a run actually ends** — and both show a full debrief of everything you did across every night.
 
+### Wrath & the Ultimate
+
+Blood you have no use for does not go to waste. Once your health is already full, every drop of overflow instead fills a third meter — **Wrath** — sitting between your health and blood bars. Mini-bosses are the main way it climbs: a Captain or the Priest floods the floor with far more blood than any regular hunter drops, and since a boss never even spawns until the blood meter is already full, every one of those drops is guaranteed overflow. Whatever your overnight sleep doesn't need to top your health back off spills into it too.
+
+A full meter glows gold, circled by dark motes, and is ready to spend on the **Ultimate**: the Count rears up and unleashes a bolt of lightning that spreads across the whole hall and kills everything still standing in it — mini-bosses included — while a swarm of bats bursts out of dark magic and swirls the room and the hall dims for a few seconds.
+
 ## What Hunts You
 
 | | |
@@ -50,10 +56,13 @@ The Priest's ward is the clearest case. The full circle is painted gold on the f
 | --- | --- | --- |
 | Move | WASD / Arrow keys | Virtual joystick |
 | Aim + Attack | Mouse + Left click | Tap toward the target |
-| Strike nearest | Space (hold) | ⚔ button (hold) |
+| Strike nearest | — | ⚔ button |
 | Bat dash | Shift | 🦇 button |
+| Ultimate | Space, once Wrath is full | ⚡ button, once Wrath is full |
 | Pause | Esc / P | ⏸ button |
 | Restart | R (on end screens) | Tap the button |
+
+Every strike is one press, one hit — clicking, tapping the ⚔ button or tapping the playfield all land a single swing each time, with no holding a button down for a stream of free hits.
 
 The Count faces the cursor — he is aiming, not steering, so you can back away from a crowd while still facing it.
 
@@ -70,9 +79,12 @@ Mobile requires landscape; a rotate prompt appears in portrait.
 - Sunrise countdown framed in the centre window, with tick pops, a growing tremble, and a red panic mode with vignette and camera shake in the final ten seconds.
 - **Bat form** for the dash and both coffin flights, with a *poof* of smoke on every transformation.
 - Mouse-aimed melee arc with a cooldown pip, hit flash, knockback and a magic burst on every landed strike.
-- Blood overflow past the night's quota heals the Count instead of being thrown away.
+- Blood overflow past the night's quota heals the Count instead of being thrown away — and once health is already full too, feeds the **Wrath** meter toward an Ultimate instead.
+- **Ultimate**: hall-wide lightning that kills every enemy standing (mini-bosses included), a swarm of ~30 bats out of dark magic, and a few seconds of the hall dimming.
+- Mini-bosses flood the floor with far more blood than a regular hunter on death, and a burst of several kills in quick succession — or any mini-boss — splatters big, semi-transparent blood across the screen itself.
 - **End-of-run debrief** on any death: nights survived, total blood drained across the whole run, and full breakdowns of hunters drained and mini-bosses slain — each line with the thing it counts animated beside it.
 - Pause overlay, fullscreen button, rotate-to-landscape gate, and device-aware menus and hint text.
+- Mobile controls that visibly respond: every button flashes and pops on press, and the joystick pulses gently until it is actually grabbed.
 - **In-game audio balance editor** (see below) for tuning every track and effect live.
 
 ## Audio Balance Editor
@@ -160,6 +172,7 @@ Shipped and implemented:
 
 - Endless night loop with per-night scaling of blood quota, spawn rate, alive cap, thrower cap and boss lineup.
 - Five hunter flavours, three boss flavours, boss telegraphs and uninterruptible boss specials.
+- Wrath meter and Ultimate: hall-wide lightning kill, a bat swarm, and a screen darken, charged by blood the Count has no use for.
 - Hand-drawn Count with idle/run/attack and two distinct death sequences, plus bat form.
 - Cold open, seamless between-night cycle, victory outro, and both defeat endings with a full run debrief.
 - Desktop and touch control paths, landscape gate, fullscreen, pause.

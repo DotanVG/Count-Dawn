@@ -76,11 +76,27 @@ Shift on desktop, the bat button on mobile. The Count *poofs* into a bat and bur
 
 ## Blood system
 
-- `HUNTER.bloodDroplets` (5) per regular hunter, each worth `BLOOD.dropletValue` (1); the boss drops nothing.
+- `HUNTER.bloodDroplets` (5) per regular hunter, each worth `BLOOD.dropletValue` (1). A Captain drops `BOSS.bloodDroplets` (25) and the Priest `PRIEST.bloodDroplets` (30) — a mini-boss only ever dies after the meter is already full (bosses do not spawn before then), so every one of those droplets lands as overflow.
 - Pickups persist until collected and never expire.
-- Blood collected once the meter is already full is not wasted: the meter stays pinned at its target and the surplus flies on to the health bar, healing `BLOOD.overflowHealPerBlood` HP per unit.
+- Blood collected once the meter is already full is not wasted: the meter stays pinned at its target and the surplus flies on to the health bar, healing `BLOOD.overflowHealPerBlood` HP per unit — unless health is ALSO already full, in which case it fills the Wrath meter instead (see below).
 - `GameFlowSystem` owns the meter, coffin activation, and the single end-of-run transition.
 - `bloodTargetForNight()` raises the requirement by `BLOOD.targetIncreasePerNight` each round.
+
+## Wrath and the Ultimate
+
+A third meter, `WRATH` in `src/data/balance.ts`, sits between the health and blood bars. It only fills from blood the Count has no other use for:
+
+- **Mid-round overflow while HP is already full** — `GameScene.hopBloodToHealth` normally flies overflow blood to the health bar and heals it; when health is already at `PLAYER.maxHealth` it flies to the Wrath bar instead and calls `gainWrath`.
+- **Overnight leftovers** — the coffin transfer heals HP back to full at a real 1-blood-per-HP rate (not the round's flat `BLOOD.overflowHealPerBlood`). Whatever that night's `bloodTarget` doesn't spend healing him — `bloodTarget - missingHp`, floored at 0 — goes to Wrath too (`GameScene.playVictoryOutro` / `cinematicRetire`).
+
+Wrath persists across nights exactly like `RunStats` — reset only in `create()`, never between rounds. A full meter glows gold with three dark motes orbiting it and is spent all at once on the **Ultimate** (`GameScene.fireUltimate`, bound to Space on desktop and a ⚡ button on mobile that only appears once charged):
+
+1. The Count plays `Player.playSpecialAttackAnim` — the rear-up-and-roar pose Romi drew first, which the bite replaced as the regular attack and which had been unused since.
+2. The hall darkens by `WRATH.screenDarkenAlpha` (~18%) for the Ultimate's duration — noticeably dimmer, nowhere near the pause menu's near-black.
+3. `WRATH.batCount` (30) bats launch out of individual dark purple/black particle bursts and swirl the hall on their own paths for the duration, each with a staggered, pitch/volume-varied flap sound (`AUDIO.batDashSound`'s `variance`), then fade out.
+4. A beat later, lightning bolts strike every living hunter and boss in the hall and kill them outright through the same kill pipeline (`GameScene.onHunterKilled`) a melee kill already uses — corpses, blood, decals and stats all fire normally.
+
+`WRATH.target` (60) is a first estimate derived from the game's own blood-quota curve, not measured run data — tune it once real totals are available.
 
 ## Round pressure
 
