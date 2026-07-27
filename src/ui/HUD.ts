@@ -3,6 +3,7 @@ import { BLOOD, NIGHT, PLAYER, bossLineupForNight } from '../data/balance';
 import { DEPTHS, GAME_WIDTH, GAME_HEIGHT, HUD_ANCHORS } from '../game/constants';
 import { EVENTS } from '../game/events';
 import { TEXTURES } from '../utils/assetKeys';
+import { pluralBossName } from '../entities/HunterCaptain';
 import type { Objective } from '../types/game';
 
 const OBJECTIVE_TEXT: Record<Objective, string> = {
@@ -13,15 +14,44 @@ const OBJECTIVE_TEXT: Record<Objective, string> = {
 };
 
 /**
- * Names tonight's lineup on the objective banner — the whole point of the
- * Priest showing up on the fifth night is that the player is told a different
- * name is coming for him, so the banner cannot keep saying "Hunter Captain".
+ * Names tonight's lineup on the objective banner, from the bosses that ACTUALLY
+ * walked in — GameScene hands the roster over in spawnBoss, before the objective
+ * flips, so by the time this runs the names are known.
+ *
+ * It used to guess from the night number via `bossLineupForNight`, which knows
+ * how MANY bosses a night sends but not which flavour each one turned out to be.
+ * That is why a night the huntress Captain answered still announced "Defeat the
+ * Hunter Captain".
+ *
+ * Identical names are grouped and counted rather than listed twice, so three
+ * bosses never spill into a sentence nobody reads.
  */
-function defeatBossText(night: number): string {
+function defeatBossText(roster: readonly string[], night: number): string {
+  if (roster.length === 0) return countedBossText(night);
+
+  const counts = new Map<string, number>();
+  for (const name of roster) counts.set(name, (counts.get(name) ?? 0) + 1);
+
+  const parts = [...counts].map(([name, n]) =>
+    n > 1 ? `the ${n} ${pluralBossName(name)}` : `the ${name}`,
+  );
+  const listed =
+    parts.length === 1
+      ? parts[0]
+      : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+  return `Defeat ${listed}`;
+}
+
+/**
+ * Fallback for the one case with no roster to read: the objective is re-emitted
+ * on a state change that is not a fresh spawn (re-entering the coffin early,
+ * for instance), so the banner still has to say something sensible.
+ */
+function countedBossText(night: number): string {
   const { priests, captains } = bossLineupForNight(night);
   if (priests > 0 && captains === 0) return 'Defeat the Priest';
   if (priests > 0) return `Defeat the Priest and his ${captains > 1 ? 'Captains' : 'Captain'}`;
-  return captains > 1 ? `Defeat the ${captains} Hunter Captains` : OBJECTIVE_TEXT['defeat-boss'];
+  return captains > 1 ? `Defeat the ${captains} Captains` : OBJECTIVE_TEXT['defeat-boss'];
 }
 
 const FONT = 'Trebuchet MS, sans-serif';
@@ -88,6 +118,8 @@ export class HUD {
   private bannerQueued = false;
   private night = 1;
   private objective: Objective = 'collect-blood';
+  /** Names of the bosses currently on the field; see setBossRoster. */
+  private bossRoster: readonly string[] = [];
   private vignette: Phaser.GameObjects.Rectangle;
   private hpParticles: Phaser.GameObjects.Particles.ParticleEmitter;
   private bloodParticles: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -290,6 +322,17 @@ export class HUD {
   }
 
   /**
+   * The bosses that just walked in, by name. Called from GameScene.spawnBoss
+   * BEFORE the objective flips to `defeat-boss`, which is the whole reason the
+   * banner can name them: the flavour of each Captain is rolled at spawn time,
+   * so nothing earlier than this knows whether tonight sent a pilgrim, a garlic
+   * farmer or the huntress.
+   */
+  setBossRoster(names: readonly string[]): void {
+    this.bossRoster = [...names];
+  }
+
+  /**
    * Turns the night/objective announcements on. They stay off through the
    * opening cinematic: "Night 1 - collect blood before sunrise" is an
    * instruction for a round that has not started, and it stepped on the
@@ -318,7 +361,7 @@ export class HUD {
       this.bannerQueued = false;
       const objectiveText =
         this.objective === 'defeat-boss'
-          ? defeatBossText(this.night)
+          ? defeatBossText(this.bossRoster, this.night)
           : OBJECTIVE_TEXT[this.objective];
       const content = `Night ${this.night}\n${objectiveText}`;
 
@@ -363,6 +406,8 @@ export class HUD {
    * numbers; this just resets cosmetic state — color, size, jitter, vignette).
    */
   resetForNewRound(bloodTarget: number): void {
+    // Last night's bosses are dead; a stale roster would name them again.
+    this.bossRoster = [];
     this.panic = false;
     this.timerText.setColor('#e8ddff');
     this.timerText.setFontSize('58px');

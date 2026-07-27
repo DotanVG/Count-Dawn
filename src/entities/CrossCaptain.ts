@@ -31,6 +31,7 @@ export const CROSS_CHARGE_COLOR = 0xffd76b;
 export class CrossCaptain extends GarlicThrower implements CaptainTraits {
   readonly maxHealth = BOSS.health;
   readonly healthBar: BossHealthBar;
+  readonly bossName = CAPTAIN_NAMES.huntress ?? 'Huntress Captain';
   protected override knockbackResistance = KNOCKBACK.bossFactor;
 
   /** The wind-up ring, live from the lock until the last cross is away. */
@@ -53,7 +54,7 @@ export class CrossCaptain extends GarlicThrower implements CaptainTraits {
     });
     this.normalDepth = DEPTHS.boss;
     this.applyBaseTint();
-    this.healthBar = new BossHealthBar(scene, CAPTAIN_NAMES.huntress ?? 'Huntress Captain');
+    this.healthBar = new BossHealthBar(scene, this.bossName);
   }
 
   protected override applyBaseTint(): void {

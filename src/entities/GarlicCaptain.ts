@@ -6,6 +6,7 @@ import { BossHealthBar } from '../ui/BossHealthBar';
 import { BossCharge } from './BossCharge';
 import { GarlicThrower } from './GarlicThrower';
 import {
+  CAPTAIN_NAMES,
   CAPTAIN_TINT,
   GARLIC_CHARGE_COLOR,
   captainTookDamage,
@@ -16,6 +17,7 @@ import {
 export class GarlicCaptain extends GarlicThrower implements CaptainTraits {
   readonly maxHealth = BOSS.health;
   readonly healthBar: BossHealthBar;
+  readonly bossName = CAPTAIN_NAMES.farmer ?? 'Garlic Captain';
   protected override knockbackResistance = KNOCKBACK.bossFactor;
 
   constructor(
@@ -32,7 +34,7 @@ export class GarlicCaptain extends GarlicThrower implements CaptainTraits {
     });
     this.normalDepth = DEPTHS.boss;
     this.applyBaseTint();
-    this.healthBar = new BossHealthBar(scene, 'Garlic Captain');
+    this.healthBar = new BossHealthBar(scene, this.bossName);
   }
 
   protected override applyBaseTint(): void {

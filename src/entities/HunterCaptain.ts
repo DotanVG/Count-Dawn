@@ -11,12 +11,17 @@ import { Hunter, PILGRIM_LOOK, type HunterLook } from './Hunter';
 /** Tint that separates the Captain from his men (dark blood-red armor look). */
 export const CAPTAIN_TINT = 0xff9a7a;
 
-/** What a Captain is called over his health bar, by which of them he is. */
+/** What a Captain is called, by which of Romi's hunters he was grown from. */
 export const CAPTAIN_NAMES: Partial<Record<CharacterKey, string>> = {
   pilgrim: 'Pilgrim Captain',
   huntress: 'Huntress Captain',
   farmer: 'Garlic Captain',
 };
+
+/** English plural for a boss name, for the banner's "Defeat the 2 …" case. */
+export function pluralBossName(name: string): string {
+  return `${name}s`;
+}
 
 /**
  * Everything that makes a hunter a Captain, worn identically by both flavours:
@@ -29,6 +34,13 @@ export const CAPTAIN_NAMES: Partial<Record<CharacterKey, string>> = {
 export interface CaptainTraits {
   readonly maxHealth: number;
   readonly healthBar: BossHealthBar;
+  /**
+   * What this boss is called, as a bare noun ("Priest", "Garlic Captain"). ONE
+   * name per boss, used both over its head and in the HUD's objective banner —
+   * the banner used to guess from the night number alone, which meant it said
+   * "Hunter Captain" on a night the huntress turned up.
+   */
+  readonly bossName: string;
 }
 
 /**
@@ -60,6 +72,7 @@ export function captainTookDamage(
 export class HunterCaptain extends ArmedHunter implements CaptainTraits {
   readonly maxHealth = BOSS.health;
   readonly healthBar: BossHealthBar;
+  readonly bossName: string;
   /** He rocks back a little, but the Count can't shove him around the hall. */
   protected override knockbackResistance = KNOCKBACK.bossFactor;
 
@@ -78,7 +91,8 @@ export class HunterCaptain extends ArmedHunter implements CaptainTraits {
     this.setScale(BOSS.spriteScale);
     this.normalDepth = DEPTHS.boss;
     this.applyBaseTint();
-    this.healthBar = new BossHealthBar(scene, CAPTAIN_NAMES[look.charKey] ?? 'Hunter Captain');
+    this.bossName = CAPTAIN_NAMES[look.charKey] ?? 'Hunter Captain';
+    this.healthBar = new BossHealthBar(scene, this.bossName);
   }
 
   protected override applyBaseTint(): void {

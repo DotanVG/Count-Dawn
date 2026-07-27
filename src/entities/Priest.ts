@@ -68,6 +68,7 @@ const PAINTED_TOP_OFFSET = -19;
 export class Priest extends Hunter implements CaptainTraits {
   readonly maxHealth = PRIEST.health;
   readonly healthBar: BossHealthBar;
+  readonly bossName = 'Priest';
   /** He plants his feet like a Captain — the Count cannot shove him around. */
   protected override knockbackResistance = KNOCKBACK.bossFactor;
 
@@ -105,7 +106,7 @@ export class Priest extends Hunter implements CaptainTraits {
     this.setCircle(9, 23, 35);
     this.normalDepth = DEPTHS.boss;
     this.setDepth(DEPTHS.boss);
-    this.healthBar = new BossHealthBar(scene, 'The Priest');
+    this.healthBar = new BossHealthBar(scene, this.bossName);
     this.nextWardAt = scene.time.now + PRIEST.wardIntervalMs;
   }
 

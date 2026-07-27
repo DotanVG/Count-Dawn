@@ -31,7 +31,7 @@ import { setVampireCursorVisible } from '../game/vampireCursor';
 import { Player } from '../entities/Player';
 import { Hunter, BASIC_LOOKS, PILGRIM_LOOK } from '../entities/Hunter';
 import { ArmedHunter } from '../entities/ArmedHunter';
-import { HunterCaptain } from '../entities/HunterCaptain';
+import { HunterCaptain, pluralBossName } from '../entities/HunterCaptain';
 import { GarlicCaptain } from '../entities/GarlicCaptain';
 import { CrossCaptain } from '../entities/CrossCaptain';
 import { GoldCross } from '../entities/GoldCross';
@@ -1269,6 +1269,33 @@ export class GameScene extends Phaser.Scene {
 
   /** What to call tonight's boss (or bosses) in the coffin's hint messages. */
   private bossName(): { name: string; plural: string } {
+    // Prefer the bosses actually standing in the hall — same reason the HUD
+    // banner does (see HUD.setBossRoster). Falling back to the night number is
+    // only for the case where the Count reaches the coffin before they spawn,
+    // when guessing is all there is.
+    // `isAlive` alone: the set is already pruned in onHunterKilled, and testing
+    // `active` as well gave false negatives for a boss still walking in — which
+    // is exactly when the Count is most likely to be at the coffin asking.
+    const alive = [...this.captains].filter((captain) => captain.isAlive);
+    if (alive.length > 0) {
+      const counts = new Map<string, number>();
+      for (const captain of alive) {
+        counts.set(captain.bossName, (counts.get(captain.bossName) ?? 0) + 1);
+      }
+      const parts = [...counts].map(([name, n]) =>
+        n > 1 ? `the ${n} ${pluralBossName(name)}` : `the ${name}`,
+      );
+      const listed =
+        parts.length === 1
+          ? parts[0]
+          : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+      const stillLives =
+        alive.length === 1
+          ? `${parts[0][0].toUpperCase()}${parts[0].slice(1)} still lives`
+          : `${listed[0].toUpperCase()}${listed.slice(1)} still live`;
+      return { name: listed, plural: stillLives };
+    }
+
     const lineup = bossLineupForNight(this.night);
     if (lineup.priests > 0 && lineup.captains === 0) {
       return { name: 'the Priest', plural: 'The Priest still lives' };
@@ -1278,8 +1305,8 @@ export class GameScene extends Phaser.Scene {
       return { name: `the Priest and his ${escort}`, plural: 'The Priest still lives' };
     }
     return captainCountForNight(this.night) > 1
-      ? { name: 'the Captains', plural: 'Hunter Captains still live' }
-      : { name: 'the Captain', plural: 'The Hunter Captain still lives' };
+      ? { name: 'the Captains', plural: 'Captains still live' }
+      : { name: 'the Captain', plural: 'The Captain still lives' };
   }
 
   private wireEvents(): void {
@@ -1336,6 +1363,9 @@ export class GameScene extends Phaser.Scene {
       this.hunters.add(captain);
     }
 
+    // Order matters: the HUD has to know WHO arrived before the objective flips,
+    // because notifyBossSpawned is what triggers the banner.
+    this.hud?.setBossRoster([...this.captains].map((captain) => captain.bossName));
     this.flow.notifyBossSpawned();
     this.audio.playSfx(AUDIO.bossAppear);
   }
