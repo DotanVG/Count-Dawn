@@ -87,8 +87,7 @@ export class HunterCaptain extends ArmedHunter implements CaptainTraits {
     look: HunterLook = PILGRIM_LOOK,
     weapon: WeaponKind = 'pitchfork',
   ) {
-    super(scene, x, y, weapon, look, BOSS);
-    this.setScale(BOSS.spriteScale);
+    super(scene, x, y, weapon, look, BOSS, BOSS.spriteScale);
     this.normalDepth = DEPTHS.boss;
     this.applyBaseTint();
     this.bossName = CAPTAIN_NAMES[look.charKey] ?? 'Hunter Captain';

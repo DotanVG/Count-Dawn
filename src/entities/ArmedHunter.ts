@@ -89,6 +89,13 @@ export class ArmedHunter extends Hunter {
   private readonly textures: string[];
   private readonly motion: 'thrust' | 'chop';
   private readonly embers: Phaser.GameObjects.Particles.ParticleEmitter | null;
+  /**
+   * His actual display scale, which is NOT always ARMED.spriteScale: a Captain
+   * (HunterCaptain) is this same class scaled up to BOSS.spriteScale instead.
+   * The swing tween below has to animate around this, not the module default,
+   * or every attack resets a Captain back down to a regular hunter's size.
+   */
+  private readonly baseSpriteScale: number;
   /** 0 = shouldered, 1 = fully extended at the target. Drives the whole swing. */
   private swingT = 0;
   /** Radians toward the target, locked when the swing starts. */
@@ -104,6 +111,7 @@ export class ArmedHunter extends Hunter {
     kind: WeaponKind,
     look: HunterLook = PILGRIM_LOOK,
     stats: HunterStats = ARMED,
+    spriteScale: number = ARMED.spriteScale,
   ) {
     super(scene, x, y, stats, look);
     const spec = WEAPONS[kind];
@@ -113,7 +121,8 @@ export class ArmedHunter extends Hunter {
     this.meleeReachFactor = spec.reach;
     this.meleeIntervalMs = spec.intervalMs;
     this.meleeHitDelayMs = spec.hitDelayMs;
-    this.setScale(ARMED.spriteScale);
+    this.baseSpriteScale = spriteScale;
+    this.setScale(spriteScale);
 
     this.weapon = scene.add
       .image(x, y, this.textures[0])
@@ -162,7 +171,7 @@ export class ArmedHunter extends Hunter {
     // throw pops his scale.
     this.scene.tweens.add({
       targets: this,
-      scale: { from: ARMED.spriteScale * 1.1, to: ARMED.spriteScale },
+      scale: { from: this.baseSpriteScale * 1.1, to: this.baseSpriteScale },
       duration: spec.swingMs,
       ease: 'Back.easeOut',
     });
