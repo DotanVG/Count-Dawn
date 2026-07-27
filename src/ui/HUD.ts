@@ -428,7 +428,10 @@ export class HUD {
 
   /**
    * Victory beat: the blood meter drains into the health bar — HP fills as
-   * blood empties, green/red particles streaming at each bar.
+   * blood empties, green/red particles streaming at each bar, plus a
+   * literal ribbon of blood flying the width of the screen between them (see
+   * flyBloodToHealth) so the drain and the fill read as one cause and effect
+   * rather than two unconnected sparks at opposite corners.
    */
   playCoffinTransfer(
     bloodRatio: number,
@@ -446,6 +449,8 @@ export class HUD {
     this.timerText.setAngle(0);
     this.timerText.setPosition(this.timerHome.x, this.timerHome.y);
     this.scene.tweens.add({ targets: this.vignette, alpha: 0, duration: 300 });
+
+    this.flyBloodToHealth(duration);
 
     // The health puffs are re-tinted every burst rather than once up front:
     // the bar climbs through red into orange into green over this tween, and
@@ -495,6 +500,61 @@ export class HUD {
         onComplete();
       },
     });
+  }
+
+  /**
+   * Three droplets on a swirling path from the blood bar to the health bar —
+   * the same beat GameScene's hopBloodToHealth plays for a mid-round overflow
+   * pickup, reused here so a night ending explains itself the same way: this
+   * IS the blood he drank, arriving as health.
+   */
+  private flyBloodToHealth(duration: number): void {
+    const from = HUD_ANCHORS.bloodBar;
+    const to = HUD_ANCHORS.healthBar;
+
+    const trail = this.scene.add
+      .particles(0, 0, TEXTURES.particle, {
+        speed: { min: 10, max: 50 },
+        lifespan: { min: 260, max: 520 },
+        scale: { start: 0.9, end: 0 },
+        tint: [0xc41e2f, 0xff4d4d, 0xff8f9a],
+        emitting: false,
+      })
+      .setDepth(DEPTHS.hud + 2);
+
+    const strands = 3;
+    let finished = 0;
+
+    for (let s = 0; s < strands; s++) {
+      const phase = (s / strands) * Math.PI * 2;
+      const swirl = 20 + s * 8;
+      const droplet = this.scene.add
+        .image(from.x, from.y, TEXTURES.blood)
+        .setDepth(DEPTHS.hud + 3)
+        .setScale(BLOOD.dropletScale * 0.8);
+
+      this.scene.tweens.addCounter({
+        from: 0,
+        to: 1,
+        duration,
+        delay: s * 70,
+        ease: 'Sine.easeInOut',
+        onUpdate: (tween) => {
+          const t = tween.getValue() ?? 0;
+          const taper = Math.sin(t * Math.PI);
+          const x = Phaser.Math.Linear(from.x, to.x, t);
+          const y =
+            Phaser.Math.Linear(from.y, to.y, t) + Math.sin(t * Math.PI * 3 + phase) * swirl * taper;
+          droplet.setPosition(x, y).setScale(0.8 - 0.3 * t);
+          trail.emitParticleAt(x, y, 2);
+        },
+        onComplete: () => {
+          droplet.destroy();
+          if (++finished < strands) return;
+          this.scene.time.delayedCall(400, () => trail.destroy());
+        },
+      });
+    }
   }
 
   /**
