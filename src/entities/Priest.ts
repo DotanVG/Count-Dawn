@@ -355,11 +355,18 @@ export class Priest extends Hunter implements CaptainTraits {
       .setAlpha(0.4);
     const blade = this.scene.add.image(0, 0, TEXTURES.weaponGoldCross).setScale(full);
 
+    // Her drawing faces left; mirrored (negative scaleX) when he is facing
+    // right so the cross turns to face the same way he does rather than
+    // always presenting its left profile to whichever side he is attacking.
+    // A horizontal mirror also flips the sense of any rotation applied
+    // inside it, so the upright counter-rotation has to flip along with it.
+    const flip = this.facing === 'right' ? -1 : 1;
+
     const cross = this.scene.add
       .container(this.x, this.y, [glow, blade])
       .setDepth(DEPTHS.attackFx)
-      .setRotation(CROSS_UPRIGHT_ROTATION)
-      .setScale(0.05)
+      .setRotation(CROSS_UPRIGHT_ROTATION * flip)
+      .setScale(0.05 * flip, 0.05)
       // Translucent, so he stays visible through his own light rather than
       // hidden behind it.
       .setAlpha(0.85);
@@ -387,7 +394,10 @@ export class Priest extends Hunter implements CaptainTraits {
     this.crossTweens = [
       this.scene.tweens.add({
         targets: cross,
-        scale: 1,
+        // scaleX and scaleY rather than the uniform `scale` shorthand: a
+        // mirrored cross needs its scaleX to grow toward -1, not 1.
+        scaleX: flip,
+        scaleY: 1,
         // Held back a beat so the ring leads and the cross comes up THROUGH it,
         // rather than the two opening out together as one shape.
         delay: PRIEST.crossRiseDelayMs,
