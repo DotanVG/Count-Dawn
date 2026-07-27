@@ -1,6 +1,6 @@
 // Explicit .ts extensions so Node can run this module directly in unit tests.
 import { ARENA } from '../game/constants.ts';
-import { HUNTER, THROWER } from '../data/balance.ts';
+import { HUNTER, PRIEST, THROWER } from '../data/balance.ts';
 
 /**
  * The cold open's timeline, in milliseconds from its start, and the clock it
@@ -103,6 +103,18 @@ export const COLD_OPEN_MARCH_SPEED = HUNTER.moveSpeed;
 /** A cold-open thrower: his own stats, at the squad's marching pace. */
 export const COLD_OPEN_THROWER_STATS = {
   ...THROWER,
+  moveSpeed: COLD_OPEN_MARCH_SPEED,
+} as const;
+
+/**
+ * A cold-open Priest: his own stats, at the squad's marching pace rather than
+ * his usual slow 76 — at his real speed he does not reach his slot (the front
+ * of the column, see COLD_OPEN_ROSTER) until roughly a second after the strike
+ * already landed, so he is still crossing the floor, out of line with the
+ * rest of the squad, at the exact moment they are all struck down together.
+ */
+export const COLD_OPEN_PRIEST_STATS = {
+  ...PRIEST,
   moveSpeed: COLD_OPEN_MARCH_SPEED,
 } as const;
 

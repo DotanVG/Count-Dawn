@@ -5,7 +5,7 @@ import type { GameEventEmitter } from '../game/events';
 import { BossHealthBar } from '../ui/BossHealthBar';
 import { TEXTURES, animKey } from '../utils/assetKeys';
 import { BossCharge } from './BossCharge';
-import { Hunter, type HunterLook } from './Hunter';
+import { Hunter, type HunterLook, type HunterStats } from './Hunter';
 import { captainTookDamage, type CaptainTraits } from './HunterCaptain';
 
 const PRIEST_LOOK: HunterLook = {
@@ -98,8 +98,10 @@ export class Priest extends Hunter implements CaptainTraits {
     x: number,
     y: number,
     private readonly emitter: GameEventEmitter,
+    /** Overridable so the cold open can march him at the squad's pace instead of his own. */
+    stats: HunterStats = PRIEST,
   ) {
-    super(scene, x, y, PRIEST, PRIEST_LOOK);
+    super(scene, x, y, stats, PRIEST_LOOK);
     this.setScale(PRIEST.spriteScale);
     // Romi's priest fills far more of the 64px frame than the CraftPix men, so
     // the inherited body would sit around his knees. This is his torso.

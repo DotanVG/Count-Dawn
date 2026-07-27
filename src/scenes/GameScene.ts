@@ -48,6 +48,7 @@ import { CountdownSystem } from '../systems/CountdownSystem';
 import {
   COLD_OPEN,
   COLD_OPEN_GROUP,
+  COLD_OPEN_PRIEST_STATS,
   COLD_OPEN_STRIKE_SPOT,
   COLD_OPEN_THROWER_STATS,
   coldOpenHunterSlot,
@@ -632,7 +633,7 @@ export class GameScene extends Phaser.Scene {
   private createColdOpenActor(actor: ColdOpenActor, x: number, y: number): Hunter {
     switch (actor) {
       case 'priest':
-        return new Priest(this, x, y, this.emitter);
+        return new Priest(this, x, y, this.emitter, COLD_OPEN_PRIEST_STATS);
       case 'thrower':
         return new GarlicThrower(this, x, y, { stats: COLD_OPEN_THROWER_STATS });
       case 'sword':
