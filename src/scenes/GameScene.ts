@@ -1202,8 +1202,12 @@ export class GameScene extends Phaser.Scene {
    * only flies the droplet and cashes it in on arrival.
    */
   private hopBloodToHealth(bloodAmount: number): void {
-    const from = HUD_ANCHORS.bloodBar;
-    const to = HUD_ANCHORS.healthBar;
+    // The live fill edges, not the bars' fixed midpoint anchors — the meter
+    // is full at this exact moment (that is what "overflow" means), so the
+    // blood bar's edge sits at its far right rather than its middle, and the
+    // droplet has to land where the health bar's own fill actually ends.
+    const from = this.hud?.bloodBarEdge ?? HUD_ANCHORS.bloodBar;
+    const to = this.hud?.healthBarEdge ?? HUD_ANCHORS.healthBar;
     const duration = 700;
 
     // A visible ribbon of blood crossing the top of the screen, not a lone

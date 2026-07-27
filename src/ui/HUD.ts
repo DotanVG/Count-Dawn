@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { BLOOD, NIGHT, PLAYER, bossLineupForNight } from '../data/balance';
-import { DEPTHS, GAME_WIDTH, GAME_HEIGHT, HUD_ANCHORS } from '../game/constants';
+import { DEPTHS, GAME_WIDTH, GAME_HEIGHT } from '../game/constants';
 import { EVENTS } from '../game/events';
 import { TEXTURES } from '../utils/assetKeys';
 import { pluralBossName } from '../entities/HunterCaptain';
@@ -60,6 +60,7 @@ const HP_ORANGE = 0xff9a3d;
 const HP_RED = 0xe53935;
 const BLOOD_RED = 0xc41e2f;
 const BLOOD_FULL_GLOW = 0xff6b7a;
+const HP_FULL_GLOW = 0x7dff9b;
 const DASH_PURPLE = 0x9d6bff;
 const BAR_W = 216;
 
@@ -128,6 +129,9 @@ export class HUD {
   /** Ring around the blood bar, shown only while the meter is full. */
   private bloodGlow: Phaser.GameObjects.Rectangle;
   private bloodGlowTween: Phaser.Tweens.Tween | null = null;
+  /** Same breathing ring, green, shown only while HP is full. */
+  private healthGlow: Phaser.GameObjects.Rectangle;
+  private healthGlowTween: Phaser.Tweens.Tween | null = null;
   /** Pulse on the health bar while HP is in the red band - the "you are about to die" tell. */
   private lowHealthTween: Phaser.Tweens.Tween | null = null;
   /** Last ratio handed to setHealth, so particle bursts can match the bar. */
@@ -196,6 +200,15 @@ export class HUD {
       .setOrigin(0, 0.5)
       .setStrokeStyle(3, BLOOD_FULL_GLOW, 0.9)
       .setFillStyle(BLOOD_FULL_GLOW, 0)
+      .setDepth(DEPTHS.hud + 2)
+      .setVisible(false);
+
+    // Same ring around the health bar, green, lit only once HP is topped off.
+    this.healthGlow = scene.add
+      .rectangle(18, 24, BAR_W + 12, 26)
+      .setOrigin(0, 0.5)
+      .setStrokeStyle(3, HP_FULL_GLOW, 0.9)
+      .setFillStyle(HP_FULL_GLOW, 0)
       .setDepth(DEPTHS.hud + 2)
       .setVisible(false);
 
@@ -311,9 +324,29 @@ export class HUD {
     this.dashLabel.setAlpha(ready ? 1 : 0.5);
   }
 
-  /** Red burst where a bloodlet reaches the blood bar. */
+  /**
+   * Red burst where a bloodlet reaches the blood bar — at its live fill edge,
+   * not the bar's fixed midpoint anchor. Mirrors burstAtHealthBar; the drain
+   * side of this same bar (playCoffinTransfer) already reads the edge this
+   * way, only the fill side was still bursting at the bar's centre.
+   */
   burstAtBloodBar(): void {
-    this.bloodParticles.explode(8, HUD_ANCHORS.bloodBar.x, HUD_ANCHORS.bloodBar.y);
+    this.bloodParticles.explode(8, this.bloodBarEdge.x, this.bloodBarEdge.y);
+  }
+
+  /**
+   * Live right edge of the blood bar's current fill, in screen space — where
+   * anything arriving at "the blood bar" should actually land. HUD_ANCHORS is
+   * the bar's fixed midpoint, which is right for placing the bar itself but
+   * wrong for tracking how full it currently reads.
+   */
+  get bloodBarEdge(): { x: number; y: number } {
+    return { x: GAME_WIDTH - 238 + this.bloodBarFill.width, y: 24 };
+  }
+
+  /** Live right edge of the health bar's current fill; see bloodBarEdge. */
+  get healthBarEdge(): { x: number; y: number } {
+    return { x: 22 + this.healthBarFill.width, y: 24 };
   }
 
   setNight(n: number): void {
@@ -417,6 +450,7 @@ export class HUD {
     this.vignette.setAlpha(0);
     this.setLowHealthFlash(false);
     this.setBloodFullGlow(false);
+    this.setHealthFullGlow(false);
     this.setHealth(PLAYER.maxHealth, PLAYER.maxHealth);
     this.setBlood(0, bloodTarget);
     // Without this the objective kept reading "Return to your coffin" (the
@@ -460,8 +494,8 @@ export class HUD {
       loop: true,
       callback: () => {
         this.hpParticles.setParticleTint(healthColor(this.healthRatio));
-        this.hpParticles.explode(5, 22 + this.healthBarFill.width, 24);
-        this.bloodParticles.explode(5, GAME_WIDTH - 238 + this.bloodBarFill.width, 24);
+        this.hpParticles.explode(5, this.healthBarEdge.x, this.healthBarEdge.y);
+        this.bloodParticles.explode(5, this.bloodBarEdge.x, this.bloodBarEdge.y);
       },
     });
 
@@ -487,6 +521,10 @@ export class HUD {
         stream.remove();
         this.setLowHealthFlash(false);
         this.setBloodFullGlow(false);
+        // The transfer always ends with HP topped off (healthRatio tweens to
+        // 1 above), so the same green ring the round uses for a full bar
+        // belongs here too.
+        this.setHealthFullGlow(true);
         this.healthText.setText(`HP ${PLAYER.maxHealth}/${PLAYER.maxHealth}`);
         this.bloodText.setText('Blood spent');
         this.timerText.setText(this.format(NIGHT.durationSeconds));
@@ -509,8 +547,12 @@ export class HUD {
    * IS the blood he drank, arriving as health.
    */
   private flyBloodToHealth(duration: number): void {
-    const from = HUD_ANCHORS.bloodBar;
-    const to = HUD_ANCHORS.healthBar;
+    // Read live, not captured once: the blood bar is draining and the health
+    // bar is filling for this whole duration (the counter tween above drives
+    // both), so the ribbon's ends have to track the same moving edges rather
+    // than the bars' fixed midpoint anchors.
+    const from = (): { x: number; y: number } => this.bloodBarEdge;
+    const to = (): { x: number; y: number } => this.healthBarEdge;
 
     const trail = this.scene.add
       .particles(0, 0, TEXTURES.particle, {
@@ -528,8 +570,9 @@ export class HUD {
     for (let s = 0; s < strands; s++) {
       const phase = (s / strands) * Math.PI * 2;
       const swirl = 20 + s * 8;
+      const start = from();
       const droplet = this.scene.add
-        .image(from.x, from.y, TEXTURES.blood)
+        .image(start.x, start.y, TEXTURES.blood)
         .setDepth(DEPTHS.hud + 3)
         .setScale(BLOOD.dropletScale * 0.8);
 
@@ -542,9 +585,10 @@ export class HUD {
         onUpdate: (tween) => {
           const t = tween.getValue() ?? 0;
           const taper = Math.sin(t * Math.PI);
-          const x = Phaser.Math.Linear(from.x, to.x, t);
-          const y =
-            Phaser.Math.Linear(from.y, to.y, t) + Math.sin(t * Math.PI * 3 + phase) * swirl * taper;
+          const a = from();
+          const b = to();
+          const x = Phaser.Math.Linear(a.x, b.x, t);
+          const y = Phaser.Math.Linear(a.y, b.y, t) + Math.sin(t * Math.PI * 3 + phase) * swirl * taper;
           droplet.setPosition(x, y).setScale(0.8 - 0.3 * t);
           trail.emitParticleAt(x, y, 2);
         },
@@ -563,7 +607,7 @@ export class HUD {
    * by GameScene once the pickup's second hop arrives.
    */
   burstAtBloodBarOverflow(): void {
-    this.bloodParticles.explode(6, HUD_ANCHORS.bloodBar.x, HUD_ANCHORS.bloodBar.y);
+    this.bloodParticles.explode(6, this.bloodBarEdge.x, this.bloodBarEdge.y);
   }
 
   destroy(): void {
@@ -651,7 +695,7 @@ export class HUD {
   /** Puff at the live end of the health bar, in the bar's current colour. */
   private burstAtHealthBar(count: number): void {
     this.hpParticles.setParticleTint(healthColor(this.healthRatio));
-    this.hpParticles.explode(count, 22 + this.healthBarFill.width, 24);
+    this.hpParticles.explode(count, this.healthBarEdge.x, this.healthBarEdge.y);
   }
 
   private onBloodChanged(current: number, target: number): void {
@@ -667,6 +711,7 @@ export class HUD {
     // necessarily whole - the readout rounds, the bar uses the real value.
     this.healthText.setText(`HP ${Math.round(current)}/${max}`);
     this.setLowHealthFlash(ratio <= HP_DANGER_RATIO && current > 0);
+    this.setHealthFullGlow(ratio >= 1);
   }
 
   /**
@@ -716,6 +761,29 @@ export class HUD {
     this.bloodGlow.setVisible(true).setAlpha(1).setScale(1);
     this.bloodGlowTween = this.scene.tweens.add({
       targets: this.bloodGlow,
+      alpha: { from: 1, to: 0.35 },
+      scaleY: { from: 1, to: 1.18 },
+      duration: 620,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+  }
+
+  /** Same breathing ring, green, on only while HP reads full. */
+  private setHealthFullGlow(on: boolean): void {
+    if (on === (this.healthGlowTween !== null)) return;
+
+    if (!on) {
+      this.healthGlowTween?.stop();
+      this.healthGlowTween = null;
+      this.healthGlow.setVisible(false);
+      return;
+    }
+
+    this.healthGlow.setVisible(true).setAlpha(1).setScale(1);
+    this.healthGlowTween = this.scene.tweens.add({
+      targets: this.healthGlow,
       alpha: { from: 1, to: 0.35 },
       scaleY: { from: 1, to: 1.18 },
       duration: 620,
