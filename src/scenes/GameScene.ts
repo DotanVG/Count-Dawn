@@ -305,7 +305,9 @@ export class GameScene extends Phaser.Scene {
       }
       if (this.touch.consumeDashPressed()) this.player.tryDash(mv.x, mv.y);
       this.player.move(mv.x, mv.y);
-      if (this.touch.isAutoAttackHeld()) {
+      // Edge-triggered: one press, one strike — holding the button down must
+      // not auto-fire on every frame it stays pressed.
+      if (this.touch.consumeAutoAttackPressed()) {
         this.autoAttackNearest();
       }
       return;
@@ -324,14 +326,15 @@ export class GameScene extends Phaser.Scene {
     if (this.inputController.isDashJustPressed()) this.player.tryDash(move.x, move.y);
     this.player.move(move.x, move.y);
 
-    if (this.inputController.isMouseAttackDown()) {
+    // Edge-triggered: a click lands one strike. Holding the button down used
+    // to auto-fire every frame it stayed down (rate-limited only by the
+    // attack cooldown); a click is now the only way to swing, on desktop.
+    if (this.inputController.consumeMouseAttackPressed()) {
       this.combat.tryAttack(this.getAttackTargets());
-    } else if (this.inputController.isAutoAttackDown()) {
-      this.autoAttackNearest();
     }
   }
 
-  /** Space / ⚔ button: turn toward the nearest living hunter and strike. */
+  /** Mobile's ⚔ button: turn toward the nearest living hunter and strike, once per press. */
   private autoAttackNearest(): void {
     const targets = this.getAttackTargets();
     let nearest: Hunter | null = null;
@@ -374,7 +377,7 @@ export class GameScene extends Phaser.Scene {
           'Bat button - Dash (short invulnerable burst)    Pause - Pause button',
         ]
       : [
-          'Move - WASD / Arrows    Aim - Mouse    Attack - Click / Space',
+          'Move - WASD / Arrows    Aim - Mouse    Attack - Click',
           'Bat dash - Shift (short invulnerable burst)    Pause - Esc / P',
         ];
     const controls = this.add

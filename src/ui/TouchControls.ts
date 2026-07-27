@@ -14,18 +14,19 @@ export interface TouchCallbacks {
 /**
  * Mobile-only on-screen controls (blood-red to match the palette): a fixed
  * bottom-left virtual joystick for movement, a bottom-right ⚔ button that
- * auto-strikes the nearest hunter (held = keeps striking, mirroring Space on
- * desktop), a small pause button, and tap-anywhere-else to strike in that
- * direction (mirroring desktop mouse clicks). Adapted from BeatEmPie.
+ * strikes the nearest hunter once per press (mirroring a desktop click — no
+ * holding it down for a stream of hits), a small pause button, and
+ * tap-anywhere-else to strike in that direction (also once per tap,
+ * mirroring desktop mouse clicks). Adapted from BeatEmPie.
  */
 export class TouchControls {
   private moveVec = { x: 0, y: 0 };
   private base: Phaser.GameObjects.Arc;
   private thumb: Phaser.GameObjects.Arc;
   private joyPointerId = -1;
-  private attackPointerId = -1;
   private readonly radius = 92;
-  private autoAttackHeld = false;
+  /** Latched by the ⚔ button, consumed once by GameScene — one press, one strike. */
+  private autoAttackPressed = false;
   /** Latched by the 🦇 button, consumed once by GameScene — one press, one dash. */
   private dashPressed = false;
   /** Circular keep-out zones (buttons) where a tap must NOT trigger a strike. */
@@ -52,10 +53,9 @@ export class TouchControls {
       .setDepth(DEPTHS.hud + 10)
       .setScrollFactor(0);
 
-    // Auto-strike button: press = strike nearest, hold = keep striking.
-    this.makeButton(GAME_WIDTH - 130, GAME_HEIGHT - 140, 72, '⚔', (pointer) => {
-      this.attackPointerId = pointer.id;
-      this.autoAttackHeld = true;
+    // Strike button: one press, one strike toward the nearest hunter.
+    this.makeButton(GAME_WIDTH - 130, GAME_HEIGHT - 140, 72, '⚔', () => {
+      this.autoAttackPressed = true;
     });
     // Bat dash, tucked above and inside the strike button.
     this.makeButton(GAME_WIDTH - 250, GAME_HEIGHT - 96, 52, '🦇', () => {
@@ -95,9 +95,11 @@ export class TouchControls {
     this.controlZones.push({ x, y, r });
   }
 
-  /** True while the ⚔ button is held — GameScene auto-strikes the nearest hunter. */
-  isAutoAttackHeld(): boolean {
-    return this.autoAttackHeld;
+  /** True once per ⚔ press; reading it clears the latch — GameScene strikes the nearest hunter. */
+  consumeAutoAttackPressed(): boolean {
+    const pressed = this.autoAttackPressed;
+    this.autoAttackPressed = false;
+    return pressed;
   }
 
   /** True once per 🦇 press; reading it clears the latch. */
@@ -143,10 +145,6 @@ export class TouchControls {
   }
 
   private onUp(pointer: Phaser.Input.Pointer): void {
-    if (pointer.id === this.attackPointerId) {
-      this.attackPointerId = -1;
-      this.autoAttackHeld = false;
-    }
     if (pointer.id !== this.joyPointerId) return;
     this.joyPointerId = -1;
     this.moveVec = { x: 0, y: 0 };

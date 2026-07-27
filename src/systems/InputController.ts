@@ -16,7 +16,6 @@ export class InputController {
     arrowDown: Phaser.Input.Keyboard.Key;
     arrowLeft: Phaser.Input.Keyboard.Key;
     arrowRight: Phaser.Input.Keyboard.Key;
-    space: Phaser.Input.Keyboard.Key;
     dash: Phaser.Input.Keyboard.Key;
   };
 
@@ -30,14 +29,19 @@ export class InputController {
    */
   private pointerSeen = false;
 
+  /** Latched on a click, consumed once by GameScene — one click, one strike. */
+  private mouseAttackPressed = false;
+
   constructor(private readonly scene: Phaser.Scene) {
     const kb = scene.input.keyboard;
     if (!kb) throw new Error('Keyboard input plugin is unavailable');
-    const noticePointer = (): void => {
+    scene.input.on(Phaser.Input.Events.POINTER_MOVE, () => {
       this.pointerSeen = true;
-    };
-    scene.input.on(Phaser.Input.Events.POINTER_MOVE, noticePointer);
-    scene.input.on(Phaser.Input.Events.POINTER_DOWN, noticePointer);
+    });
+    scene.input.on(Phaser.Input.Events.POINTER_DOWN, () => {
+      this.pointerSeen = true;
+      this.mouseAttackPressed = true;
+    });
     this.keys = {
       up: kb.addKey(Phaser.Input.Keyboard.KeyCodes.W),
       down: kb.addKey(Phaser.Input.Keyboard.KeyCodes.S),
@@ -47,7 +51,6 @@ export class InputController {
       arrowDown: kb.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN),
       arrowLeft: kb.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT),
       arrowRight: kb.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT),
-      space: kb.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
       dash: kb.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT),
     };
   }
@@ -60,14 +63,16 @@ export class InputController {
     return new Phaser.Math.Vector2(x, y).normalize();
   }
 
-  /** Held mouse attack (desktop): strikes toward the cursor. */
-  isMouseAttackDown(): boolean {
-    return this.scene.input.activePointer.isDown;
-  }
-
-  /** Held Space: auto-strikes the nearest hunter (same as the mobile ⚔ button). */
-  isAutoAttackDown(): boolean {
-    return this.keys.space.isDown;
+  /**
+   * True once per mouse click; reading it clears the latch. Deliberately NOT
+   * `activePointer.isDown` (which stays true for as long as the button is
+   * held) — holding the mouse down must land exactly one strike, the same as
+   * a single click, not fire on every frame it is held.
+   */
+  consumeMouseAttackPressed(): boolean {
+    const pressed = this.mouseAttackPressed;
+    this.mouseAttackPressed = false;
+    return pressed;
   }
 
   /** Shift, edge-triggered: holding it must not chain dashes on every frame. */
