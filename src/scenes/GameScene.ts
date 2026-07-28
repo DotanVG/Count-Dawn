@@ -182,6 +182,13 @@ export class GameScene extends Phaser.Scene {
   private ultDarkenOverlay!: Phaser.GameObjects.Rectangle;
   /** Timestamps of recent kills, for spawnScreenBloodSplatter's burst sizing. */
   private recentKillTimes: number[] = [];
+  /**
+   * The real health beginRoundSystems will wake the Count up with, computed
+   * by computeOvernightTransfer the moment a night's actual numbers are known
+   * (cinematicRetire / playVictoryOutro) — well before beginRoundSystems
+   * itself runs, on the far side of a whole day-cycle animation.
+   */
+  private pendingHealthAfterSleep: number = PLAYER.maxHealth;
 
   constructor() {
     super(SCENES.game);
@@ -195,6 +202,7 @@ export class GameScene extends Phaser.Scene {
     this.wrath = 0;
     this.ultimateActive = false;
     this.recentKillTimes = [];
+    this.pendingHealthAfterSleep = PLAYER.maxHealth;
     this.captains.clear();
     this.countdown = null;
     this.spawner = null;
@@ -803,18 +811,27 @@ export class GameScene extends Phaser.Scene {
         this.coldOpenClock?.remove();
         this.coldOpenClock = null;
 
-        // He sleeps: health refills, the blood is spent, the clock winds back
-        // up to a full night - all of it WHILE the day passes overhead, not
-        // queued up behind it. He came home almost dead (12 HP), so this
-        // scripted transfer's own math sends none of the night's blood to
-        // Wrath — see the real transfer below for the actual rule.
-        const wrathFromColdOpen = Math.max(
-          0,
-          bloodTargetForNight(this.night) - (PLAYER.maxHealth - CINEMATIC.startHealth),
+        // He sleeps: health refills at a real rate against the night's blood
+        // pool (computeOvernightTransfer — the same math the real transfer
+        // below uses), whatever is left over feeds Wrath, and the clock winds
+        // back up to a full night - all of it WHILE the day passes overhead,
+        // not queued up behind it. He came home at a scripted 12 HP; a
+        // 50-blood pool heals him to 62, with nothing left over for Wrath.
+        const { wrathBlood, newHealth } = this.computeOvernightTransfer(
+          bloodTargetForNight(this.night),
+          CINEMATIC.startHealth,
         );
-        this.hud?.playCoffinTransfer(1, CINEMATIC.startHealth / PLAYER.maxHealth, 0, () => {
-          if (wrathFromColdOpen > 0) this.gainWrath(wrathFromColdOpen);
-        });
+        this.pendingHealthAfterSleep = newHealth;
+        this.hud?.playCoffinTransfer(
+          1,
+          CINEMATIC.startHealth / PLAYER.maxHealth,
+          newHealth / PLAYER.maxHealth,
+          0,
+          wrathBlood,
+          () => {
+            if (wrathBlood > 0) this.gainWrath(wrathBlood);
+          },
+        );
         this.playDayCycle(2200, () => {
           this.hud?.resetForNewRound(bloodTargetForNight(this.night));
           this.riseFromCoffin(() => this.startPlaying());
@@ -962,8 +979,12 @@ export class GameScene extends Phaser.Scene {
     // The Player and Coffin entities persist across rounds (unlike flow and
     // countdown, which are recreated below) — without resetting them
     // explicitly, HP stayed wherever it was left and the coffin stayed
-    // permanently "activated" after the first win.
-    this.player.resetForNewRound();
+    // permanently "activated" after the first win. Health is whatever the
+    // overnight transfer actually healed him to (see computeOvernightTransfer),
+    // not an unconditional top-off — pendingHealthAfterSleep was set the
+    // moment that transfer's real numbers were known, before the day cycle
+    // played out and this ran.
+    this.player.resetForNewRound(this.pendingHealthAfterSleep);
     this.coffin.resetForNewRound();
     const bloodTarget = bloodTargetForNight(this.night);
     const pressure = hunterPressureForNight(this.night);
@@ -1338,14 +1359,36 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * Blood the Count has no use for feeds Wrath instead of being wasted — see
-   * WRATH in balance.ts. Silently caps at the target; spending it back to
-   * zero is what fireUltimate does.
+   * WRATH in balance.ts. `bloodAmount` is raw blood, converted to points at
+   * WRATH.bloodPerPoint (2 blood per point) so Wrath fills across several
+   * mini-boss kills rather than off the first one. Silently caps at the
+   * target; spending it back to zero is what fireUltimate does.
    */
-  private gainWrath(amount: number): void {
+  private gainWrath(bloodAmount: number): void {
     if (this.wrath >= WRATH.target) return;
-    this.wrath = Math.min(WRATH.target, this.wrath + amount);
+    this.wrath = Math.min(WRATH.target, this.wrath + bloodAmount / WRATH.bloodPerPoint);
     this.hud?.setWrath(this.wrath, WRATH.target);
     this.touch?.setUltimateAvailable(this.wrath >= WRATH.target);
+  }
+
+  /**
+   * How the night's whole blood pool actually gets spent overnight: heal HP
+   * first at a real BLOOD.overnightHealPerBlood rate, and once HP is full,
+   * whatever remains keeps draining straight into Wrath (still raw blood —
+   * gainWrath applies WRATH.bloodPerPoint) rather than being wasted. Unlike
+   * the old unconditional top-off, healing is bounded by the pool: if it is
+   * smaller than the HP actually missing, the Count wakes up still hurt.
+   */
+  private computeOvernightTransfer(
+    bloodPool: number,
+    startHealth: number,
+  ): { wrathBlood: number; newHealth: number } {
+    const missingHp = PLAYER.maxHealth - startHealth;
+    const maxHealFromPool = bloodPool * BLOOD.overnightHealPerBlood;
+    const healAmount = Math.max(0, Math.min(missingHp, maxHealFromPool));
+    const bloodSpentOnHeal = healAmount / BLOOD.overnightHealPerBlood;
+    const wrathBlood = Math.max(0, bloodPool - bloodSpentOnHeal);
+    return { wrathBlood, newHealth: startHealth + healAmount };
   }
 
   /** Space (desktop) or the mobile ⚡ button, once Wrath reads full. */
@@ -1975,20 +2018,24 @@ export class GameScene extends Phaser.Scene {
         this.coffin.setOpen(false);
 
         const bloodRatio = Phaser.Math.Clamp(this.flow.currentBlood / this.flow.bloodTarget, 0, 1);
-        const healthRatio = Phaser.Math.Clamp(this.player.health / PLAYER.maxHealth, 0, 1);
+        const startHealth = this.player.health;
+        const healthRatioStart = Phaser.Math.Clamp(startHealth / PLAYER.maxHealth, 0, 1);
         const secondsLeft = this.countdown?.remainingSeconds ?? 0;
-        // Overnight healing is a real 1-blood-per-HP rate, unlike the flat
-        // BLOOD.overflowHealPerBlood the round itself uses — so whatever this
-        // night's blood doesn't spend healing him back to full is blood with
-        // nothing left to buy, same rule as any other overflow (see
-        // hopBloodToHealth): it goes to Wrath instead of being wasted.
-        const missingHp = PLAYER.maxHealth - this.player.health;
-        const wrathFromOvernight = Math.max(0, this.flow.bloodTarget - missingHp);
+        // Overnight healing is a real 1-blood-per-HP rate (BLOOD.overnightHealPerBlood),
+        // unlike the flat BLOOD.overflowHealPerBlood the round itself uses, and
+        // it is a genuine cost now — the night's blood pool no longer
+        // guarantees a full top-off. Whatever it doesn't spend healing him
+        // keeps draining straight into Wrath instead of being wasted, and
+        // pendingHealthAfterSleep carries the real result across the whole
+        // day-cycle animation to beginRoundSystems, which actually applies it.
+        const { wrathBlood, newHealth } = this.computeOvernightTransfer(this.flow.bloodTarget, startHealth);
+        const healthRatioEnd = Phaser.Math.Clamp(newHealth / PLAYER.maxHealth, 0, 1);
+        this.pendingHealthAfterSleep = newHealth;
         // He heals WHILE the sky turns, not before it: the sleep and the day
         // passing are one beat, so they run together and the cycle owns the
         // handoff into the next night.
-        this.hud?.playCoffinTransfer(bloodRatio, healthRatio, secondsLeft, () => {
-          if (wrathFromOvernight > 0) this.gainWrath(wrathFromOvernight);
+        this.hud?.playCoffinTransfer(bloodRatio, healthRatioStart, healthRatioEnd, secondsLeft, wrathBlood, () => {
+          if (wrathBlood > 0) this.gainWrath(wrathBlood);
         });
         this.playNightCycle();
       },

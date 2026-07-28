@@ -41,6 +41,16 @@ const EMPTY = -1;
 /** Left tile column of each 2-wide window; the middle one is the open arch. */
 const WINDOW_COLS = [3, 9, 15];
 
+/**
+ * World-x centers of the three windows, derived from WINDOW_COLS — exported
+ * because DawnSky's sun/moon arc and the Ultimate's bat swarm (GameScene)
+ * both need to aim at exactly these points, and a duplicated magic number in
+ * either would drift the moment this wall layout changed.
+ */
+export const WINDOW_X_CENTERS = WINDOW_COLS.map((col) => (col + 1) * TILE);
+/** Y just above the arena, inside the window band, for anything flying "through" one. */
+export const WINDOW_Y = TILE * 1.5;
+
 /** World-x centers of the torch sconces, in the gaps between windows. */
 const TORCH_X = [96, 448, 832, 1184];
 

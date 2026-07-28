@@ -378,7 +378,15 @@ export const PRIEST = {
  * real run totals are in.
  */
 export const WRATH = {
-  target: 60,
+  /** Raised from 60 and slowed down (see bloodPerPoint) — the first pass filled too easily. */
+  target: 100,
+  /**
+   * Blood spent per point of Wrath gained. 2, matching the round's own
+   * overflow-to-HP rate (BLOOD.overflowHealPerBlood) rather than a straight
+   * 1-for-1 — Wrath is meant to feel earned across several mini-boss kills,
+   * not handed over by the first one.
+   */
+  bloodPerPoint: 2,
   /** Bats spawned for the Ultimate's swarm. */
   batCount: 30,
   /** How long the lightning + bat swarm hold the screen. */
@@ -425,6 +433,14 @@ export const BLOOD = {
    * real pile of corpses rather than one unlucky hunter.
    */
   overflowHealPerBlood: 0.5,
+  /**
+   * The overnight coffin transfer's rate — a real 1-for-1 spend against the
+   * night's whole blood pool (bloodTargetForNight), unlike the flat
+   * overflowHealPerBlood rate mid-round. This is a genuine cost: if the pool
+   * is smaller than the HP actually missing, the Count wakes up still hurt
+   * rather than always topping off to full (see GameScene.computeOvernightTransfer).
+   */
+  overnightHealPerBlood: 1,
   /**
    * Display scale for Romi's droplet. Her drawing is 45px of paint in a 64px
    * frame where the placeholder it replaced was a generated 16px square, so

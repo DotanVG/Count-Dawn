@@ -533,11 +533,20 @@ export class HUD {
    * literal ribbon of blood flying the width of the screen between them (see
    * flyBloodToHealth) so the drain and the fill read as one cause and effect
    * rather than two unconnected sparks at opposite corners.
+   *
+   * Healing is no longer an unconditional top-off: `healthRatioEnd` is
+   * whatever GameScene's computeOvernightTransfer actually worked out, which
+   * can land short of 1 if the night's blood pool wasn't enough. Whatever
+   * that pool has left over after healing (`wrathGain`, raw blood) drains
+   * into the Wrath bar in the same continuous motion — not a separate
+   * instant snap once the tween finishes.
    */
   playCoffinTransfer(
     bloodRatio: number,
-    healthRatio: number,
+    healthRatioStart: number,
+    healthRatioEnd: number,
     fromSeconds: number,
+    wrathGain: number,
     onComplete: () => void,
   ): void {
     const duration = 1300;
@@ -553,6 +562,9 @@ export class HUD {
 
     this.flyBloodToHealth(duration);
 
+    const wrathBeforeRatio = this.wrathBarFill.width / WRATH_BAR_W;
+    const wrathAfterRatio = Phaser.Math.Clamp(wrathBeforeRatio + wrathGain / WRATH.target, 0, 1);
+
     // The health puffs are re-tinted every burst rather than once up front:
     // the bar climbs through red into orange into green over this tween, and
     // a fixed tint would have left red motes landing on a green bar.
@@ -563,6 +575,9 @@ export class HUD {
         this.hpParticles.setParticleTint(healthColor(this.healthRatio));
         this.hpParticles.explode(5, this.healthBarEdge.x, this.healthBarEdge.y);
         this.bloodParticles.explode(5, this.bloodBarEdge.x, this.bloodBarEdge.y);
+        // wrathMotes, not bloodParticles' fixed red — Wrath reads gold/purple
+        // everywhere else, and a red puff at its bar would look like a mistake.
+        if (wrathGain > 0) this.wrathMotes.explode(4, this.wrathBarEdge.x, this.wrathBarEdge.y);
       },
     });
 
@@ -574,26 +589,25 @@ export class HUD {
       onUpdate: (tween) => {
         const t = tween.getValue() ?? 0;
         this.bloodBarFill.width = BAR_W * bloodRatio * (1 - t);
-        this.healthRatio = Phaser.Math.Linear(healthRatio, 1, t);
+        this.healthRatio = Phaser.Math.Linear(healthRatioStart, healthRatioEnd, t);
         this.healthBarFill.width = BAR_W * this.healthRatio;
         this.healthBarFill.setFillStyle(healthColor(this.healthRatio));
+        this.wrathBarFill.width = WRATH_BAR_W * Phaser.Math.Linear(wrathBeforeRatio, wrathAfterRatio, t);
 
         // The night refills as he sleeps: the clock winds back up to a full
-        // night, popping as it climbs, alongside the two bars.
+        // night, popping as it climbs, alongside the bars.
         const seconds = Math.round(Phaser.Math.Linear(fromSeconds, NIGHT.durationSeconds, t));
         this.timerText.setText(this.format(seconds));
         this.timerText.setScale(1 + 0.14 * Math.abs(Math.sin(t * Math.PI * 5)));
       },
       onComplete: () => {
         stream.remove();
-        this.setLowHealthFlash(false);
         this.setBloodFullGlow(false);
-        // The transfer always ends with HP topped off (healthRatio tweens to
-        // 1 above), so the same green ring the round uses for a full bar
-        // belongs here too.
-        this.setHealthFullGlow(true);
-        this.healthText.setText(`HP ${PLAYER.maxHealth}/${PLAYER.maxHealth}`);
         this.bloodText.setText('Blood spent');
+        // Reuses setHealth's own logic for text/colour/low-health-flash/full-glow
+        // against the REAL final ratio — which, unlike before, is not always 1.
+        this.setHealth(PLAYER.maxHealth * healthRatioEnd, PLAYER.maxHealth);
+        if (wrathGain > 0) this.setWrath(wrathAfterRatio * WRATH.target, WRATH.target);
         this.timerText.setText(this.format(NIGHT.durationSeconds));
         // One last big pop as the clock lands on a full night.
         this.scene.tweens.add({

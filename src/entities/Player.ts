@@ -411,10 +411,13 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * Called between rounds in the seamless day/night loop: the Player entity
    * persists across rounds (unlike GameFlowSystem, which is recreated), so
    * without this its `health` field would carry over from the previous
-   * night instead of the HUD's fresh-looking bar actually meaning 100/100.
+   * night instead of reflecting what the overnight transfer actually healed
+   * him to. `health` defaults to a full top-off but GameScene now normally
+   * passes the real, possibly-partial result of computeOvernightTransfer —
+   * healing overnight is a real cost, not an unconditional reset to full.
    */
-  resetForNewRound(): void {
-    this.health = PLAYER.maxHealth;
+  resetForNewRound(health: number = PLAYER.maxHealth): void {
+    this.health = Phaser.Math.Clamp(health, 0, PLAYER.maxHealth);
     this.invulnUntil = 0;
     this.dashUntil = 0;
     this.nextDashAt = 0;
