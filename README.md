@@ -24,7 +24,7 @@ Surviving does not end the run. The lid shuts, your blood drains into your healt
 
 ### Wrath & the Ultimate
 
-Blood you have no use for does not go to waste. Once your health is already full, every drop of overflow instead fills a third meter — **Wrath** — sitting between your health and blood bars. Mini-bosses are the main way it climbs: a Captain or the Priest floods the floor with far more blood than any regular hunter drops, and since a boss never even spawns until the blood meter is already full, every one of those drops is guaranteed overflow. Whatever your overnight sleep doesn't need to top your health back off spills into it too.
+Blood you have no use for does not go to waste. Once your health is already full, every drop of overflow instead fills a third meter — **Wrath** — sitting between your health and blood bars. Mini-bosses are the main way it climbs: a Captain or the Priest floods the floor with far more blood than any regular hunter drops, and since a boss never even spawns until the blood meter is already full, every one of those drops is guaranteed overflow. Overnight healing works the same way: it spends that night's whole blood pool on real 1-blood-per-HP healing first — so a bad night's damage might not fully recover — and only spills whatever is left over into Wrath.
 
 A full meter glows gold, circled by dark motes, and is ready to spend on the **Ultimate**: the Count rears up and unleashes a bolt of lightning that spreads across the whole hall and kills everything still standing in it — mini-bosses included — while a swarm of bats bursts out of dark magic and swirls the room and the hall dims for a few seconds.
 

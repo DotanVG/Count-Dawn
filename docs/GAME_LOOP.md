@@ -84,19 +84,19 @@ Shift on desktop, the bat button on mobile. The Count *poofs* into a bat and bur
 
 ## Wrath and the Ultimate
 
-A third meter, `WRATH` in `src/data/balance.ts`, sits between the health and blood bars. It only fills from blood the Count has no other use for:
+A third meter, `WRATH` in `src/data/balance.ts`, sits between the health and blood bars. It only fills from blood the Count has no other use for, and always at `WRATH.bloodPerPoint` (2) blood spent per point gained — Wrath is meant to take several mini-boss kills to fill, not one:
 
 - **Mid-round overflow while HP is already full** — `GameScene.hopBloodToHealth` normally flies overflow blood to the health bar and heals it; when health is already at `PLAYER.maxHealth` it flies to the Wrath bar instead and calls `gainWrath`.
-- **Overnight leftovers** — the coffin transfer heals HP back to full at a real 1-blood-per-HP rate (not the round's flat `BLOOD.overflowHealPerBlood`). Whatever that night's `bloodTarget` doesn't spend healing him — `bloodTarget - missingHp`, floored at 0 — goes to Wrath too (`GameScene.playVictoryOutro` / `cinematicRetire`).
+- **Overnight leftovers** — `GameScene.computeOvernightTransfer` heals HP from that night's whole blood pool (`bloodTargetForNight`) at a real `BLOOD.overnightHealPerBlood` (1) rate — a genuine cost, not an unconditional top-off: if the pool is smaller than the HP actually missing, the Count wakes up still short of full. Whatever the pool has left over after healing keeps draining straight into Wrath in the same continuous transfer animation, not a separate step afterward. The result (`newHealth`, `wrathBlood`) is computed the moment the night's real numbers are known and stashed in `pendingHealthAfterSleep`, which `beginRoundSystems` applies via `Player.resetForNewRound(health)` once the day-cycle animation finishes.
 
-Wrath persists across nights exactly like `RunStats` — reset only in `create()`, never between rounds. A full meter glows gold with three dark motes orbiting it and is spent all at once on the **Ultimate** (`GameScene.fireUltimate`, bound to Space on desktop and a ⚡ button on mobile that only appears once charged):
+Wrath persists across nights exactly like `RunStats` — reset only in `create()`, never between rounds. A full meter glows gold with six dark motes orbiting it plus small sparkles flickering on the bar's own fill, and is spent all at once on the **Ultimate** (`GameScene.fireUltimate`, bound to Space on desktop — the bar itself prompts "WRATH READY — Press SPACE" — and a ⚡ button on mobile that only appears once charged):
 
-1. The Count plays `Player.playSpecialAttackAnim` — the rear-up-and-roar pose Romi drew first, which the bite replaced as the regular attack and which had been unused since.
-2. The hall darkens by `WRATH.screenDarkenAlpha` (~18%) for the Ultimate's duration — noticeably dimmer, nowhere near the pause menu's near-black.
-3. `WRATH.batCount` (30) bats launch out of individual dark purple/black particle bursts and swirl the hall on their own paths for the duration, each with a staggered, pitch/volume-varied flap sound (`AUDIO.batDashSound`'s `variance`), then fade out.
-4. A beat later, lightning bolts strike every living hunter and boss in the hall and kill them outright through the same kill pipeline (`GameScene.onHunterKilled`) a melee kill already uses — corpses, blood, decals and stats all fire normally.
+1. The Count plays `Player.playSpecialAttackAnim` — the rear-up-and-roar pose Romi drew first, which the bite replaced as the regular attack — alone, for `summonMs` (500ms), so it reads as summoning something rather than the strike itself.
+2. A hard screen flash fires as "the lightning arriving," then the hall darkens by `WRATH.screenDarkenAlpha` (~18%) for the rest of the Ultimate's duration — noticeably dimmer, nowhere near the pause menu's near-black.
+3. `WRATH.batCount` (30) bats launch out of individual dark purple/black particle bursts and swirl the WHOLE hall — the swirl's x/y amplitudes match the arena's actual half-width/half-height rather than a circle bounded by the shorter dimension — each with a staggered, pitch/volume-varied flap sound (`AUDIO.batDashSound`'s `variance`). Rather than fading in place, each peels off toward one of the three wall windows (`WINDOW_X_CENTERS`, exported from `CastleMap`) and shrinks into it.
+4. Together with the bats, lightning bolts strike every living hunter and boss in the hall and kill them outright through the same kill pipeline (`GameScene.onHunterKilled`) a melee kill already uses — corpses, blood, decals and stats all fire normally.
 
-`WRATH.target` (60) is a first estimate derived from the game's own blood-quota curve, not measured run data — tune it once real totals are available.
+`WRATH.target` (100) is a first estimate derived from the game's own blood-quota curve, not measured run data — tune it once real totals are available.
 
 ## Round pressure
 
