@@ -554,13 +554,20 @@ export class GameScene extends Phaser.Scene {
    */
   private playOpeningCinematic(): void {
     this.hud = new HUD(this, this.emitter, this.isTouch);
-    this.hud.animateIn();
 
     const bloodTarget = bloodTargetForNight(1);
     let blood = bloodTarget - COLD_OPEN.bloodlets;
 
+    // The scripted numbers, right away — otherwise the bars show their true
+    // construction-time values (HP full, glowing; Blood empty) for the gap
+    // before the "real" event below arrives, which reads as a wrong flash.
+    this.hud.primeHealthAndBlood(CINEMATIC.startHealth, PLAYER.maxHealth, blood, bloodTarget);
+    this.hud.animateIn();
+
     // Held until animateIn's alpha tween is done: the low-health flash drives
     // the same alpha, and starting both at once leaves them fighting over it.
+    // The numbers themselves already match (primeHealthAndBlood, above) — this
+    // is only what turns the low-health flash on cleanly, after the entrance.
     this.time.delayedCall(600, () => {
       this.emitter.emit(EVENTS.PLAYER_DAMAGED, CINEMATIC.startHealth, PLAYER.maxHealth);
       this.emitter.emit(EVENTS.BLOOD_CHANGED, blood, bloodTarget);

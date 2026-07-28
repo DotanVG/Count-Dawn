@@ -534,18 +534,19 @@ export class HUD {
   }
 
   /**
-   * Victory beat: the blood meter drains into the health bar — HP fills as
-   * blood empties, green/red particles streaming at each bar, plus a
-   * literal ribbon of blood flying the width of the screen between them (see
-   * flyBloodToHealth) so the drain and the fill read as one cause and effect
-   * rather than two unconnected sparks at opposite corners.
+   * Victory beat: the blood meter drains into the health bar first — HP
+   * fills as blood empties, a literal ribbon flying the width of the screen
+   * between them (flyBloodRibbon) so the drain and the fill read as one
+   * cause and effect. ONLY once that phase ends does a second phase begin,
+   * sending a second ribbon (and the blood still draining) into the Wrath
+   * bar instead — sequential, not simultaneous, because that is the actual
+   * rule: the pool heals him first, and Wrath only ever sees what's left
+   * over once healing is done, never blood that hasn't been "spent" yet.
    *
    * Healing is no longer an unconditional top-off: `healthRatioEnd` is
    * whatever GameScene's computeOvernightTransfer actually worked out, which
-   * can land short of 1 if the night's blood pool wasn't enough. Whatever
-   * that pool has left over after healing (`wrathGain`, raw blood) drains
-   * into the Wrath bar in the same continuous motion — not a separate
-   * instant snap once the tween finishes.
+   * can land short of 1 if the night's blood pool wasn't enough — and in
+   * that case there is no leftover for Wrath, so the second phase never runs.
    */
   playCoffinTransfer(
     bloodRatio: number,
@@ -555,7 +556,9 @@ export class HUD {
     wrathGain: number,
     onComplete: () => void,
   ): void {
-    const duration = 1300;
+    const healthDuration = 800;
+    const wrathDuration = wrathGain > 0 ? 700 : 0;
+    const totalDuration = healthDuration + wrathDuration;
 
     // He made it, so the clock stops panicking the moment the lid shuts: the
     // night winding back up reads white and calm, not red and doomed.
@@ -565,8 +568,6 @@ export class HUD {
     this.timerText.setAngle(0);
     this.timerText.setPosition(this.timerHome.x, this.timerHome.y);
     this.scene.tweens.add({ targets: this.vignette, alpha: 0, duration: 300 });
-
-    this.flyBloodToHealth(duration);
 
     // wrathGain is raw BLOOD, not Wrath points — it has to go through the same
     // WRATH.bloodPerPoint conversion gainWrath applies, or this tween visibly
@@ -580,82 +581,134 @@ export class HUD {
       1,
     );
 
+    // Phase one's ribbon starts immediately; phase two's (if there is one)
+    // only spawns once phase one's whole duration has actually elapsed —
+    // otherwise its droplets would sit motionless at the blood bar for the
+    // entire first phase instead of only appearing once it's their turn.
+    this.flyBloodRibbon(() => this.healthBarEdge, healthDuration, [0xc41e2f, 0xff4d4d, 0xff8f9a]);
+    if (wrathDuration > 0) {
+      this.scene.time.delayedCall(healthDuration, () => {
+        this.flyBloodRibbon(() => this.wrathBarEdge, wrathDuration, [0xffd23d, 0x9d6bff, 0x241830]);
+      });
+    }
+
     // The health puffs are re-tinted every burst rather than once up front:
     // the bar climbs through red into orange into green over this tween, and
-    // a fixed tint would have left red motes landing on a green bar.
+    // a fixed tint would have left red motes landing on a green bar. Which
+    // bar bursts follows the same phase the ribbons are in.
+    const streamStart = this.scene.time.now;
     const stream = this.scene.time.addEvent({
       delay: 90,
       loop: true,
       callback: () => {
-        this.hpParticles.setParticleTint(healthColor(this.healthRatio));
-        this.hpParticles.explode(5, this.healthBarEdge.x, this.healthBarEdge.y);
+        const elapsed = this.scene.time.now - streamStart;
         this.bloodParticles.explode(5, this.bloodBarEdge.x, this.bloodBarEdge.y);
-        // wrathMotes, not bloodParticles' fixed red — Wrath reads gold/purple
-        // everywhere else, and a red puff at its bar would look like a mistake.
-        if (wrathGain > 0) this.wrathMotes.explode(4, this.wrathBarEdge.x, this.wrathBarEdge.y);
+        if (elapsed < healthDuration) {
+          this.hpParticles.setParticleTint(healthColor(this.healthRatio));
+          this.hpParticles.explode(5, this.healthBarEdge.x, this.healthBarEdge.y);
+        } else if (wrathDuration > 0) {
+          // wrathMotes, not bloodParticles' fixed red — Wrath reads gold/purple
+          // everywhere else, and a red puff at its bar would look like a mistake.
+          this.wrathMotes.explode(4, this.wrathBarEdge.x, this.wrathBarEdge.y);
+        }
       },
     });
 
+    // Blood drains continuously across BOTH phases (it is one pool being
+    // spent twice over, not two separate pools), while the night's clock
+    // winds back up alongside it.
     this.scene.tweens.addCounter({
       from: 0,
       to: 1,
-      duration,
+      duration: totalDuration,
       ease: 'Sine.easeInOut',
       onUpdate: (tween) => {
         const t = tween.getValue() ?? 0;
         this.bloodBarFill.width = BAR_W * bloodRatio * (1 - t);
-        this.healthRatio = Phaser.Math.Linear(healthRatioStart, healthRatioEnd, t);
-        this.healthBarFill.width = BAR_W * this.healthRatio;
-        this.healthBarFill.setFillStyle(healthColor(this.healthRatio));
-        this.wrathBarFill.width = WRATH_BAR_W * Phaser.Math.Linear(wrathBeforeRatio, wrathAfterRatio, t);
-
-        // The night refills as he sleeps: the clock winds back up to a full
-        // night, popping as it climbs, alongside the bars.
         const seconds = Math.round(Phaser.Math.Linear(fromSeconds, NIGHT.durationSeconds, t));
         this.timerText.setText(this.format(seconds));
         this.timerText.setScale(1 + 0.14 * Math.abs(Math.sin(t * Math.PI * 5)));
       },
+    });
+
+    const finish = (): void => {
+      stream.remove();
+      this.setBloodFullGlow(false);
+      this.bloodText.setText('Blood spent');
+      // Reuses setHealth's own logic for text/colour/low-health-flash/full-glow
+      // against the REAL final ratio — which, unlike before, is not always 1.
+      this.setHealth(PLAYER.maxHealth * healthRatioEnd, PLAYER.maxHealth);
+      if (wrathDuration > 0) this.setWrath(wrathAfterRatio * WRATH.target, WRATH.target);
+      this.timerText.setText(this.format(NIGHT.durationSeconds));
+      // One last big pop as the clock lands on a full night.
+      this.scene.tweens.add({
+        targets: this.timerText,
+        scale: { from: 1.6, to: 1 },
+        duration: 420,
+        ease: 'Back.easeOut',
+      });
+      onComplete();
+    };
+
+    // Phase one: health, 0..healthDuration.
+    this.scene.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: healthDuration,
+      ease: 'Sine.easeInOut',
+      onUpdate: (tween) => {
+        const t = tween.getValue() ?? 0;
+        this.healthRatio = Phaser.Math.Linear(healthRatioStart, healthRatioEnd, t);
+        this.healthBarFill.width = BAR_W * this.healthRatio;
+        this.healthBarFill.setFillStyle(healthColor(this.healthRatio));
+      },
       onComplete: () => {
-        stream.remove();
-        this.setBloodFullGlow(false);
-        this.bloodText.setText('Blood spent');
-        // Reuses setHealth's own logic for text/colour/low-health-flash/full-glow
-        // against the REAL final ratio — which, unlike before, is not always 1.
-        this.setHealth(PLAYER.maxHealth * healthRatioEnd, PLAYER.maxHealth);
-        if (wrathGain > 0) this.setWrath(wrathAfterRatio * WRATH.target, WRATH.target);
-        this.timerText.setText(this.format(NIGHT.durationSeconds));
-        // One last big pop as the clock lands on a full night.
-        this.scene.tweens.add({
-          targets: this.timerText,
-          scale: { from: 1.6, to: 1 },
-          duration: 420,
-          ease: 'Back.easeOut',
-        });
-        onComplete();
+        if (wrathDuration === 0) finish();
       },
     });
+
+    // Phase two: Wrath, starting only once phase one's full duration is up.
+    if (wrathDuration > 0) {
+      this.scene.time.delayedCall(healthDuration, () => {
+        this.scene.tweens.addCounter({
+          from: 0,
+          to: 1,
+          duration: wrathDuration,
+          ease: 'Sine.easeInOut',
+          onUpdate: (tween) => {
+            const t = tween.getValue() ?? 0;
+            this.wrathBarFill.width = WRATH_BAR_W * Phaser.Math.Linear(wrathBeforeRatio, wrathAfterRatio, t);
+          },
+          onComplete: finish,
+        });
+      });
+    }
   }
 
   /**
-   * Three droplets on a swirling path from the blood bar to the health bar —
-   * the same beat GameScene's hopBloodToHealth plays for a mid-round overflow
-   * pickup, reused here so a night ending explains itself the same way: this
-   * IS the blood he drank, arriving as health.
+   * Three droplets on a swirling path from the blood bar to WHICHEVER bar
+   * `toGetter` points at — the same beat GameScene's hopBloodToHealth plays
+   * for a mid-round overflow pickup, generalised so a night ending can send
+   * it to the health bar first and, once that's spent, to the Wrath bar
+   * next, both reading as "this IS the blood, arriving," not just the one
+   * destination the health-only version used to serve.
    */
-  private flyBloodToHealth(duration: number): void {
-    // Read live, not captured once: the blood bar is draining and the health
-    // bar is filling for this whole duration (the counter tween above drives
-    // both), so the ribbon's ends have to track the same moving edges rather
-    // than the bars' fixed midpoint anchors.
+  private flyBloodRibbon(
+    toGetter: () => { x: number; y: number },
+    duration: number,
+    tint: number[],
+  ): void {
+    // Read live, not captured once: the blood bar is draining and the
+    // destination bar is filling for this whole duration, so the ribbon's
+    // ends have to track the same moving edges rather than fixed points.
     const from = (): { x: number; y: number } => this.bloodBarEdge;
-    const to = (): { x: number; y: number } => this.healthBarEdge;
 
     const trail = this.scene.add
       .particles(0, 0, TEXTURES.particle, {
         speed: { min: 10, max: 50 },
         lifespan: { min: 260, max: 520 },
         scale: { start: 0.9, end: 0 },
-        tint: [0xc41e2f, 0xff4d4d, 0xff8f9a],
+        tint,
         emitting: false,
       })
       .setDepth(DEPTHS.hud + 2);
@@ -682,7 +735,7 @@ export class HUD {
           const t = tween.getValue() ?? 0;
           const taper = Math.sin(t * Math.PI);
           const a = from();
-          const b = to();
+          const b = toGetter();
           const x = Phaser.Math.Linear(a.x, b.x, t);
           const y = Phaser.Math.Linear(a.y, b.y, t) + Math.sin(t * Math.PI * 3 + phase) * swirl * taper;
           droplet.setPosition(x, y).setScale(0.8 - 0.3 * t);
@@ -796,6 +849,29 @@ export class HUD {
 
   private onBloodChanged(current: number, target: number): void {
     this.setBlood(current, target);
+  }
+
+  /**
+   * Sets the health and blood bars' NUMBERS straight away, with none of
+   * setHealth/setBlood's side effects (the low-health flash, either bar's
+   * full-glow ring) — those still need to wait for animateIn's own entrance
+   * tween to finish, since both would otherwise animate the same bars'
+   * alpha at once and visibly fight over it. For the cold open: without this
+   * the bars show their true construction-time values (HP full, Blood 0) for
+   * the ~600ms gap before the scripted low-health numbers arrive, which reads
+   * as a wrong flash rather than "he already came home hurt" — worse now
+   * that a full health bar also glows.
+   */
+  primeHealthAndBlood(health: number, maxHealth: number, blood: number, bloodTarget: number): void {
+    const healthRatio = Phaser.Math.Clamp(health / maxHealth, 0, 1);
+    this.healthRatio = healthRatio;
+    this.healthBarFill.width = BAR_W * healthRatio;
+    this.healthBarFill.setFillStyle(healthColor(healthRatio));
+    this.healthText.setText(`HP ${Math.round(health)}/${maxHealth}`);
+
+    const bloodRatio = Phaser.Math.Clamp(blood / bloodTarget, 0, 1);
+    this.bloodBarFill.width = BAR_W * bloodRatio;
+    this.bloodText.setText(`Blood ${Math.min(blood, bloodTarget)}/${bloodTarget}`);
   }
 
   private setHealth(current: number, max: number): void {
