@@ -100,6 +100,8 @@ export class Priest extends Hunter implements CaptainTraits {
     private readonly emitter: GameEventEmitter,
     /** Overridable so the cold open can march him at the squad's pace instead of his own. */
     stats: HunterStats = PRIEST,
+    /** False for the cold open's scenery Priest — he is dressing, not a fight the player tracks. */
+    showHealthBar: boolean = true,
   ) {
     super(scene, x, y, stats, PRIEST_LOOK);
     this.setScale(PRIEST.spriteScale);
@@ -109,6 +111,7 @@ export class Priest extends Hunter implements CaptainTraits {
     this.normalDepth = DEPTHS.boss;
     this.setDepth(DEPTHS.boss);
     this.healthBar = new BossHealthBar(scene, this.bossName);
+    if (!showHealthBar) this.healthBar.suppress();
     this.nextWardAt = scene.time.now + PRIEST.wardIntervalMs;
   }
 

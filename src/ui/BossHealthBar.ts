@@ -16,6 +16,8 @@ const HEAD_GAP = 3;
 export class BossHealthBar {
   private container: Phaser.GameObjects.Container;
   private fill: Phaser.GameObjects.Rectangle;
+  /** Set by suppress() — a cutscene actor that should show no boss UI at all. */
+  private suppressed = false;
 
   constructor(scene: Phaser.Scene, label: string) {
     const bg = scene.add.rectangle(0, 0, BAR_WIDTH, 10, 0x000000, 0.7).setOrigin(0.5);
@@ -44,11 +46,24 @@ export class BossHealthBar {
    * empty padding above the head, which is what left the bar floating.
    */
   follow(x: number, visibleTopY: number): void {
+    if (this.suppressed) return;
     this.container.setPosition(x, visibleTopY - HEAD_GAP - 5).setVisible(true);
   }
 
   setRatio(ratio: number): void {
+    if (this.suppressed) return;
     this.fill.width = (BAR_WIDTH - 4) * Phaser.Math.Clamp(ratio, 0, 1);
+  }
+
+  /**
+   * Permanently hides this bar and stops follow()/setRatio() from ever
+   * showing it again — for cutscene actors (the cold open's scenery Priest)
+   * that should carry no boss UI at all, since they are dressing, not a
+   * fight the player is meant to track.
+   */
+  suppress(): void {
+    this.suppressed = true;
+    this.container.setVisible(false);
   }
 
   destroy(): void {

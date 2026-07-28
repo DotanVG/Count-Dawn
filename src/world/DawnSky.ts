@@ -55,14 +55,39 @@ const SUN_UP = { from: 0.44, to: 1.0 };
 /** The moon is up across midnight, so its span wraps past 1 back to 0. */
 const MOON_UP = { from: 1.0, to: 1.5 };
 
+/**
+ * How far below the horizon a body sinks (or, symmetrically, starts from)
+ * at either end of its arc, and over what fraction of the arc that extra
+ * drop plays out.
+ *
+ * DROP_ZONE is wider than FADE_ZONE and runs first: the body spends most of
+ * the closing (or opening) sliver of its arc sinking below the window's
+ * visible opening at FULL alpha, and only fades once it is already mostly
+ * hidden there — which is what makes it disappear (or appear) below the
+ * sill instead of fading out while still framed inside the opening. The sun
+ * used to fade to alpha 0 with its centre sitting exactly on HORIZON_Y,
+ * which is still inside the window's transparent cut-out — visibly fading
+ * out mid-air rather than setting.
+ */
+const SET_DROP = 46;
+const DROP_ZONE = 0.08;
+const FADE_ZONE = 0.025;
+
 /** Position along a rising-and-setting arc for t in 0..1, plus a visibility fade. */
 function arcPoint(t: number): { x: number; y: number; alpha: number; lift: number } {
-  const lift = Math.sin(Phaser.Math.Clamp(t, 0, 1) * Math.PI);
+  const clamped = Phaser.Math.Clamp(t, 0, 1);
+  const lift = Math.sin(clamped * Math.PI);
+  // Distance from whichever edge (0 or 1) is nearer — 0 at either edge, 0.5
+  // mid-arc — so the same formula handles the rise (near t=0) and the set
+  // (near t=1) symmetrically.
+  const edgeT = Math.min(clamped, 1 - clamped);
+  const dropFrac = Phaser.Math.Clamp(1 - edgeT / DROP_ZONE, 0, 1);
   return {
     x: Phaser.Math.Linear(ARC_LEFT, ARC_RIGHT, t),
-    y: HORIZON_Y - lift * (HORIZON_Y - PEAK_Y),
-    // Fade through the first and last few percent so nothing pops in mid-air.
-    alpha: Phaser.Math.Clamp(Math.min(t, 1 - t) / 0.05, 0, 1),
+    y: HORIZON_Y - lift * (HORIZON_Y - PEAK_Y) + dropFrac * SET_DROP,
+    // Only fades once well into the drop (FADE_ZONE < DROP_ZONE), so the body
+    // is already below the sill, mostly opaque, before it starts vanishing.
+    alpha: Phaser.Math.Clamp(edgeT / FADE_ZONE, 0, 1),
     lift,
   };
 }

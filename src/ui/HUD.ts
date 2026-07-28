@@ -568,8 +568,17 @@ export class HUD {
 
     this.flyBloodToHealth(duration);
 
+    // wrathGain is raw BLOOD, not Wrath points — it has to go through the same
+    // WRATH.bloodPerPoint conversion gainWrath applies, or this tween visibly
+    // overfills the bar (by exactly bloodPerPoint times too much) and then
+    // GameScene's own gainWrath call snaps it back down to the real value the
+    // instant the transfer completes.
     const wrathBeforeRatio = this.wrathBarFill.width / WRATH_BAR_W;
-    const wrathAfterRatio = Phaser.Math.Clamp(wrathBeforeRatio + wrathGain / WRATH.target, 0, 1);
+    const wrathAfterRatio = Phaser.Math.Clamp(
+      wrathBeforeRatio + wrathGain / WRATH.bloodPerPoint / WRATH.target,
+      0,
+      1,
+    );
 
     // The health puffs are re-tinted every burst rather than once up front:
     // the bar climbs through red into orange into green over this tween, and

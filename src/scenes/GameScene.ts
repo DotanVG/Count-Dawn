@@ -688,7 +688,10 @@ export class GameScene extends Phaser.Scene {
   private createColdOpenActor(actor: ColdOpenActor, x: number, y: number): Hunter {
     switch (actor) {
       case 'priest':
-        return new Priest(this, x, y, this.emitter, COLD_OPEN_PRIEST_STATS);
+        // No health bar or name banner: he is scenery in this squad, not a
+        // fight the player is meant to track — the whole group dies in one
+        // strike seconds later, boss UI included would just be noise.
+        return new Priest(this, x, y, this.emitter, COLD_OPEN_PRIEST_STATS, false);
       case 'thrower':
         return new GarlicThrower(this, x, y, { stats: COLD_OPEN_THROWER_STATS });
       case 'sword':
@@ -811,27 +814,18 @@ export class GameScene extends Phaser.Scene {
         this.coldOpenClock?.remove();
         this.coldOpenClock = null;
 
-        // He sleeps: health refills at a real rate against the night's blood
-        // pool (computeOvernightTransfer — the same math the real transfer
-        // below uses), whatever is left over feeds Wrath, and the clock winds
-        // back up to a full night - all of it WHILE the day passes overhead,
-        // not queued up behind it. He came home at a scripted 12 HP; a
-        // 50-blood pool heals him to 62, with nothing left over for Wrath.
-        const { wrathBlood, newHealth } = this.computeOvernightTransfer(
-          bloodTargetForNight(this.night),
-          CINEMATIC.startHealth,
-        );
-        this.pendingHealthAfterSleep = newHealth;
-        this.hud?.playCoffinTransfer(
-          1,
-          CINEMATIC.startHealth / PLAYER.maxHealth,
-          newHealth / PLAYER.maxHealth,
-          0,
-          wrathBlood,
-          () => {
-            if (wrathBlood > 0) this.gainWrath(wrathBlood);
-          },
-        );
+        // He sleeps: health refills, the blood is spent, the clock winds back
+        // up to a full night - all of it WHILE the day passes overhead, not
+        // queued up behind it. This beat is scripted narrative, not a real
+        // night's economy — he always wakes up whole here, regardless of
+        // computeOvernightTransfer's real-blood-pool math (which the actual
+        // night-to-night transfer below uses); a partial heal on the opening
+        // cutscene would hand the player a wounded night 1 for no readable
+        // reason, and the pool (this night's 50) was never enough to fully
+        // heal 88 missing HP anyway, so applying the real rule here would
+        // ALWAYS shortchange him.
+        this.pendingHealthAfterSleep = PLAYER.maxHealth;
+        this.hud?.playCoffinTransfer(1, CINEMATIC.startHealth / PLAYER.maxHealth, 1, 0, 0, () => {});
         this.playDayCycle(2200, () => {
           this.hud?.resetForNewRound(bloodTargetForNight(this.night));
           this.riseFromCoffin(() => this.startPlaying());
@@ -1533,15 +1527,29 @@ export class GameScene extends Phaser.Scene {
     const windowY = WINDOW_Y + Phaser.Math.Between(-20, 20);
     bat.setFlipX(windowX < bat.x);
 
+    // Two phases, not one: the bat flies the WHOLE way at full size and full
+    // alpha — still flapping (ANIMS.batFly keeps looping; nothing here stops
+    // it) — and only shrinks/fades in a short burst once it has actually
+    // arrived. One combined tween (position + scale + alpha together) faded
+    // it out gradually across the entire flight, which read as vanishing well
+    // before it reached the window rather than flying there and going small.
     this.tweens.add({
       targets: bat,
       x: windowX,
       y: windowY,
-      scale: bat.scaleX * 0.15,
-      alpha: 0,
       duration: Phaser.Math.Between(550, 850),
-      ease: 'Sine.easeIn',
-      onComplete: () => bat.destroy(),
+      ease: 'Sine.easeInOut',
+      onComplete: () => {
+        if (!bat.active) return;
+        this.tweens.add({
+          targets: bat,
+          scale: bat.scaleX * 0.15,
+          alpha: 0,
+          duration: 220,
+          ease: 'Quad.easeIn',
+          onComplete: () => bat.destroy(),
+        });
+      },
     });
   }
 
