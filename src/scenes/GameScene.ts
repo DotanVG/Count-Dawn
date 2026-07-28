@@ -553,7 +553,7 @@ export class GameScene extends Phaser.Scene {
    * actual night afterwards regardless.
    */
   private playOpeningCinematic(): void {
-    this.hud = new HUD(this, this.emitter);
+    this.hud = new HUD(this, this.emitter, this.isTouch);
     this.hud.animateIn();
 
     const bloodTarget = bloodTargetForNight(1);
@@ -951,7 +951,7 @@ export class GameScene extends Phaser.Scene {
     // The opening cinematic builds the HUD early (it needs the bars on screen
     // to tell its story), so only create one here if it isn't already up.
     if (!this.hud) {
-      this.hud = new HUD(this, this.emitter);
+      this.hud = new HUD(this, this.emitter, this.isTouch);
       this.hud.animateIn();
     }
 
@@ -1411,9 +1411,6 @@ export class GameScene extends Phaser.Scene {
     this.hud?.setWrath(0, WRATH.target);
     this.touch?.setUltimateAvailable(false);
 
-    this.player.playSpecialAttackAnim();
-    this.cameras.main.shake(160, 0.006);
-
     this.tweens.add({
       targets: this.ultDarkenOverlay,
       alpha: WRATH.screenDarkenAlpha,
@@ -1425,9 +1422,22 @@ export class GameScene extends Phaser.Scene {
       },
     });
 
-    this.spawnBatSwarm();
-    // The strike lands a beat into the pose, not on its very first frame.
-    this.time.delayedCall(320, () => this.lightningKillAll());
+    // Beat one: the pose plays ALONE — it has to read as summoning something,
+    // not as the strike itself, so nothing else happens until it has had a
+    // moment on screen.
+    this.player.playSpecialAttackAnim();
+
+    const summonMs = 500;
+    this.time.delayedCall(summonMs, () => {
+      // Beat two: the lightning arrives — a hard flash, on its own, before
+      // anything else moves.
+      this.cameras.main.flash(220, 220, 200, 255);
+      this.cameras.main.shake(160, 0.006);
+
+      // Beat three: the payoff. Bats and the kill land together.
+      this.spawnBatSwarm();
+      this.time.delayedCall(140, () => this.lightningKillAll());
+    });
   }
 
   /**
@@ -1542,7 +1552,8 @@ export class GameScene extends Phaser.Scene {
    * stats), just fired for the whole roster at once rather than one target.
    */
   private lightningKillAll(): void {
-    this.cameras.main.flash(260, 220, 200, 255);
+    // The arrival flash already fired in fireUltimate — this is the impact,
+    // a beat later and heavier: the strike itself, not the lightning showing up.
     this.cameras.main.shake(420, 0.01);
 
     const targets = this.getAttackTargets().filter((t) => t.active && t.isAlive);

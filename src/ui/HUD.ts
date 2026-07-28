@@ -157,6 +157,8 @@ export class HUD {
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly emitter: Phaser.Events.EventEmitter,
+    /** Desktop gets a "Press SPACE" hint on a full Wrath bar; mobile has the ⚡ button instead. */
+    private readonly isTouch: boolean = false,
   ) {
     // Sunrise timer — centered in the middle sky window.
     this.timerText = scene.add
@@ -886,7 +888,13 @@ export class HUD {
   setWrath(current: number, target: number): void {
     const ratio = Phaser.Math.Clamp(current / target, 0, 1);
     this.wrathBarFill.width = WRATH_BAR_W * ratio;
-    this.wrathText.setText(ratio >= 1 ? 'WRATH READY' : `Wrath ${Math.floor(current)}/${target}`);
+    if (ratio >= 1) {
+      // Mobile already shows a dedicated ⚡ button; desktop has no equivalent
+      // on-screen control, so the bar's own text carries the prompt instead.
+      this.wrathText.setText(this.isTouch ? 'WRATH READY' : 'WRATH READY — Press SPACE');
+    } else {
+      this.wrathText.setText(`Wrath ${Math.floor(current)}/${target}`);
+    }
     this.setWrathFullGlow(ratio >= 1);
   }
 
