@@ -72,7 +72,7 @@ Mobile requires landscape; a rotate prompt appears in portrait.
 
 ## Player-Facing Features
 
-- Wordless **cold open** that teaches the loop: the Count comes home nearly dead, takes the squad that followed him in, drinks his fill, and sleeps off a day.
+- Wordless **cold open** that teaches the loop: the Count comes home nearly dead through the middle window, the whole cast of what hunts him closes in from every side, and he answers with the Ultimate itself — lightning and a bat swarm wiping the ring in one demonstrated cast — before drinking his fill and sleeping off a day.
 - **Lightning title gag** on the menu — the cover rests on COUNT DAWN, a storm flash stutters it onto COUNT DOWN, and another knocks it back.
 - **Seamless night cycle** with no screen in between: coffin, blood-to-health transfer, sunrise, a full day, and the next night's moon rising over the hall.
 - Living sky behind the windows — night gradient, twinkling stars, a sun that rises into the middle window and fully sets into the right one, and a moon that carries a real lunar phase per night.
