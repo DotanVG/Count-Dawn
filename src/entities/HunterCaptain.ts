@@ -6,7 +6,7 @@ import type { CharacterKey, Dir4 } from '../utils/assetKeys';
 import { BossHealthBar } from '../ui/BossHealthBar';
 import { ArmedHunter } from './ArmedHunter';
 import { BossCharge } from './BossCharge';
-import { Hunter, PILGRIM_LOOK, type HunterLook } from './Hunter';
+import { Hunter, PILGRIM_LOOK, type HunterLook, type HunterStats } from './Hunter';
 
 /** Tint that separates the Captain from his men (dark blood-red armor look). */
 export const CAPTAIN_TINT = 0xff9a7a;
@@ -86,12 +86,17 @@ export class HunterCaptain extends ArmedHunter implements CaptainTraits {
     private readonly emitter: GameEventEmitter,
     look: HunterLook = PILGRIM_LOOK,
     weapon: WeaponKind = 'pitchfork',
+    /** Overridable so the cold open can march him at the squad's pace instead of his own. */
+    stats: HunterStats = BOSS,
+    /** False for the cold open's scenery Captains — they are dressing, not a fight the player tracks. */
+    showHealthBar: boolean = true,
   ) {
-    super(scene, x, y, weapon, look, BOSS, BOSS.spriteScale);
+    super(scene, x, y, weapon, look, stats, BOSS.spriteScale);
     this.normalDepth = DEPTHS.boss;
     this.applyBaseTint();
     this.bossName = CAPTAIN_NAMES[look.charKey] ?? 'Hunter Captain';
     this.healthBar = new BossHealthBar(scene, this.bossName);
+    if (!showHealthBar) this.healthBar.suppress();
   }
 
   protected override applyBaseTint(): void {

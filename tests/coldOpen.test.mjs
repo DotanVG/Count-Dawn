@@ -3,19 +3,21 @@ import assert from 'node:assert/strict';
 
 import {
   COLD_OPEN,
-  COLD_OPEN_GROUP,
+  COLD_OPEN_CAPTAIN_STATS,
+  COLD_OPEN_CENTER,
   COLD_OPEN_MARCH_SPEED,
-  COLD_OPEN_STRIKE_SPOT,
+  COLD_OPEN_PRIEST_STATS,
   COLD_OPEN_THROWER_STATS,
-  coldOpenHunterSlot,
+  coldOpenRingSlot,
+  coldOpenSlotActor,
   coldOpenSlotIsThrower,
   coldOpenTimerSeconds,
   coldOpenSkyProgress,
 } from '../src/systems/coldOpen.ts';
-import { HUNTER, THROWER } from '../src/data/balance.ts';
-import { ARENA } from '../src/game/constants.ts';
+import { BOSS, HUNTER, PRIEST, THROWER } from '../src/data/balance.ts';
+import { ARENA, GAME_WIDTH, GAME_HEIGHT } from '../src/game/constants.ts';
 
-test('the cold open clock opens on the full ten seconds', () => {
+test('the cold open clock opens on the full countdown', () => {
   assert.equal(coldOpenTimerSeconds(0), COLD_OPEN.startSeconds);
 });
 
@@ -33,7 +35,7 @@ test('the clock never reaches zero, at any elapsed time', () => {
   // ...and well past it, which is where a slow or backgrounded machine ends
   // up: tab throttling can hand the scene one enormous delta, and the scene
   // must still not show the Count being caught by the sunrise.
-  for (const ms of [COLD_OPEN.coffinShutMs + 1, 10_000, 60_000, 3_600_000, Number.MAX_SAFE_INTEGER]) {
+  for (const ms of [COLD_OPEN.coffinShutMs + 1, 20_000, 60_000, 3_600_000, Number.MAX_SAFE_INTEGER]) {
     assert.equal(coldOpenTimerSeconds(ms), COLD_OPEN.minSeconds, `at ${ms}ms`);
   }
 });
@@ -47,18 +49,27 @@ test('the clock only ever counts down', () => {
   }
 });
 
+test('the clock counts down in real lockstep, not faster than elapsed time', () => {
+  // One displayed second per 1000ms elapsed - the whole point of the fix:
+  // the clock used to run noticeably faster than a real clock beside it.
+  const span = COLD_OPEN.startSeconds - COLD_OPEN.minSeconds;
+  const rate = span / COLD_OPEN.coffinShutMs; // displayed-seconds per ms
+  assert.ok(
+    Math.abs(rate - 1 / 1000) < 1e-9,
+    `clock runs at ${(rate * 1000).toFixed(3)}x real time, not 1.0x`,
+  );
+});
+
 test('the beats stage in the order the scene needs them', () => {
-  // He is on his feet before he speaks, and the hunters are already on their
-  // way in by then - they have the longest walk of anything in the scene.
+  // He is on his feet before he speaks, and the ring is already closing in by
+  // then - some of them have the longest walk of anything in the scene.
   assert.ok(COLD_OPEN.huntersInMs < COLD_OPEN.lineStartMs);
   assert.ok(COLD_OPEN.flyInMs <= COLD_OPEN.lineStartMs);
-
-  // He crosses to the group and has LANDED before he swings at it.
-  assert.ok(COLD_OPEN.lineStartMs < COLD_OPEN.toGroupMs);
-  assert.ok(
-    COLD_OPEN.toGroupMs + COLD_OPEN.groupFlightMs <= COLD_OPEN.strikeMs,
-    'the strike lands while he is still crossing the hall',
-  );
+  // The line is gone (or forcibly cleared) before the demo fires.
+  assert.ok(COLD_OPEN.lineStartMs < COLD_OPEN.demoMs);
+  // The kill lands after the summon pose and the flash, and before blood starts.
+  const killAt = COLD_OPEN.demoMs + COLD_OPEN.demoSummonMs + COLD_OPEN.demoStrikeMs;
+  assert.ok(killAt <= COLD_OPEN.bloodStartMs, 'blood starts flying before the kill lands');
 
   // The last bloodlet has to arrive before he leaves for the coffin, or the
   // meter would still be filling while he is already asleep.
@@ -66,14 +77,13 @@ test('the beats stage in the order the scene needs them', () => {
     COLD_OPEN.bloodStartMs +
     (COLD_OPEN.bloodlets - 1) * COLD_OPEN.bloodletStaggerMs +
     COLD_OPEN.bloodletFlightMs;
-  assert.ok(COLD_OPEN.strikeMs <= COLD_OPEN.bloodStartMs);
   assert.ok(lastBloodletAt <= COLD_OPEN.toCoffinMs, `bloodlets still arriving at ${lastBloodletAt}ms`);
 
   // And the flight has to actually be over when the lid shuts.
   assert.equal(COLD_OPEN.toCoffinMs + COLD_OPEN.coffinFlightMs, COLD_OPEN.coffinShutMs);
 });
 
-test('the whole cold open fits inside its ten seconds', () => {
+test('the whole cold open fits inside its own countdown', () => {
   assert.ok(
     COLD_OPEN.coffinShutMs <= COLD_OPEN.startSeconds * 1000,
     `cold open runs ${COLD_OPEN.coffinShutMs}ms against a ${COLD_OPEN.startSeconds}s clock`,
@@ -91,78 +101,117 @@ test('the sky reaches the edge of sunrise but never dawn', () => {
   assert.ok(coldOpenSkyProgress(999_999) < 1);
 });
 
-test('every hunter is standing in place before the strike lands', () => {
-  // They walk in at an ordinary hunter's pace and the strike does not wait.
-  // This margin is thin by design - the scene has ten seconds - so it is
-  // asserted rather than eyeballed.
+test('every actor is standing in its ring slot before the Ultimate demo fires', () => {
+  // They walk in at the ring's marching pace and the demo does not wait.
+  // This margin is asserted rather than eyeballed, same as the old block
+  // formation's version of this test.
   for (let i = 0; i < COLD_OPEN.hunterCount; i++) {
-    const { spawn, arrival } = coldOpenHunterSlot(i);
+    const { spawn, arrival } = coldOpenRingSlot(i, COLD_OPEN.hunterCount);
     const distance = Math.hypot(spawn.x - arrival.x, spawn.y - arrival.y);
     const inPlaceAt = COLD_OPEN.huntersInMs + (distance / COLD_OPEN_MARCH_SPEED) * 1000;
     assert.ok(
-      inPlaceAt <= COLD_OPEN.strikeMs,
-      `hunter ${i} is still walking at the strike (in place at ${Math.round(inPlaceAt)}ms)`,
+      inPlaceAt <= COLD_OPEN.demoMs,
+      `actor ${i} (${coldOpenSlotActor(i)}) is still walking at the demo (in place at ${Math.round(inPlaceAt)}ms)`,
     );
   }
 });
 
-test('the hunters stand inside the hall, and enter from behind the wall', () => {
+test('the ring stands inside the hall, and every actor enters from off-canvas', () => {
   for (let i = 0; i < COLD_OPEN.hunterCount; i++) {
-    const { spawn, arrival } = coldOpenHunterSlot(i);
-    assert.ok(arrival.x > ARENA.left && arrival.x < ARENA.right, `hunter ${i} stands outside the hall`);
-    assert.ok(arrival.y > ARENA.top && arrival.y < ARENA.bottom, `hunter ${i} stands outside the hall`);
-    // Off the playfield to start, so they walk into view instead of appearing.
-    assert.ok(spawn.x > ARENA.right, `hunter ${i} pops into the open hall`);
+    const { spawn, arrival } = coldOpenRingSlot(i, COLD_OPEN.hunterCount);
+    assert.ok(arrival.x > ARENA.left && arrival.x < ARENA.right, `actor ${i} stands outside the hall`);
+    assert.ok(arrival.y > ARENA.top && arrival.y < ARENA.bottom, `actor ${i} stands outside the hall`);
+    // Off the canvas entirely to start (any of the four sides), so each one
+    // walks into view instead of appearing already on screen.
+    const offCanvas = spawn.x < 0 || spawn.x > GAME_WIDTH || spawn.y < 0 || spawn.y > GAME_HEIGHT;
+    assert.ok(offCanvas, `actor ${i} pops into the open hall from (${spawn.x}, ${spawn.y})`);
   }
 });
 
-test('the squad is mixed, with the ranged row standing behind the swords', () => {
-  const slots = [...Array(COLD_OPEN.hunterCount).keys()];
-  const throwers = slots.filter(coldOpenSlotIsThrower);
-  const swords = slots.filter((i) => !coldOpenSlotIsThrower(i));
-
-  // Both types actually turn up - a squad of one kind is not a mixed squad.
-  assert.ok(throwers.length > 0, 'no throwers in the cold open');
-  assert.ok(swords.length > 0, 'no swordsmen in the cold open');
-
-  // And every thrower stands further from the Count than every swordsman, so
-  // the ranged row reads as the back of the block rather than salt scattered
-  // through it.
-  const reach = (i) => coldOpenHunterSlot(i).arrival.x - COLD_OPEN_STRIKE_SPOT.x;
-  const nearestThrower = Math.min(...throwers.map(reach));
-  const furthestSword = Math.max(...swords.map(reach));
-  assert.ok(nearestThrower > furthestSword, 'a thrower is standing in the sword line');
+test('the ring surrounds him from every side, not one flank', () => {
+  // A genuine surround has entrants spread across all four quadrants around
+  // the centre, not clustered into the one corner a single-flank formation
+  // used to enter from.
+  const quadrants = new Set();
+  for (let i = 0; i < COLD_OPEN.hunterCount; i++) {
+    const { spawn } = coldOpenRingSlot(i, COLD_OPEN.hunterCount);
+    const right = spawn.x >= COLD_OPEN_CENTER.x;
+    const below = spawn.y >= COLD_OPEN_CENTER.y;
+    quadrants.add(`${right}-${below}`);
+  }
+  assert.equal(quadrants.size, 4, 'the ring does not reach all four sides of the hall');
 });
 
-test('the whole squad marches at the swordsmen pace, not the throwers own', () => {
-  // The override exists for one reason, so state it: at his own pace a
-  // thrower is still walking when the strike lands.
-  assert.ok(THROWER.moveSpeed < COLD_OPEN_MARCH_SPEED);
+test('the ring is evenly spaced around one shared centre', () => {
+  const radii = [];
+  for (let i = 0; i < COLD_OPEN.hunterCount; i++) {
+    const { arrival } = coldOpenRingSlot(i, COLD_OPEN.hunterCount);
+    radii.push(Math.hypot(arrival.x - COLD_OPEN_CENTER.x, arrival.y - COLD_OPEN_CENTER.y));
+  }
+  for (const r of radii) {
+    assert.ok(Math.abs(r - COLD_OPEN.ringRadius) < 1, `arrival radius ${r} does not match ringRadius`);
+  }
+});
+
+test('the roster includes every kind of enemy the player will actually face', () => {
+  const kinds = new Set();
+  for (let i = 0; i < COLD_OPEN.hunterCount; i++) kinds.add(coldOpenSlotActor(i));
+  for (const expected of [
+    'priest',
+    'pilgrim',
+    'huntress',
+    'spike',
+    'pitchfork',
+    'torch',
+    'thrower',
+    'hunterCaptain',
+    'garlicCaptain',
+    'crossCaptain',
+  ]) {
+    assert.ok(kinds.has(expected), `roster is missing ${expected}`);
+  }
+});
+
+test('the roster is mixed: both melee and ranged flavours actually turn up', () => {
+  const slots = [...Array(COLD_OPEN.hunterCount).keys()];
+  const throwers = slots.filter(coldOpenSlotIsThrower);
+  const others = slots.filter((i) => !coldOpenSlotIsThrower(i));
+  assert.ok(throwers.length > 0, 'no ranged actors in the cold open');
+  assert.ok(others.length > 0, 'no melee actors in the cold open');
+});
+
+test('the whole ring marches at one shared pace, not any flavour own', () => {
+  // The override exists for one reason, so state it for every overridden
+  // flavour: at its own pace it is still walking when the demo fires.
   assert.equal(COLD_OPEN_MARCH_SPEED, HUNTER.moveSpeed);
+
+  assert.ok(THROWER.moveSpeed < COLD_OPEN_MARCH_SPEED);
   assert.equal(COLD_OPEN_THROWER_STATS.moveSpeed, COLD_OPEN_MARCH_SPEED);
-  // Everything else about him is untouched - this is a cutscene actor, not a
-  // rebalanced enemy.
   assert.equal(COLD_OPEN_THROWER_STATS.health, THROWER.health);
   assert.equal(COLD_OPEN_THROWER_STATS.contactDamage, THROWER.contactDamage);
 
-  for (const i of [...Array(COLD_OPEN.hunterCount).keys()].filter(coldOpenSlotIsThrower)) {
-    const { spawn, arrival } = coldOpenHunterSlot(i);
-    const distance = Math.hypot(spawn.x - arrival.x, spawn.y - arrival.y);
-    const atOwnPace = COLD_OPEN.huntersInMs + (distance / THROWER.moveSpeed) * 1000;
-    assert.ok(
-      atOwnPace > COLD_OPEN.strikeMs,
-      `thrower ${i} would have made it anyway - the speed override is dead weight`,
-    );
-  }
-});
+  assert.ok(PRIEST.moveSpeed < COLD_OPEN_MARCH_SPEED);
+  assert.equal(COLD_OPEN_PRIEST_STATS.moveSpeed, COLD_OPEN_MARCH_SPEED);
+  assert.equal(COLD_OPEN_PRIEST_STATS.health, PRIEST.health);
 
-test('the block is filled, with no ragged last row', () => {
-  assert.equal(COLD_OPEN.hunterCount % COLD_OPEN.columns, 0);
-});
+  assert.ok(BOSS.moveSpeed < COLD_OPEN_MARCH_SPEED);
+  assert.equal(COLD_OPEN_CAPTAIN_STATS.moveSpeed, COLD_OPEN_MARCH_SPEED);
+  assert.equal(COLD_OPEN_CAPTAIN_STATS.health, BOSS.health);
 
-test('the Count strikes from beside the group, not on top of it', () => {
-  const gap = COLD_OPEN_GROUP.x - COLD_OPEN_STRIKE_SPOT.x;
-  assert.ok(gap > 0, 'he lands on the wrong side of the group');
-  assert.ok(gap < 260, 'he lands too far away for the strike to read');
-  assert.ok(COLD_OPEN_STRIKE_SPOT.x > ARENA.left);
+  // Unlike the old single-flank block (every thrower equally far in one back
+  // column), a ring scatters throwers at a MIX of distances - some slots
+  // would arrive in time even at their own slower pace. The override still
+  // has to matter for at least the farthest one, or it would be dead weight
+  // everywhere.
+  const throwerSlots = [...Array(COLD_OPEN.hunterCount).keys()].filter(coldOpenSlotIsThrower);
+  const distanceOf = (i) => {
+    const { spawn, arrival } = coldOpenRingSlot(i, COLD_OPEN.hunterCount);
+    return Math.hypot(spawn.x - arrival.x, spawn.y - arrival.y);
+  };
+  const farthest = throwerSlots.reduce((a, b) => (distanceOf(a) >= distanceOf(b) ? a : b));
+  const atOwnPace = COLD_OPEN.huntersInMs + (distanceOf(farthest) / THROWER.moveSpeed) * 1000;
+  assert.ok(
+    atOwnPace > COLD_OPEN.demoMs,
+    `even the farthest thrower would have made it at its own pace - the speed override is dead weight`,
+  );
 });

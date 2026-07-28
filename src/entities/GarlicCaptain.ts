@@ -5,6 +5,7 @@ import type { GameEventEmitter } from '../game/events';
 import { BossHealthBar } from '../ui/BossHealthBar';
 import { BossCharge } from './BossCharge';
 import { GarlicThrower } from './GarlicThrower';
+import type { HunterStats } from './Hunter';
 import {
   CAPTAIN_NAMES,
   CAPTAIN_TINT,
@@ -25,9 +26,13 @@ export class GarlicCaptain extends GarlicThrower implements CaptainTraits {
     x: number,
     y: number,
     private readonly emitter: GameEventEmitter,
+    /** Overridable so the cold open can march him at the squad's pace instead of his own. */
+    stats: HunterStats = BOSS,
+    /** False for the cold open's scenery Captains — they are dressing, not a fight the player tracks. */
+    showHealthBar: boolean = true,
   ) {
     super(scene, x, y, {
-      stats: BOSS,
+      stats,
       spriteScale: BOSS.spriteScale,
       garlicPerThrow: 2,
       garlicThrowGapMs: BOSS.garlicThrowGapMs,
@@ -35,6 +40,7 @@ export class GarlicCaptain extends GarlicThrower implements CaptainTraits {
     this.normalDepth = DEPTHS.boss;
     this.applyBaseTint();
     this.healthBar = new BossHealthBar(scene, this.bossName);
+    if (!showHealthBar) this.healthBar.suppress();
   }
 
   protected override applyBaseTint(): void {

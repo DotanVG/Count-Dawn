@@ -30,7 +30,7 @@ import { EVENTS } from '../game/events';
 import { isTouchDevice } from '../game/device';
 import { setVampireCursorVisible } from '../game/vampireCursor';
 import { Player } from '../entities/Player';
-import { Hunter, BASIC_LOOKS, PILGRIM_LOOK } from '../entities/Hunter';
+import { Hunter, BASIC_LOOKS, PILGRIM_LOOK, HUNTRESS_LOOK } from '../entities/Hunter';
 import { ArmedHunter } from '../entities/ArmedHunter';
 import { HunterCaptain, pluralBossName } from '../entities/HunterCaptain';
 import { GarlicCaptain } from '../entities/GarlicCaptain';
@@ -48,11 +48,10 @@ import { offCanvasSpawnPoint } from '../systems/entrance';
 import { CountdownSystem } from '../systems/CountdownSystem';
 import {
   COLD_OPEN,
-  COLD_OPEN_GROUP,
+  COLD_OPEN_CAPTAIN_STATS,
   COLD_OPEN_PRIEST_STATS,
-  COLD_OPEN_STRIKE_SPOT,
   COLD_OPEN_THROWER_STATS,
-  coldOpenHunterSlot,
+  coldOpenRingSlot,
   coldOpenSkyProgress,
   coldOpenSlotActor,
   coldOpenTimerSeconds,
@@ -66,7 +65,7 @@ import { HUD } from '../ui/HUD';
 import { MenuLightning } from '../ui/MenuLightning';
 import { TouchControls } from '../ui/TouchControls';
 import { TEXTURES, ANIMS, AUDIO, BLOOD_DECALS } from '../utils/assetKeys';
-import { VAMPIRE_ATTACK_DURATION_MS, VAMPIRE_SUNBURN_DURATION_MS } from '../utils/animations';
+import { VAMPIRE_SUNBURN_DURATION_MS } from '../utils/animations';
 import { emptyRunStats } from '../types/game';
 import type { BossKind, EndCause, HunterKind, RunStats, RunSummary } from '../types/game';
 
@@ -189,6 +188,8 @@ export class GameScene extends Phaser.Scene {
    * itself runs, on the far side of a whole day-cycle animation.
    */
   private pendingHealthAfterSleep: number = PLAYER.maxHealth;
+  /** Where the cold open's ring died, for cinematicBloodFlight to fly droplets from. */
+  private coldOpenCorpses: { x: number; y: number }[] = [];
 
   constructor() {
     super(SCENES.game);
@@ -564,6 +565,13 @@ export class GameScene extends Phaser.Scene {
     this.hud.primeHealthAndBlood(CINEMATIC.startHealth, PLAYER.maxHealth, blood, bloodTarget);
     this.hud.animateIn();
 
+    // Wrath reads charged from the very first frame the HUD is up — visual
+    // confirmation the Ultimate exists before the player has even taken
+    // control — and cinematicUltimateDemo spends it back to zero the moment
+    // it actually fires, the same depletion a real cast leaves behind.
+    this.wrath = WRATH.target;
+    this.hud.setWrath(WRATH.target, WRATH.target);
+
     // Held until animateIn's alpha tween is done: the low-health flash drives
     // the same alpha, and starting both at once leaves them fighting over it.
     // The numbers themselves already match (primeHealthAndBlood, above) — this
@@ -599,10 +607,13 @@ export class GameScene extends Phaser.Scene {
       },
     });
 
-    // Enter as a bat through the middle window, high and small.
+    // Enter as a bat through the middle window, tiny and distant, growing to
+    // full size as he closes the distance — the smaller starting scale (was
+    // 0.7) reads as "coming from far away" rather than just "small."
+    const ENTRY_SCALE = 0.28;
     this.setPlayerDormant(false);
     this.player.setPosition(GAME_WIDTH / 2, 70).setAlpha(0);
-    this.player.setBaseScale(0.7);
+    this.player.setBaseScale(ENTRY_SCALE);
     this.setBatForm(true);
 
     this.tweens.add({ targets: this.player, alpha: 1, duration: 400 });
@@ -617,7 +628,7 @@ export class GameScene extends Phaser.Scene {
         const x = GAME_WIDTH / 2 + Math.sin(t * Math.PI) * 150;
         this.player.faceBatTowards(x - this.player.x);
         this.player.setPosition(x, Phaser.Math.Linear(70, PLAYER_SPAWN.y, t));
-        this.player.setBaseScale(Phaser.Math.Linear(0.7, PLAYER.spriteScale, t));
+        this.player.setBaseScale(Phaser.Math.Linear(ENTRY_SCALE, PLAYER.spriteScale, t));
       },
       onComplete: () => {
         this.setBatForm(false);
@@ -627,9 +638,9 @@ export class GameScene extends Phaser.Scene {
 
     this.time.delayedCall(COLD_OPEN.huntersInMs, () => this.cinematicSurround());
     this.time.delayedCall(COLD_OPEN.lineStartMs, () => this.cinematicLine());
-    this.time.delayedCall(COLD_OPEN.toGroupMs, () => this.cinematicCrossToGroup());
-    this.time.delayedCall(COLD_OPEN.strikeMs, () =>
-      this.cinematicStrike(bloodTarget, () => ++blood),
+    this.time.delayedCall(COLD_OPEN.demoMs, () => this.cinematicUltimateDemo());
+    this.time.delayedCall(COLD_OPEN.bloodStartMs, () =>
+      this.cinematicBloodFlight(bloodTarget, () => ++blood),
     );
     this.time.delayedCall(COLD_OPEN.toCoffinMs, () => this.cinematicRetire());
   }
@@ -661,25 +672,25 @@ export class GameScene extends Phaser.Scene {
       },
     });
     // Whatever state the typing is in, the line is gone before the strike.
-    this.time.delayedCall(COLD_OPEN.strikeMs - COLD_OPEN.lineStartMs, () => {
+    this.time.delayedCall(COLD_OPEN.demoMs - COLD_OPEN.lineStartMs, () => {
       typer.remove();
       text.destroy();
     });
   }
 
   /**
-   * A squad walks in and masses on the right side of the hall: swordsmen in
-   * the front columns, garlic throwers standing off behind them, so the scene
-   * introduces both halves of what hunts him before the first night does. They
-   * come in from the right edge specifically - it is the shortest walk to
-   * where they need to be standing, and the scene has seconds, not minutes.
+   * The whole roster walks in and closes into a ring around the spot he
+   * lands on, surrounding him from every side rather than massing on one
+   * flank — one of every ordinary flavour, one of every Captain, and the
+   * Priest (see COLD_OPEN_ROSTER), so the scene introduces the whole cast
+   * before the first night does.
    *
    * Who stands where is fixed in coldOpen.ts, never rolled: the cutscene has
    * to play identically every time.
    */
   private cinematicSurround(): void {
     for (let i = 0; i < COLD_OPEN.hunterCount; i++) {
-      const { spawn, arrival } = coldOpenHunterSlot(i);
+      const { spawn, arrival } = coldOpenRingSlot(i, COLD_OPEN.hunterCount);
       const hunter = this.createColdOpenActor(coldOpenSlotActor(i), spawn.x, spawn.y);
       this.hunters.add(hunter);
       hunter.beginEntrance(arrival.x, arrival.y);
@@ -687,91 +698,104 @@ export class GameScene extends Phaser.Scene {
   }
 
   /**
-   * One actor of the cold open's squad. They are SCENERY: the throwers are
+   * One actor of the cold open's ring. They are SCENERY: the throwers are
    * deliberately not configureThrower'd (wiring onThrow would arm a bulb the
-   * scene never wants launched) and the Priest's ward never gets a chance to
-   * fire, because the whole squad dies to one strike seconds later.
+   * scene never wants launched), no Captain or the Priest ever gets a ward
+   * or a volley off, and none of the four carries a health bar or name
+   * banner — the whole ring dies together to the Ultimate demo seconds
+   * later, and boss UI on scenery the player never fights would just be
+   * noise (see cinematicUltimateDemo).
    */
   private createColdOpenActor(actor: ColdOpenActor, x: number, y: number): Hunter {
     switch (actor) {
       case 'priest':
-        // No health bar or name banner: he is scenery in this squad, not a
-        // fight the player is meant to track — the whole group dies in one
-        // strike seconds later, boss UI included would just be noise.
         return new Priest(this, x, y, this.emitter, COLD_OPEN_PRIEST_STATS, false);
       case 'thrower':
         return new GarlicThrower(this, x, y, { stats: COLD_OPEN_THROWER_STATS });
-      case 'sword':
+      case 'pilgrim':
         return new Hunter(this, x, y);
+      case 'huntress':
+        return new Hunter(this, x, y, HUNTER, HUNTRESS_LOOK);
+      case 'hunterCaptain':
+        return new HunterCaptain(this, x, y, this.emitter, PILGRIM_LOOK, 'pitchfork', COLD_OPEN_CAPTAIN_STATS, false);
+      case 'garlicCaptain':
+        return new GarlicCaptain(this, x, y, this.emitter, COLD_OPEN_CAPTAIN_STATS, false);
+      case 'crossCaptain':
+        return new CrossCaptain(this, x, y, this.emitter, COLD_OPEN_CAPTAIN_STATS, false);
       default:
         return new ArmedHunter(this, x, y, actor);
     }
   }
 
-  /** He turns bat and crosses the hall to stand right on top of the group. */
-  private cinematicCrossToGroup(): void {
-    const from = { x: this.player.x, y: this.player.y };
-    const to = COLD_OPEN_STRIKE_SPOT;
-    this.setBatForm(true);
+  /**
+   * The Ultimate, demonstrated: the same beats fireUltimate plays for real
+   * (the summon pose, the flash, the bat swarm, the lightning) — visual
+   * confirmation the move exists, before the player has even taken control —
+   * but killing through this cutscene-safe path (spawnCorpse + group
+   * removal) rather than onHunterKilled, and the blood scripted straight to
+   * the meter (cinematicBloodFlight) rather than through real
+   * BloodPickup/flow.addBlood. A scripted kill must never touch runStats,
+   * the captains set or flow, or scenery Captains would show up in the
+   * player's own end-of-run debrief, and a scripted meter filling up would
+   * summon the real Captain mid-cutscene.
+   *
+   * Wrath reads full the instant the HUD appears (see playOpeningCinematic)
+   * so the player sees it charged before ever taking control, and this is
+   * what spends it back to zero — the same depletion a real cast leaves
+   * behind, so night one starts with an empty meter to fill from scratch.
+   */
+  private cinematicUltimateDemo(): void {
+    this.wrath = 0;
+    this.hud?.setWrath(0, WRATH.target);
 
-    this.tweens.addCounter({
-      from: 0,
-      to: 1,
-      duration: COLD_OPEN.groupFlightMs,
-      ease: 'Sine.easeInOut',
-      onUpdate: (tween) => {
-        const t = tween.getValue() ?? 0;
-        const x = Phaser.Math.Linear(from.x, to.x, t);
-        this.player.faceBatTowards(x - this.player.x);
-        // A little lift through the middle so it reads as flight, not a slide.
-        this.player.setPosition(x, Phaser.Math.Linear(from.y, to.y, t) - Math.sin(t * Math.PI) * 40);
-      },
-      onComplete: () => {
-        this.setBatForm(false);
-        this.player.aimAt(COLD_OPEN_GROUP.x, COLD_OPEN_GROUP.y);
-      },
+    this.player.playSpecialAttackAnim();
+    this.tweens.add({
+      targets: this.ultDarkenOverlay,
+      alpha: WRATH.screenDarkenAlpha,
+      duration: 240,
+      yoyo: true,
+      hold: Math.max(0, WRATH.durationMs - 480),
+    });
+
+    this.time.delayedCall(COLD_OPEN.demoSummonMs, () => {
+      this.cameras.main.flash(220, 220, 200, 255);
+      this.cameras.main.shake(160, 0.006);
+      this.spawnBatSwarm();
+
+      this.time.delayedCall(COLD_OPEN.demoStrikeMs, () => {
+        this.cameras.main.shake(420, 0.01);
+        const victims = this.getAttackTargets();
+
+        this.coldOpenCorpses = [];
+        for (const hunter of victims) {
+          this.spawnLightningBolt(hunter.x, hunter.y);
+          this.coldOpenCorpses.push({ x: hunter.x, y: hunter.y });
+          hunter.spawnCorpse();
+          this.hunters.remove(hunter, true, true);
+        }
+        this.audio.playSfx(AUDIO.hunterDeath);
+      });
     });
   }
 
-  /** One strike takes the whole ring, and their blood runs to the meter. */
-  private cinematicStrike(bloodTarget: number, nextBlood: () => number): void {
-    const victims = this.getAttackTargets();
-    if (victims.length > 0) {
-      this.player.aimAt(victims[0].x, victims[0].y);
-    }
-    this.player.playAttackAnim();
-    this.audio.playSfx(AUDIO.playerAttackWhoosh);
-    this.cameras.main.shake(220, 0.008);
-    this.cameras.main.flash(220, 255, 255, 255);
-    // Nothing drives updateAnimation during a cutscene, so the swing has to be
-    // walked back to idle by hand or he stands there frozen mid-strike.
-    this.time.delayedCall(VAMPIRE_ATTACK_DURATION_MS, () => this.player.playIdleAnim());
-
-    const corpses: { x: number; y: number }[] = [];
-    for (const hunter of victims) {
-      corpses.push({ x: hunter.x, y: hunter.y });
-      hunter.spawnCorpse();
-      this.hunters.remove(hunter, true, true);
-    }
-    this.audio.playSfx(AUDIO.hunterDeath);
-
-    // Every drop he is short of a full meter, flying home at once.
-    const delay = COLD_OPEN.bloodStartMs - COLD_OPEN.strikeMs;
-    // One audible drink per hunter, spread across the blood-arrival window.
+  /** Every drop he is short of a full meter, flying home from the cutscene's corpses at once. */
+  private cinematicBloodFlight(bloodTarget: number, nextBlood: () => number): void {
+    const corpses = this.coldOpenCorpses;
+    // One audible drink per corpse, spread across the blood-arrival window.
     // These are intentionally stronger than the old per-bloodlet whispers:
-    // twelve distinct overlapping slurps make the feast read as the Count
-    // draining the whole squad without turning into one clipped sound.
+    // distinct overlapping slurps make the feast read as the Count draining
+    // the whole ring without turning into one clipped sound.
     const drinkWindowMs = (COLD_OPEN.bloodlets - 1) * COLD_OPEN.bloodletStaggerMs;
     const drinkStepMs = corpses.length > 1 ? drinkWindowMs / (corpses.length - 1) : 0;
     for (let i = 0; i < corpses.length; i++) {
-      this.time.delayedCall(delay + COLD_OPEN.bloodletFlightMs + i * drinkStepMs, () => {
+      this.time.delayedCall(COLD_OPEN.bloodletFlightMs + i * drinkStepMs, () => {
         this.audio.playSfx(AUDIO.bloodPickup, { volumeScale: 0.35 });
       });
     }
 
     for (let i = 0; i < COLD_OPEN.bloodlets; i++) {
       const origin = corpses.length > 0 ? corpses[i % corpses.length] : PLAYER_SPAWN;
-      this.time.delayedCall(delay + i * COLD_OPEN.bloodletStaggerMs, () => {
+      this.time.delayedCall(i * COLD_OPEN.bloodletStaggerMs, () => {
         const droplet = this.add
           .image(
             origin.x + Phaser.Math.Between(-18, 18),
