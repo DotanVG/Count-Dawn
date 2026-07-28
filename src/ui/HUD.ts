@@ -67,6 +67,8 @@ const WRATH_DARK = 0x241830;
 const BAR_W = 216;
 /** Smaller than the HP/blood bars — Wrath is a bonus meter, not a survival stat. */
 const WRATH_BAR_W = 150;
+/** Dots swinging around the charged Wrath meter — see setWrathFullGlow. */
+const WRATH_ORBIT_DOT_COUNT = 6;
 
 /**
  * Health ratio at or below which the bar turns orange, then red - even
@@ -149,6 +151,8 @@ export class HUD {
   private wrathOrbitDots: Phaser.GameObjects.Arc[] = [];
   private wrathOrbitTween: Phaser.Tweens.Tween | null = null;
   private wrathMotes: Phaser.GameObjects.Particles.ParticleEmitter;
+  /** Spawns spawnWrathSparkle on a beat while charged; see setWrathFullGlow. */
+  private wrathSparkleTimer: Phaser.Time.TimerEvent | null = null;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -254,7 +258,7 @@ export class HUD {
       .setFillStyle(WRATH_YELLOW, 0)
       .setDepth(DEPTHS.hud + 2)
       .setVisible(false);
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < WRATH_ORBIT_DOT_COUNT; i++) {
       this.wrathOrbitDots.push(
         scene.add
           .circle(GAME_WIDTH / 2, 24, 4, i % 2 === 0 ? WRATH_DARK : DASH_PURPLE, 0.9)
@@ -892,11 +896,13 @@ export class HUD {
   }
 
   /**
-   * The charged flourish: the yellow ring every full bar gets, plus three dark
-   * motes swinging around the box on an ellipse (bigger and brighter at the
-   * bottom of the loop than the top — the cheapest way two flat circles read
-   * as passing in front of, then behind, the meter) and a steady drift of
-   * dark particles off the box itself.
+   * The charged flourish: the yellow ring every full bar gets, six dark motes
+   * swinging around the box on an ellipse (bigger and brighter at the bottom
+   * of the loop than the top — the cheapest way flat circles read as passing
+   * in front of, then behind, the meter), a steady drift of dark particles
+   * off the box, and small bright sparkles flickering directly on the bar's
+   * own fill (spawnWrathSparkle) so the bar itself looks charged, not just
+   * the space around it.
    */
   private setWrathFullGlow(on: boolean): void {
     if (on === (this.wrathGlowTween !== null)) return;
@@ -909,6 +915,8 @@ export class HUD {
       this.wrathOrbitTween = null;
       for (const dot of this.wrathOrbitDots) dot.setVisible(false);
       this.wrathMotes.stop();
+      this.wrathSparkleTimer?.remove();
+      this.wrathSparkleTimer = null;
       return;
     }
 
@@ -944,6 +952,37 @@ export class HUD {
     });
 
     this.wrathMotes.start();
+
+    this.wrathSparkleTimer = this.scene.time.addEvent({
+      delay: 140,
+      loop: true,
+      callback: () => this.spawnWrathSparkle(),
+    });
+  }
+
+  /**
+   * One small bright fleck flashing somewhere along the Wrath bar's own fill
+   * — additive-blended so it reads as a spark rather than a solid dot — there
+   * and gone in a quarter second. Fired on a beat by setWrathFullGlow while
+   * the meter is charged; this is what makes the BAR ITSELF look charged
+   * rather than just the space orbiting around it.
+   */
+  private spawnWrathSparkle(): void {
+    const x = GAME_WIDTH / 2 - WRATH_BAR_W / 2 + Phaser.Math.Between(4, WRATH_BAR_W - 4);
+    const y = 24 + Phaser.Math.Between(-5, 5);
+    const spark = this.scene.add
+      .star(x, y, 4, 1, 4, 0xfff3c4, 1)
+      .setDepth(DEPTHS.hud + 4)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setScale(0);
+    this.scene.tweens.add({
+      targets: spark,
+      scale: { from: 0, to: Phaser.Math.FloatBetween(0.8, 1.3) },
+      alpha: { from: 1, to: 0 },
+      duration: 260,
+      ease: 'Quad.easeOut',
+      onComplete: () => spark.destroy(),
+    });
   }
 
   private onObjective(objective: Objective): void {

@@ -60,7 +60,7 @@ import {
 } from '../systems/coldOpen';
 import { GameFlowSystem } from '../systems/GameFlowSystem';
 import { AudioDirector, getAudioDirector } from '../systems/AudioDirector';
-import { CastleMap } from '../world/CastleMap';
+import { CastleMap, WINDOW_X_CENTERS, WINDOW_Y } from '../world/CastleMap';
 import { DawnSky } from '../world/DawnSky';
 import { HUD } from '../ui/HUD';
 import { MenuLightning } from '../ui/MenuLightning';
@@ -1432,23 +1432,26 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * ~30 bats, each launched out of its own burst of dark purple/black
-   * particles, swirling the hall on its own Lissajous-ish path for the
-   * Ultimate's duration before fading out. The flap sound is staggered by a
-   * few tens of milliseconds per bat with pitch/level variance (see
+   * particles, swirling the WHOLE hall (not just its middle — the swirl's
+   * x/y amplitudes are the arena's actual half-width/half-height, not a
+   * circle bounded by the shorter of the two) on its own Lissajous-ish path,
+   * then peeling off toward one of the three wall windows to leave through
+   * it rather than fading in place. The flap sound is staggered by a few
+   * tens of milliseconds per bat with pitch/level variance (see
    * AUDIO.batDashSound's manifest entry) so thirty plays read as a swarm
    * rather than one sound stamped out thirty times in the same frame.
    */
   private spawnBatSwarm(): void {
     const centerX = (ARENA.left + ARENA.right) / 2;
     const centerY = (ARENA.top + ARENA.bottom) / 2;
-    const maxRadius = Math.min(ARENA.right - ARENA.left, ARENA.bottom - ARENA.top) / 2 - 40;
+    const halfWidth = (ARENA.right - ARENA.left) / 2 - 30;
+    const halfHeight = (ARENA.bottom - ARENA.top) / 2 - 30;
 
     for (let i = 0; i < WRATH.batCount; i++) {
       const spawnDelay = Phaser.Math.Between(0, 260);
       this.time.delayedCall(spawnDelay, () => {
-        const angle0 = Phaser.Math.FloatBetween(0, Math.PI * 2);
-        const startX = centerX + Math.cos(angle0) * Phaser.Math.FloatBetween(20, maxRadius);
-        const startY = centerY + Math.sin(angle0) * Phaser.Math.FloatBetween(20, maxRadius);
+        const startX = centerX + Phaser.Math.FloatBetween(-halfWidth, halfWidth);
+        const startY = centerY + Phaser.Math.FloatBetween(-halfHeight, halfHeight);
 
         const puff = this.add
           .particles(startX, startY, TEXTURES.particle, {
@@ -1475,30 +1478,29 @@ export class GameScene extends Phaser.Scene {
         const freqY = Phaser.Math.FloatBetween(1.6, 2.8);
         const phaseX = Phaser.Math.FloatBetween(0, Math.PI * 2);
         const phaseY = Phaser.Math.FloatBetween(0, Math.PI * 2);
-        const swirlRadius = Phaser.Math.FloatBetween(60, maxRadius);
-        const flightMs = WRATH.durationMs - spawnDelay;
+        // Independent x/y amplitudes covering the arena's actual rectangle,
+        // not a circle capped by whichever dimension is smaller.
+        const swirlX = Phaser.Math.FloatBetween(halfWidth * 0.4, halfWidth);
+        const swirlY = Phaser.Math.FloatBetween(halfHeight * 0.4, halfHeight);
+        // Leaves for its window well before the Ultimate ends, so the exit
+        // flight (below) always has room to play out in full.
+        const swirlMs = Math.max(300, WRATH.durationMs - spawnDelay - 700);
 
         this.tweens.addCounter({
           from: 0,
           to: 1,
-          duration: flightMs,
+          duration: swirlMs,
           onUpdate: (tween) => {
             if (!bat.active) return;
             const t = tween.getValue() ?? 0;
-            const x = centerX + Math.cos(t * Math.PI * 2 * freqX + phaseX) * swirlRadius;
-            const y = centerY + Math.sin(t * Math.PI * 2 * freqY + phaseY) * swirlRadius * 0.6;
+            const x = centerX + Math.cos(t * Math.PI * 2 * freqX + phaseX) * swirlX;
+            const y = centerY + Math.sin(t * Math.PI * 2 * freqY + phaseY) * swirlY;
             bat.setFlipX(x < bat.x);
             bat.setPosition(x, y);
           },
           onComplete: () => {
             if (!bat.active) return;
-            this.tweens.add({
-              targets: bat,
-              alpha: 0,
-              scale: bat.scaleX * 0.6,
-              duration: 260,
-              onComplete: () => bat.destroy(),
-            });
+            this.exitBatThroughWindow(bat);
           },
         });
 
@@ -1507,6 +1509,30 @@ export class GameScene extends Phaser.Scene {
         });
       });
     }
+  }
+
+  /**
+   * A bat's exit: fly straight for the nearest of the three wall windows
+   * (WINDOW_X_CENTERS, exported from CastleMap so the geometry has one
+   * source of truth), shrinking and fading as it goes so it reads as
+   * getting further away rather than just leaving, and gone once it is
+   * inside the window band.
+   */
+  private exitBatThroughWindow(bat: Phaser.GameObjects.Sprite): void {
+    const windowX = Phaser.Utils.Array.GetRandom([...WINDOW_X_CENTERS]) + Phaser.Math.Between(-16, 16);
+    const windowY = WINDOW_Y + Phaser.Math.Between(-20, 20);
+    bat.setFlipX(windowX < bat.x);
+
+    this.tweens.add({
+      targets: bat,
+      x: windowX,
+      y: windowY,
+      scale: bat.scaleX * 0.15,
+      alpha: 0,
+      duration: Phaser.Math.Between(550, 850),
+      ease: 'Sine.easeIn',
+      onComplete: () => bat.destroy(),
+    });
   }
 
   /**

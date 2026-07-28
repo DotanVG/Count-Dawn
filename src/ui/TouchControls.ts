@@ -87,7 +87,9 @@ export class TouchControls {
     });
     // Ultimate: above and to the right of the strike button (not directly
     // above it, which is the dash's spot) — hidden until Wrath is charged.
-    const ult = this.makeButton(GAME_WIDTH - 90, GAME_HEIGHT - 240, 46, '⚡', () => {
+    // Far enough up-and-right that its 42px radius clears the strike
+    // button's 72px one by a comfortable margin (they used to overlap).
+    const ult = this.makeButton(GAME_WIDTH - 70, GAME_HEIGHT - 270, 42, '⚡', () => {
       if (this.ultimateAvailable) this.ultimatePressed = true;
     });
     this.ultButton = ult.circle;
