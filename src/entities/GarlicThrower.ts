@@ -97,6 +97,13 @@ export class GarlicThrower extends Hunter {
       if (this.aimState !== 'reposition' && !this.keepsAimUnderFire) this.enterReposition();
       return;
     }
+    // Opening-cinematic steering is scenery, not combat. Keep the held prop
+    // attached above, but never paint a target or begin a volley while the
+    // scripted formation is circling the Count.
+    if (this.updateCutsceneMovement()) {
+      if (this.aimState !== 'reposition') this.enterReposition();
+      return;
+    }
 
     const now = this.scene.time.now;
     const deltaMs = this.scene.game.loop.delta;

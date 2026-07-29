@@ -48,15 +48,20 @@ import { offCanvasSpawnPoint } from '../systems/entrance';
 import { CountdownSystem } from '../systems/CountdownSystem';
 import {
   COLD_OPEN,
+  COLD_OPEN_ARMED_STATS,
   COLD_OPEN_CAPTAIN_STATS,
+  COLD_OPEN_HUNTER_STATS,
   COLD_OPEN_PRIEST_STATS,
   COLD_OPEN_THROWER_STATS,
+  coldOpenFormationPoint,
   coldOpenRingSlot,
   coldOpenSkyProgress,
   coldOpenSlotActor,
   coldOpenTimerSeconds,
   type ColdOpenActor,
 } from '../systems/coldOpen';
+import { playPurpleChainLightning } from '../systems/ChainLightningEffect';
+import { orderChainTargets, type ChainPoint } from '../systems/chainLightning';
 import { GameFlowSystem } from '../systems/GameFlowSystem';
 import { AudioDirector, getAudioDirector } from '../systems/AudioDirector';
 import { CastleMap, WINDOW_X_CENTERS, WINDOW_Y } from '../world/CastleMap';
@@ -190,6 +195,10 @@ export class GameScene extends Phaser.Scene {
   private pendingHealthAfterSleep: number = PLAYER.maxHealth;
   /** Where the cold open's ring died, for cinematicBloodFlight to fly droplets from. */
   private coldOpenCorpses: { x: number; y: number }[] = [];
+  /** Stable slot per scenery actor, used to orbit the whole formation as one ring. */
+  private coldOpenSlots = new Map<Hunter, number>();
+  private coldOpenStartedAt = 0;
+  private coldOpenPriest: Priest | null = null;
 
   constructor() {
     super(SCENES.game);
@@ -204,6 +213,9 @@ export class GameScene extends Phaser.Scene {
     this.ultimateActive = false;
     this.recentKillTimes = [];
     this.pendingHealthAfterSleep = PLAYER.maxHealth;
+    this.coldOpenSlots.clear();
+    this.coldOpenStartedAt = 0;
+    this.coldOpenPriest = null;
     this.captains.clear();
     this.countdown = null;
     this.spawner = null;
@@ -291,7 +303,13 @@ export class GameScene extends Phaser.Scene {
     // when something pursues them — without this he would stand off-screen
     // where he spawned and the Count would strike thin air.
     if (this.phase === 'intro') {
+      const elapsed = Math.max(0, this.time.now - this.coldOpenStartedAt);
       for (const hunter of this.getAttackTargets()) {
+        const slot = this.coldOpenSlots.get(hunter);
+        if (slot !== undefined) {
+          const point = coldOpenFormationPoint(slot, COLD_OPEN.hunterCount, elapsed);
+          hunter.setCutsceneTarget(point.x, point.y, this.player.x, this.player.y);
+        }
         // Throwers hold the line for the cutscene. Left alone they would start
         // painting a crosshair the moment they reach their slot - resetting
         // the aim first (never after: enterReposition dates its cooldown from
@@ -559,6 +577,13 @@ export class GameScene extends Phaser.Scene {
     const bloodTarget = bloodTargetForNight(1);
     let blood = bloodTarget - COLD_OPEN.bloodlets;
 
+    // Keep the entity and its scripted HUD in one state. Previously only the
+    // HUD was primed to 12 HP while Player remained at its constructor-time
+    // 100 HP; any stray damage event therefore repainted the bar as 95/100.
+    // Night one still receives the scripted full heal through
+    // pendingHealthAfterSleep before control is handed to the player.
+    this.player.resetForNewRound(CINEMATIC.startHealth);
+
     // The scripted numbers, right away — otherwise the bars show their true
     // construction-time values (HP full, glowing; Blood empty) for the gap
     // before the "real" event below arrives, which reads as a wrong flash.
@@ -587,13 +612,13 @@ export class GameScene extends Phaser.Scene {
     // own clock rather than a CountdownSystem, so the arithmetic is guaranteed
     // to land on one second left exactly as the lid shuts (see coldOpen.ts).
     this.emitter.emit(EVENTS.FINAL_TEN_SECONDS);
-    const openedAt = this.time.now;
+    this.coldOpenStartedAt = this.time.now;
     let lastShown = -1;
     this.coldOpenClock = this.time.addEvent({
       delay: 50,
       loop: true,
       callback: () => {
-        const elapsed = this.time.now - openedAt;
+        const elapsed = this.time.now - this.coldOpenStartedAt;
         const seconds = coldOpenTimerSeconds(elapsed);
         if (seconds !== lastShown) {
           lastShown = seconds;
@@ -638,6 +663,7 @@ export class GameScene extends Phaser.Scene {
 
     this.time.delayedCall(COLD_OPEN.huntersInMs, () => this.cinematicSurround());
     this.time.delayedCall(COLD_OPEN.lineStartMs, () => this.cinematicLine());
+    this.time.delayedCall(COLD_OPEN.priestCueMs, () => this.cinematicPriestCue());
     this.time.delayedCall(COLD_OPEN.demoMs, () => this.cinematicUltimateDemo());
     this.time.delayedCall(COLD_OPEN.bloodStartMs, () =>
       this.cinematicBloodFlight(bloodTarget, () => ++blood),
@@ -693,8 +719,20 @@ export class GameScene extends Phaser.Scene {
       const { spawn, arrival } = coldOpenRingSlot(i, COLD_OPEN.hunterCount);
       const hunter = this.createColdOpenActor(coldOpenSlotActor(i), spawn.x, spawn.y);
       this.hunters.add(hunter);
+      this.coldOpenSlots.set(hunter, i);
+      if (hunter instanceof Priest) this.coldOpenPriest = hunter;
       hunter.beginEntrance(arrival.x, arrival.y);
     }
+  }
+
+  /**
+   * The last human answer before the Count's counterattack: the Priest raises
+   * his cross and releases the ward purely as theatre. The Priest explicitly
+   * clears its hit callback, while the scene's intro phase also gates every
+   * physical damage route, so this light can never change the scripted 12 HP.
+   */
+  private cinematicPriestCue(): void {
+    this.coldOpenPriest?.playHarmlessCinematicWard(this.player.x, this.player.y);
   }
 
   /**
@@ -713,9 +751,9 @@ export class GameScene extends Phaser.Scene {
       case 'thrower':
         return new GarlicThrower(this, x, y, { stats: COLD_OPEN_THROWER_STATS });
       case 'pilgrim':
-        return new Hunter(this, x, y);
+        return new Hunter(this, x, y, COLD_OPEN_HUNTER_STATS);
       case 'huntress':
-        return new Hunter(this, x, y, HUNTER, HUNTRESS_LOOK);
+        return new Hunter(this, x, y, COLD_OPEN_HUNTER_STATS, HUNTRESS_LOOK);
       case 'hunterCaptain':
         return new HunterCaptain(this, x, y, this.emitter, PILGRIM_LOOK, 'pitchfork', COLD_OPEN_CAPTAIN_STATS, false);
       case 'garlicCaptain':
@@ -723,7 +761,14 @@ export class GameScene extends Phaser.Scene {
       case 'crossCaptain':
         return new CrossCaptain(this, x, y, this.emitter, COLD_OPEN_CAPTAIN_STATS, false);
       default:
-        return new ArmedHunter(this, x, y, actor);
+        return new ArmedHunter(
+          this,
+          x,
+          y,
+          actor,
+          PILGRIM_LOOK,
+          COLD_OPEN_ARMED_STATS,
+        );
     }
   }
 
@@ -748,34 +793,130 @@ export class GameScene extends Phaser.Scene {
     this.wrath = 0;
     this.hud?.setWrath(0, WRATH.target);
 
+    this.player.setFacing('right');
     this.player.playSpecialAttackAnim();
+    this.spawnUltimateChargeBurst();
     this.tweens.add({
       targets: this.ultDarkenOverlay,
-      alpha: WRATH.screenDarkenAlpha,
-      duration: 240,
+      alpha: Math.min(0.34, WRATH.screenDarkenAlpha + 0.12),
+      duration: 180,
       yoyo: true,
       hold: Math.max(0, WRATH.durationMs - 480),
     });
 
     this.time.delayedCall(COLD_OPEN.demoSummonMs, () => {
-      this.cameras.main.flash(220, 220, 200, 255);
-      this.cameras.main.shake(160, 0.006);
+      // Two distinct flash beats make the bolt read as exposure, then impact:
+      // violet first, a white core a breath later, with the shake ramping up.
+      this.cameras.main.flash(120, 186, 142, 255);
+      this.cameras.main.shake(190, 0.009);
+      this.spawnUltimateScreenPulse();
+      this.time.delayedCall(65, () => this.cameras.main.flash(90, 238, 226, 255));
       this.spawnBatSwarm();
 
       this.time.delayedCall(COLD_OPEN.demoStrikeMs, () => {
-        this.cameras.main.shake(420, 0.01);
-        const victims = this.getAttackTargets();
+        this.cameras.main.shake(520, 0.014);
+        const victims = this.getAttackTargets().filter((hunter) => hunter.active && hunter.isAlive);
 
         this.coldOpenCorpses = [];
         for (const hunter of victims) {
           this.spawnLightningBolt(hunter.x, hunter.y);
           this.coldOpenCorpses.push({ x: hunter.x, y: hunter.y });
+          this.stampBloodDecal(hunter.x, hunter.y, hunter.displayHeight);
           hunter.spawnCorpse();
+          this.coldOpenSlots.delete(hunter);
           this.hunters.remove(hunter, true, true);
         }
+        this.coldOpenPriest = null;
+        this.spawnCinematicBloodStorm();
+        // The vertical strike reads first, then the BeatEmPie-style current
+        // races through every body in nearest-neighbour order. Coordinates
+        // survive the scenery teardown and keep the chain deterministic.
+        const chainTargets = [...this.coldOpenCorpses];
+        this.time.delayedCall(COLD_OPEN.chainLeadMs, () => {
+          this.playChainLightning(chainTargets);
+        });
         this.audio.playSfx(AUDIO.hunterDeath);
+
+        // The special sheet is non-looping. Explicitly release it once its
+        // impact has read, otherwise a cutscene (which has no player-control
+        // animation update) leaves the final frame parked until bat form.
+        this.time.delayedCall(180, () => this.player.playIdleAnim());
       });
     });
+  }
+
+  /** Purple charge motes and an expanding sigil under the Count's summon pose. */
+  private spawnUltimateChargeBurst(): void {
+    const particles = this.add
+      .particles(this.player.x, this.player.y, TEXTURES.particle, {
+        speed: { min: 70, max: 230 },
+        angle: { min: 0, max: 360 },
+        lifespan: { min: 320, max: 760 },
+        scale: { start: 1.8, end: 0 },
+        alpha: { start: 1, end: 0 },
+        tint: [0xf6efff, 0xc9a7ff, 0x9d6bff, 0x5c2ca8],
+        blendMode: Phaser.BlendModes.ADD,
+        emitting: false,
+      })
+      .setDepth(DEPTHS.attackFx + 1);
+    particles.explode(52);
+
+    const sigil = this.add
+      .circle(this.player.x, this.player.y + 18, 38, 0x9d6bff, 0.18)
+      .setStrokeStyle(7, 0xe8ddff, 0.95)
+      .setDepth(DEPTHS.groundFx)
+      .setScale(0.2);
+    this.tweens.add({
+      targets: sigil,
+      scale: 2.4,
+      alpha: 0,
+      angle: 150,
+      duration: COLD_OPEN.demoSummonMs + 220,
+      ease: 'Cubic.easeOut',
+      onComplete: () => sigil.destroy(),
+    });
+    this.time.delayedCall(900, () => particles.destroy());
+  }
+
+  /** A violet additive shockwave across the camera between arrival and impact. */
+  private spawnUltimateScreenPulse(): void {
+    const pulse = this.add
+      .circle(this.player.x, this.player.y, 70, 0xb987ff, 0.32)
+      .setStrokeStyle(14, 0xf6efff, 0.9)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(DEPTHS.screenFx)
+      .setScale(0.15);
+    this.tweens.add({
+      targets: pulse,
+      scale: 11,
+      alpha: 0,
+      duration: 420,
+      ease: 'Quad.easeOut',
+      onComplete: () => pulse.destroy(),
+    });
+  }
+
+  /** Several oversized camera-fixed decals sell the whole-ring blood burst. */
+  private spawnCinematicBloodStorm(): void {
+    for (let i = 0; i < 5; i++) {
+      this.time.delayedCall(i * 45, () => this.spawnScreenBloodSplatter(2, 1.65));
+    }
+
+    const mist = this.add
+      .particles(0, 0, TEXTURES.particle, {
+        speed: { min: 90, max: 340 },
+        angle: { min: 195, max: 345 },
+        gravityY: 520,
+        lifespan: { min: 500, max: 1250 },
+        scale: { start: 1.8, end: 0.2 },
+        alpha: { start: 0.9, end: 0 },
+        tint: [0x5c0011, 0x9f1028, 0xd92c45, 0xff6578],
+        emitting: false,
+      })
+      .setScrollFactor(0)
+      .setDepth(DEPTHS.screenFx);
+    mist.explode(90, GAME_WIDTH / 2, GAME_HEIGHT * 0.42);
+    this.time.delayedCall(1500, () => mist.destroy());
   }
 
   /** Every drop he is short of a full meter, flying home from the cutscene's corpses at once. */
@@ -824,42 +965,85 @@ export class GameScene extends Phaser.Scene {
   /** Beat four: into the coffin with a second to spare, then sleep off a day. */
   private cinematicRetire(): void {
     this.coffin.setOpen(true);
-    this.setBatForm(true);
+    this.player.playIdleAnim();
+    this.player.setVelocity(0, 0);
 
-    this.flightSpiral({
-      center: { x: COFFIN_POS.x, y: COFFIN_POS.y - 10 },
-      from: { x: this.player.x, y: this.player.y },
-      duration: COLD_OPEN.coffinFlightMs,
-      toScale: 0.9,
-      toAlpha: 0.55,
-      squash: 0.6,
+    const vortex = this.add
+      .particles(this.player.x, this.player.y, TEXTURES.particle, {
+        speed: { min: 35, max: 150 },
+        angle: { min: 0, max: 360 },
+        lifespan: { min: 240, max: 620 },
+        scale: { start: 1.4, end: 0 },
+        alpha: { start: 0.95, end: 0 },
+        tint: [0x241830, 0x6e2ccf, 0xb987ff, 0xe8ddff],
+        blendMode: Phaser.BlendModes.ADD,
+        frequency: 22,
+        quantity: 3,
+      })
+      .setDepth(DEPTHS.attackFx + 1);
+    let transformed = false;
+
+    this.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: COLD_OPEN.retireSpinMs,
+      ease: 'Cubic.easeIn',
+      onUpdate: (tween) => {
+        const t = tween.getValue() ?? 0;
+        this.player.setAngle(t * 720);
+        vortex.setPosition(this.player.x, this.player.y);
+        if (!transformed && t >= 0.52) {
+          transformed = true;
+          this.setBatForm(true);
+        }
+      },
       onComplete: () => {
-        this.setBatForm(false);
-        this.player.setVisible(false);
-        this.coffin.setOpen(false);
+        if (!transformed) this.setBatForm(true);
+        this.player.setAngle(0);
+        vortex.stop();
+        this.time.delayedCall(600, () => vortex.destroy());
 
-        // The cold open's clock runs right through the flight - that is what
-        // puts one second on it as the lid shuts - and stops here, before the
-        // refill takes the timer over. Leaving it running would let a stale
-        // tick repaint the text mid-wind-up.
-        this.coldOpenClock?.remove();
-        this.coldOpenClock = null;
+        // No hold between the transformation and the flight: the bat launches
+        // on the same callback that finishes the spin, avoiding the old parked
+        // attack frame and making the escape one continuous action.
+        this.flightSpiral({
+          center: { x: COFFIN_POS.x, y: COFFIN_POS.y - 10 },
+          from: { x: this.player.x, y: this.player.y },
+          duration: COLD_OPEN.coffinFlightMs,
+          toScale: 0.9,
+          toAlpha: 0.55,
+          squash: 0.6,
+          onComplete: () => {
+            this.player.setVisible(false);
+            this.setBatForm(false);
+            this.coffin.setOpen(false);
 
-        // He sleeps: health refills, the blood is spent, the clock winds back
-        // up to a full night - all of it WHILE the day passes overhead, not
-        // queued up behind it. This beat is scripted narrative, not a real
-        // night's economy — he always wakes up whole here, regardless of
-        // computeOvernightTransfer's real-blood-pool math (which the actual
-        // night-to-night transfer below uses); a partial heal on the opening
-        // cutscene would hand the player a wounded night 1 for no readable
-        // reason, and the pool (this night's 50) was never enough to fully
-        // heal 88 missing HP anyway, so applying the real rule here would
-        // ALWAYS shortchange him.
-        this.pendingHealthAfterSleep = PLAYER.maxHealth;
-        this.hud?.playCoffinTransfer(1, CINEMATIC.startHealth / PLAYER.maxHealth, 1, 0, 0, () => {});
-        this.playDayCycle(2200, () => {
-          this.hud?.resetForNewRound(bloodTargetForNight(this.night));
-          this.riseFromCoffin(() => this.startPlaying());
+            // The cold open's clock runs right through the flight - that is what
+            // puts one second on it as the lid shuts - and stops here, before the
+            // refill takes the timer over. Leaving it running would let a stale
+            // tick repaint the text mid-wind-up.
+            this.coldOpenClock?.remove();
+            this.coldOpenClock = null;
+
+            // He sleeps: health refills, the blood is spent, the clock winds back
+            // up to a full night - all of it WHILE the day passes overhead, not
+            // queued up behind it. This beat is scripted narrative, not a real
+            // night's economy — he always wakes up whole here, regardless of
+            // computeOvernightTransfer's real-blood-pool math.
+            this.pendingHealthAfterSleep = PLAYER.maxHealth;
+            this.hud?.playCoffinTransfer(
+              1,
+              CINEMATIC.startHealth / PLAYER.maxHealth,
+              1,
+              0,
+              0,
+              () => {},
+            );
+            this.playDayCycle(2200, () => {
+              this.hud?.resetForNewRound(bloodTargetForNight(this.night));
+              this.riseFromCoffin(() => this.startPlaying());
+            });
+          },
         });
       },
     });
@@ -1181,6 +1365,9 @@ export class GameScene extends Phaser.Scene {
 
   private setupCollisions(): void {
     this.physics.add.overlap(this.player, this.hunters, (_player, hunterObj) => {
+      // The cold open is choreography: no scenery body can ever change the
+      // scripted low HP, even if a slow frame briefly overlaps the safe ring.
+      if (this.phase !== 'playing') return;
       const hunter = hunterObj as Hunter;
       if (hunter.isAlive) this.player.takeDamage(hunter.contactDamage);
     });
@@ -1192,6 +1379,7 @@ export class GameScene extends Phaser.Scene {
     // A bulb that reaches him mid-flight bursts on the spot; one that misses
     // keeps going and resolves at the locked point instead (see Garlic).
     this.physics.add.overlap(this.player, this.garlics, (_player, garlicObj) => {
+      if (this.phase !== 'playing') return;
       if (this.player.isInvulnerable) return; // dashed clean through it
       (garlicObj as Garlic).hitPlayer();
     });
@@ -1199,6 +1387,7 @@ export class GameScene extends Phaser.Scene {
     // A cross that reaches him bursts on the spot. One that misses keeps going
     // and leaves the hall — unlike a bulb, it never resolves where it was aimed.
     this.physics.add.overlap(this.player, this.crosses, (_player, crossObj) => {
+      if (this.phase !== 'playing') return;
       const cross = crossObj as GoldCross;
       if (cross.isSpent) return;
       if (this.player.isInvulnerable) return; // dashed clean through it
@@ -1596,38 +1785,125 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.shake(420, 0.01);
 
     const targets = this.getAttackTargets().filter((t) => t.active && t.isAlive);
+    const chainTargets = targets.map((target) => ({ x: target.x, y: target.y }));
     for (const target of targets) {
       this.spawnLightningBolt(target.x, target.y);
       this.onHunterKilled(target);
     }
+    this.time.delayedCall(COLD_OPEN.chainLeadMs, () => {
+      this.playChainLightning(chainTargets);
+    });
   }
 
-  /** One jagged bolt from above the hall down to (x, y), flashed and gone. */
+  /**
+   * Lemon-Meringue-style nearest-neighbour lightning, recoloured for Count
+   * Dawn. It is visual only: the primary vertical strike owns every kill, so
+   * this pass cannot double-count drops, stats, or boss completion.
+   */
+  private playChainLightning(targets: readonly ChainPoint[]): void {
+    if (targets.length === 0) return;
+    const ordered = orderChainTargets(targets, {
+      x: this.player.x,
+      y: this.player.y,
+    });
+    playPurpleChainLightning(this, ordered, {
+      hopDelayMs: COLD_OPEN.chainHopMs,
+      cameraFx: true,
+    });
+  }
+
+  /**
+   * One layered purple bolt from above the hall down to (x, y): a broad bloom,
+   * a bright core, forked side-arcs, an impact ring and additive sparks.
+   */
   private spawnLightningBolt(x: number, y: number): void {
     const originY = ARENA.top - 30;
-    const segments = 6;
-    const graphics = this.add.graphics().setDepth(DEPTHS.attackFx + 2);
+    const segments = 8;
+    const points = [{ x: x + Phaser.Math.Between(-28, 28), y: originY }];
+    for (let i = 1; i <= segments; i++) {
+      const t = i / segments;
+      points.push({
+        x: x + (i === segments ? 0 : Phaser.Math.Between(-34, 34)),
+        y: Phaser.Math.Linear(originY, y, t),
+      });
+    }
 
-    const drawBolt = (width: number, color: number, alpha: number): void => {
+    const glow = this.add
+      .graphics()
+      .setDepth(DEPTHS.attackFx + 1)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const core = this.add
+      .graphics()
+      .setDepth(DEPTHS.attackFx + 2)
+      .setBlendMode(Phaser.BlendModes.ADD);
+    const drawPath = (
+      graphics: Phaser.GameObjects.Graphics,
+      width: number,
+      color: number,
+      alpha: number,
+    ): void => {
       graphics.lineStyle(width, color, alpha);
       graphics.beginPath();
-      graphics.moveTo(x + Phaser.Math.Between(-20, 20), originY);
-      for (let i = 1; i <= segments; i++) {
-        const t = i / segments;
-        const jitter = i === segments ? 0 : Phaser.Math.Between(-24, 24);
-        graphics.lineTo(x + jitter, Phaser.Math.Linear(originY, y, t));
-      }
+      graphics.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) graphics.lineTo(points[i].x, points[i].y);
       graphics.strokePath();
     };
-    drawBolt(5, 0xe8ddff, 1);
-    drawBolt(2, 0x9d6bff, 0.9);
+    drawPath(glow, 18, 0x6e2ccf, 0.25);
+    drawPath(glow, 10, 0xa866ff, 0.42);
+    drawPath(core, 5, 0xd6b7ff, 1);
+    drawPath(core, 2, 0xffffff, 1);
+
+    // Fork three of the middle joints sideways, each with its own crooked tip.
+    for (const jointIndex of [2, 4, 6]) {
+      const start = points[jointIndex];
+      const direction = jointIndex % 4 === 0 ? -1 : 1;
+      core.lineStyle(2, 0xc9a7ff, 0.9);
+      core.beginPath();
+      core.moveTo(start.x, start.y);
+      core.lineTo(start.x + direction * Phaser.Math.Between(22, 42), start.y + 24);
+      core.lineTo(start.x + direction * Phaser.Math.Between(38, 62), start.y + 50);
+      core.strokePath();
+    }
+
+    const impact = this.add
+      .circle(x, y, 20, 0xb987ff, 0.38)
+      .setStrokeStyle(6, 0xf6efff, 1)
+      .setBlendMode(Phaser.BlendModes.ADD)
+      .setDepth(DEPTHS.attackFx + 1)
+      .setScale(0.25);
+    this.tweens.add({
+      targets: impact,
+      scale: 3.4,
+      alpha: 0,
+      duration: 360,
+      ease: 'Cubic.easeOut',
+      onComplete: () => impact.destroy(),
+    });
+
+    const sparks = this.add
+      .particles(x, y, TEXTURES.particle, {
+        speed: { min: 110, max: 360 },
+        angle: { min: 0, max: 360 },
+        lifespan: { min: 220, max: 620 },
+        scale: { start: 1.5, end: 0 },
+        alpha: { start: 1, end: 0 },
+        tint: [0xffffff, 0xe8ddff, 0xb987ff, 0x7b3dd4],
+        blendMode: Phaser.BlendModes.ADD,
+        emitting: false,
+      })
+      .setDepth(DEPTHS.attackFx + 3);
+    sparks.explode(24);
+    this.time.delayedCall(700, () => sparks.destroy());
 
     this.tweens.add({
-      targets: graphics,
+      targets: [glow, core],
       alpha: 0,
-      delay: 70,
-      duration: 200,
-      onComplete: () => graphics.destroy(),
+      delay: 85,
+      duration: 240,
+      onComplete: () => {
+        glow.destroy();
+        core.destroy();
+      },
     });
   }
 
@@ -1859,7 +2135,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   /** One big, faint, camera-fixed splatter — blood on the screen, not the room. */
-  private spawnScreenBloodSplatter(tier: number): void {
+  private spawnScreenBloodSplatter(tier: number, cinematicScale = 1): void {
     const { scale, alpha } = SCREEN_SPLATTER_TIERS[Phaser.Math.Clamp(tier, 0, SCREEN_SPLATTER_TIERS.length - 1)];
     const splatter = this.add
       .image(
@@ -1870,10 +2146,10 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(DEPTHS.screenFx)
       .setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2))
-      .setScale(Phaser.Math.FloatBetween(scale[0], scale[1]))
+      .setScale(Phaser.Math.FloatBetween(scale[0], scale[1]) * cinematicScale)
       .setAlpha(0);
 
-    const peak = Phaser.Math.FloatBetween(alpha[0], alpha[1]);
+    const peak = Math.min(0.62, Phaser.Math.FloatBetween(alpha[0], alpha[1]) * cinematicScale);
     this.tweens.add({ targets: splatter, alpha: peak, duration: 140 });
     this.tweens.add({
       targets: splatter,

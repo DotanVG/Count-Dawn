@@ -4,6 +4,7 @@ import { DEPTHS } from '../game/constants';
 import type { GameEventEmitter } from '../game/events';
 import { BossHealthBar } from '../ui/BossHealthBar';
 import { TEXTURES, animKey } from '../utils/assetKeys';
+import { angleToDir4 } from '../utils/direction';
 import { BossCharge } from './BossCharge';
 import { Hunter, type HunterLook, type HunterStats } from './Hunter';
 import { captainTookDamage, type CaptainTraits } from './HunterCaptain';
@@ -119,6 +120,11 @@ export class Priest extends Hunter implements CaptainTraits {
     return this.y + PAINTED_TOP_OFFSET * this.scaleY;
   }
 
+  /** True while the cinematic/gameplay ward owns his pose and light. */
+  get isWarding(): boolean {
+    return this.warding;
+  }
+
   override pursue(targetX: number, targetY: number): void {
     if (!this.isAlive) return;
 
@@ -209,16 +215,32 @@ export class Priest extends Hunter implements CaptainTraits {
     this.scene.cameras.main.shake(250, 0.006);
   }
 
+  /**
+   * Start the cold open's cross as a visual warning only. It deliberately
+   * clears the hit callback before raising the ward, so even an overlapping
+   * player can never take scripted holy damage.
+   */
+  playHarmlessCinematicWard(targetX: number, targetY: number): boolean {
+    if (!this.active || !this.isAlive || this.isEntering || this.warding) return false;
+    this.onWardHit = null;
+    this.startWard(targetX, targetY);
+    return true;
+  }
+
   // ── The ward ────────────────────────────────────────────────────────────
 
   private maybeStartWard(targetX: number, targetY: number): void {
     if (this.isEntering || this.scene.time.now < this.nextWardAt) return;
     if (Phaser.Math.Distance.Between(this.x, this.y, targetX, targetY) > PRIEST.wardRange) return;
+    this.startWard(targetX, targetY);
+  }
 
+  private startWard(targetX: number, targetY: number): void {
     this.warding = true;
     this.wardRadius = 0;
     this.wardSwept = false;
     this.setVelocity(0, 0);
+    this.facing = angleToDir4(Phaser.Math.Angle.Between(this.x, this.y, targetX, targetY));
     this.play(animKey('priest', 'attack', this.facing), true);
 
     // The telegraph: the full circle, drawn faint on the floor and pulsing,

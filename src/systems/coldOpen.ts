@@ -1,66 +1,78 @@
 // Explicit .ts extensions so Node can run this module directly in unit tests.
 import { ARENA, GAME_WIDTH, GAME_HEIGHT } from '../game/constants.ts';
-import { BOSS, HUNTER, PRIEST, THROWER } from '../data/balance.ts';
+import { ARMED, BOSS, HUNTER, PRIEST, THROWER } from '../data/balance.ts';
 
 /**
  * The cold open's timeline, in milliseconds from its start, and the clock it
  * shows while it plays.
  *
- * The clock counts down in real lockstep with elapsed time now — `span /
+ * The clock counts down in real lockstep with elapsed time — `span /
  * coffinShutMs` is exactly 1 displayed second per 1000ms elapsed
- * (`coldOpenTimerSeconds` asserts this) — so the scene has to fit inside
- * `coffinShutMs` for real, not just on the numbers. It used to run faster
- * than real time (about 1.5x), which is why 10 seconds of countdown used to
- * be enough; the surrounding roster and the Ultimate demo both need more
- * room than that to actually play out, hence 15.
+ * (`coldOpenTimerSeconds` asserts this). The full siege, counterattack and
+ * escape therefore fit into the nine real seconds between 10 and 1; the lid
+ * closes on 1, just before the clock could show 00:00.
  *
  * Pure TypeScript (no Phaser import) so the guarantee stays unit-testable.
  */
 export const COLD_OPEN = {
   /** Seconds on the clock when the scene opens. */
-  startSeconds: 15,
+  startSeconds: 10,
   /** Seconds on the clock when the lid shuts - and the floor it never goes below. */
   minSeconds: 1,
 
   /** He swoops in through the middle window. */
-  flyInMs: 1400,
+  flyInMs: 1000,
   /**
    * The whole roster starts walking in, surrounding him from every side.
    * Early — before he has even landed — because some of them have a long
    * walk in from off-canvas and the demo does not wait for stragglers.
    */
-  huntersInMs: 800,
+  huntersInMs: 100,
   /** "Need... Blood..." begins typing. */
-  lineStartMs: 1800,
+  lineStartMs: 1150,
+  /** The formed ring begins orbiting and tightening around the Count. */
+  orbitStartMs: 3650,
+  /** The Priest raises his harmless cinematic cross. */
+  priestCueMs: 4300,
   /**
    * The Ultimate demo begins: the summon pose plays alone first (see
    * demoSummonMs), then the flash, then the bats and the kill together —
    * the exact same beats fireUltimate plays for real, just fired here to
    * show the player the move exists before the first night even starts.
    */
-  demoMs: 6800,
+  demoMs: 4600,
   /** How long the summon pose holds before the flash/kill lands — matches fireUltimate's own beat. */
-  demoSummonMs: 500,
+  demoSummonMs: 650,
   /** Gap from the flash to the actual kill landing — matches fireUltimate's own beat. */
   demoStrikeMs: 140,
+  /** Let the vertical impact read before electricity starts jumping body-to-body. */
+  chainLeadMs: 100,
+  /** Fast enough to visit the full ring before the escape spin begins. */
+  chainHopMs: 30,
   /** Bloodlets begin their run at the meter. */
-  bloodStartMs: 7700,
+  bloodStartMs: 5500,
   /** Stagger between bloodlets, and how long each takes to arrive. */
-  bloodletStaggerMs: 45,
-  bloodletFlightMs: 380,
-  /** He turns bat and starts for the coffin. */
-  toCoffinMs: 12750,
-  coffinFlightMs: 1250,
+  bloodletStaggerMs: 30,
+  bloodletFlightMs: 280,
+  /** He starts the spin that transforms him into a bat. */
+  toCoffinMs: 6500,
+  /** The in-place spin/poof before the bat launches. */
+  retireSpinMs: 450,
+  coffinFlightMs: 2050,
   /**
    * The lid shuts. The clock reads exactly `minSeconds` at this instant, which
    * is what "just before the timer runs out" has to mean to be repeatable.
    */
-  coffinShutMs: 14000,
+  coffinShutMs: 9000,
 
   /** The whole roster, one of every kind — see COLD_OPEN_ROSTER. */
   hunterCount: 16,
   /** How far out the ring surrounding him sits. */
-  ringRadius: 190,
+  ringRadius: 220,
+  /** The closest the cinematic ring gets: dramatic, but safely outside contact. */
+  closingRadius: 138,
+  /** How far the formation rotates while it closes, in radians. */
+  orbitRadians: 0.92,
   /** One per unit of blood he is short - they fill the meter exactly. */
   bloodlets: 20,
 } as const;
@@ -114,17 +126,26 @@ export function coldOpenSlotIsThrower(i: number): boolean {
 }
 
 /**
- * The whole ring marches at the swordsmen's pace.
+ * The whole ring uses a cutscene-only double march.
  *
- * A thrower's own moveSpeed is ~30% slower, and a Captain's own is slower
- * still, both of which are right for a real night (they hang back or plant
- * their feet, and are meant to be caught) and wrong for this scene: at their
- * own pace they are still crossing the floor when the demo fires, and the
- * demo does not wait. The override is per cutscene actor and touches nothing
- * about how any of them behave in a night. The test asserts this for every
- * flavour, not just the one that used to have the problem.
+ * Three-wall entrances make the north-side slots travel diagonally from a
+ * side wall, and the whole siege now fits between 10 and 1. Double speed gets
+ * every actor into the initial ring before it starts orbiting; the override
+ * is per cutscene actor and never changes a real night's balance.
  */
-export const COLD_OPEN_MARCH_SPEED = HUNTER.moveSpeed;
+export const COLD_OPEN_MARCH_SPEED = HUNTER.moveSpeed * 2;
+
+/** Cold-open ordinary melee bodies at the cinematic march speed. */
+export const COLD_OPEN_HUNTER_STATS = {
+  ...HUNTER,
+  moveSpeed: COLD_OPEN_MARCH_SPEED,
+} as const;
+
+/** Cold-open armed bodies at the same cinematic march speed. */
+export const COLD_OPEN_ARMED_STATS = {
+  ...ARMED,
+  moveSpeed: COLD_OPEN_MARCH_SPEED,
+} as const;
 
 /** A cold-open thrower: his own stats, at the ring's marching pace. */
 export const COLD_OPEN_THROWER_STATS = {
@@ -151,37 +172,32 @@ export const COLD_OPEN_CENTER = {
 } as const;
 
 /**
- * The exit point of a ray from `origin` in direction `d`, clamped to whichever
- * of `min`/`max` it actually travels toward — `Infinity` if it never leaves
- * that axis's bounds at all (a purely perpendicular ray).
+ * Place an entrant beyond one of the three solid outer walls. Nobody enters
+ * through the north wall: those are the windows the Count and the Ultimate's
+ * bats own. Slots aimed at the north half alternate between the left and
+ * right walls, then cut diagonally toward their place in the surround.
  */
-function rayExitDistance(origin: number, d: number, min: number, max: number): number {
-  if (d > 1e-6) return (max - origin) / d;
-  if (d < -1e-6) return (min - origin) / d;
-  return Infinity;
-}
-
-/**
- * An off-canvas point along the exact ray from COLD_OPEN_CENTER through
- * `angle`, just past wherever that ray actually leaves the canvas —
- * whichever of the horizontal or vertical bounds it hits first — plus a
- * small margin. This is what lets the ring surround him from every
- * direction: unlike the regular game's offCanvasSpawnPoint (which expects an
- * arrival point already near one specific edge), a ring tight around the
- * hall centre is not near any edge, so entrants are placed by DIRECTION
- * instead, each walking straight in along the same compass line its ring
- * slot sits on.
- */
-function offCanvasAlongAngle(angle: number): { x: number; y: number } {
+function offCanvasFromSolidWall(
+  angle: number,
+  slot: number,
+  arrival: { x: number; y: number },
+): { x: number; y: number } {
   const dx = Math.cos(angle);
   const dy = Math.sin(angle);
   const margin = 60;
-  const t =
-    Math.min(
-      rayExitDistance(COLD_OPEN_CENTER.x, dx, 0, GAME_WIDTH),
-      rayExitDistance(COLD_OPEN_CENTER.y, dy, 0, GAME_HEIGHT),
-    ) + margin;
-  return { x: COLD_OPEN_CENTER.x + dx * t, y: COLD_OPEN_CENTER.y + dy * t };
+
+  if (dy >= 0.55) {
+    return {
+      x: Math.max(60, Math.min(GAME_WIDTH - 60, arrival.x + dx * 110)),
+      y: GAME_HEIGHT + margin,
+    };
+  }
+
+  const fromRight = dx > 0.08 || (Math.abs(dx) <= 0.08 && slot % 2 === 0);
+  return {
+    x: fromRight ? GAME_WIDTH + margin : -margin,
+    y: Math.max(ARENA.top + 35, Math.min(GAME_HEIGHT - 55, arrival.y + dy * 70)),
+  };
 }
 
 /**
@@ -203,7 +219,30 @@ export function coldOpenRingSlot(
     x: COLD_OPEN_CENTER.x + Math.cos(angle) * COLD_OPEN.ringRadius,
     y: COLD_OPEN_CENTER.y + Math.sin(angle) * COLD_OPEN.ringRadius,
   };
-  return { spawn: offCanvasAlongAngle(angle), arrival };
+  return { spawn: offCanvasFromSolidWall(angle, i, arrival), arrival };
+}
+
+/**
+ * The moving formation point after an entrant reaches its first ring slot.
+ * The smoothstep keeps the group from snapping into motion, while shrinking
+ * the radius and rotating every slot together makes them visibly circle and
+ * close in without ever reaching contact range.
+ */
+export function coldOpenFormationPoint(
+  i: number,
+  total: number,
+  elapsedMs: number,
+): { x: number; y: number } {
+  const span = Math.max(1, COLD_OPEN.priestCueMs - COLD_OPEN.orbitStartMs);
+  const raw = Math.max(0, Math.min(1, (elapsedMs - COLD_OPEN.orbitStartMs) / span));
+  const progress = raw * raw * (3 - 2 * raw);
+  const radius =
+    COLD_OPEN.ringRadius + (COLD_OPEN.closingRadius - COLD_OPEN.ringRadius) * progress;
+  const angle = (i / total) * Math.PI * 2 + COLD_OPEN.orbitRadians * progress;
+  return {
+    x: COLD_OPEN_CENTER.x + Math.cos(angle) * radius,
+    y: COLD_OPEN_CENTER.y + Math.sin(angle) * radius,
+  };
 }
 
 /**

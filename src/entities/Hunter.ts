@@ -82,6 +82,17 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   private lastTargetDist = Infinity;
   private entering = false;
   private arrivalPoint: { x: number; y: number } | null = null;
+  /**
+   * Optional scenery-only steering used by the opening cinematic. It keeps an
+   * actor walking/standing without ever entering the melee state, so closing
+   * the ring cannot accidentally start a swing at the Count.
+   */
+  private cutsceneTarget: {
+    x: number;
+    y: number;
+    faceX: number;
+    faceY: number;
+  } | null = null;
   private coffinDetour: { x: number; y: number } | null = null;
   private knockbackUntil = 0;
   private readonly knockbackVelocity = new Phaser.Math.Vector2();
@@ -190,6 +201,15 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   }
 
   /**
+   * Steer this scenery actor toward a moving formation point while facing the
+   * cinematic subject. Normal `pursue` still runs, so subclass props and boss
+   * UI stay attached; `updateCutsceneMovement` intercepts before combat.
+   */
+  setCutsceneTarget(targetX: number, targetY: number, faceX: number, faceY: number): void {
+    this.cutsceneTarget = { x: targetX, y: targetY, faceX, faceY };
+  }
+
+  /**
    * Top of the PAINTED sprite, which is not the top of its frame: Romi's humans
    * start around row 17 of every 64px frame, leaving everything above it empty.
    * Anything that hangs over a hunter (a Captain's health bar) has to anchor
@@ -203,6 +223,7 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   pursue(targetX: number, targetY: number): void {
     if (!this.isAlive) return;
     if (this.updateForcedMovement()) return;
+    if (this.updateCutsceneMovement()) return;
 
     const angle = Phaser.Math.Angle.Between(this.x, this.y, targetX, targetY);
     const dir = angleToDir4(angle);
@@ -304,6 +325,28 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     }
 
     return false;
+  }
+
+  /**
+   * Walk to the current cinematic formation point, then hold and face inward.
+   * Returning true tells every combat state machine to stop here for the
+   * frame: no melee swing, target lock, ward, projectile or contact chase.
+   */
+  protected updateCutsceneMovement(): boolean {
+    const target = this.cutsceneTarget;
+    if (!target) return false;
+
+    const distance = Phaser.Math.Distance.Between(this.x, this.y, target.x, target.y);
+    if (distance > 6) {
+      this.walkToward(target.x, target.y);
+      return true;
+    }
+
+    this.setVelocity(0, 0);
+    this.facing = angleToDir4(Phaser.Math.Angle.Between(this.x, this.y, target.faceX, target.faceY));
+    const key = animKey(this.look.charKey, 'idle', this.facing);
+    if (this.anims.currentAnim?.key !== key) this.play(key, true);
+    return true;
   }
 
   /**

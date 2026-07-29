@@ -863,6 +863,16 @@ export class HUD {
    * that a full health bar also glows.
    */
   primeHealthAndBlood(health: number, maxHealth: number, blood: number, bloodTarget: number): void {
+    // Construction initializes the ordinary gameplay HUD at full HP, which
+    // starts the green full-health ring. Priming replaces that state before
+    // the first rendered cold-open frame, so it must clear every cosmetic
+    // state attached to the old values as well as changing widths and labels.
+    // Otherwise the 12/100 red bar inherits the breathing green ring and
+    // reads as both empty and full.
+    this.setLowHealthFlash(false);
+    this.setHealthFullGlow(false);
+    this.setBloodFullGlow(false);
+
     const healthRatio = Phaser.Math.Clamp(health / maxHealth, 0, 1);
     this.healthRatio = healthRatio;
     this.healthBarFill.width = BAR_W * healthRatio;

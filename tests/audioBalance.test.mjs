@@ -45,6 +45,22 @@ test('the two groups are independent — music sliders never touch sfx', () => {
   assert.ok(effectiveSfxVolume(config, AUDIO.bloodPickup) > 0);
 });
 
+test('music and sfx can be muted independently without losing their levels', () => {
+  const musicOnly = balance({ music: 0.42, sfx: 0.63, musicMuted: true });
+  assert.equal(effectiveMusicVolume(musicOnly, AUDIO.levelMusic), 0);
+  assert.ok(effectiveSfxVolume(musicOnly, AUDIO.bloodPickup) > 0);
+
+  const sfxOnly = { ...musicOnly, musicMuted: false, sfxMuted: true };
+  assert.ok(effectiveMusicVolume(sfxOnly, AUDIO.levelMusic) > 0);
+  assert.equal(effectiveSfxVolume(sfxOnly, AUDIO.bloodPickup), 0);
+
+  const restored = { ...sfxOnly, sfxMuted: false };
+  assert.equal(restored.music, 0.42);
+  assert.equal(restored.sfx, 0.63);
+  assert.ok(effectiveMusicVolume(restored, AUDIO.levelMusic) > 0);
+  assert.ok(effectiveSfxVolume(restored, AUDIO.bloodPickup) > 0);
+});
+
 test('effectiveVolume routes each key through its own group', () => {
   const config = balance({ master: 1, music: 1, sfx: 0, assets: { [AUDIO.levelMusic]: 1 } });
 
@@ -80,10 +96,23 @@ test('an incomplete saved config keeps the fields it does have', () => {
   assert.equal(restored.music, DEFAULT_AUDIO_BALANCE.music);
   assert.equal(restored.sfx, DEFAULT_AUDIO_BALANCE.sfx);
   assert.equal(restored.muted, false);
+  assert.equal(restored.musicMuted, false);
+  assert.equal(restored.sfxMuted, false);
   assert.equal(
     restored.assets[AUDIO.mainTitle],
     DEFAULT_AUDIO_BALANCE.assets[AUDIO.mainTitle],
   );
+});
+
+test('independent mute choices survive normalization and legacy mute-all migrates safely', () => {
+  const split = normalizeBalance({ muted: false, musicMuted: true, sfxMuted: false });
+  assert.equal(split.musicMuted, true);
+  assert.equal(split.sfxMuted, false);
+
+  const legacy = normalizeBalance({ muted: true });
+  assert.equal(legacy.muted, true);
+  assert.equal(legacy.musicMuted, true);
+  assert.equal(legacy.sfxMuted, true);
 });
 
 test('garbage saved data falls back to the defaults instead of throwing', () => {
@@ -109,6 +138,8 @@ test('out-of-range and non-numeric saved values are repaired per field', () => {
   assert.equal(restored.music, DEFAULT_AUDIO_BALANCE.music);
   assert.equal(restored.sfx, 0);
   assert.equal(restored.muted, false);
+  assert.equal(restored.musicMuted, false);
+  assert.equal(restored.sfxMuted, false);
   assert.equal(restored.assets[AUDIO.mainTitle], 1);
   assert.equal(restored.assets[AUDIO.levelMusic], DEFAULT_AUDIO_BALANCE.assets[AUDIO.levelMusic]);
 });

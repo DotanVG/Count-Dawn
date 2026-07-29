@@ -9,6 +9,7 @@ import {
 } from '../data/audioBalance';
 import {
   audioAsset,
+  audioGroupOf,
   shouldReverse,
   variedDetune,
   variedVolume,
@@ -20,7 +21,9 @@ import type { MusicState } from './MusicStateMachine';
  * Phaser's BaseSound type does not declare `volume`, but every concrete
  * implementation (WebAudio, HTML5 and the no-audio stub) does.
  */
-type LevelledSound = Phaser.Sound.BaseSound & { volume: number };
+type LevelledSound = Phaser.Sound.BaseSound & { volume: number; mute: boolean };
+
+export type AudioBalanceListener = (balance: AudioBalanceConfig) => void;
 
 export interface SfxOptions {
   loop?: boolean;
@@ -86,6 +89,8 @@ export class AudioDirector {
   private previewRestore: MusicState | null = null;
   /** Keys proven un-reversible on this backend; never retried. */
   private readonly unreversible = new Set<string>();
+  /** Keeps player-facing audio toggles and developer controls in sync. */
+  private readonly balanceListeners = new Set<AudioBalanceListener>();
   private destroyed = false;
 
   constructor(private readonly game: Phaser.Game) {
@@ -183,7 +188,10 @@ export class AudioDirector {
     // A -> B -> A). Kill it now rather than let two copies overlap.
     this.finishFadesFor(key);
 
-    const sound = this.sound.add(key, { loop: true }) as LevelledSound;
+    const sound = this.sound.add(key, {
+      loop: true,
+      mute: this.balance.musicMuted,
+    }) as LevelledSound;
     this.currentSound = sound;
     sound.play();
     // Silenced AFTER play(): starting playback re-applies the sound's own
@@ -212,7 +220,7 @@ export class AudioDirector {
    * asks for the cue and gets whatever that sound is currently defined to be.
    */
   playSfx(key: string, options?: SfxOptions): void {
-    if (this.destroyed || !this.exists(key)) return;
+    if (this.destroyed || this.balance.muted || this.balance.sfxMuted || !this.exists(key)) return;
 
     const config = this.sfxConfig(key, options);
     const variance = audioAsset(key)?.variance;
@@ -239,6 +247,7 @@ export class AudioDirector {
     const { volumeScale, ...rest } = options ?? {};
     return {
       ...rest,
+      mute: this.balance.sfxMuted,
       volume: clamp01(effectiveSfxVolume(this.balance, key) * clamp01(volumeScale ?? 1)),
     };
   }
@@ -295,14 +304,17 @@ export class AudioDirector {
    */
   addSfx(key: string, options?: SfxOptions): Phaser.Sound.BaseSound | null {
     if (this.destroyed || !this.exists(key)) return null;
-    return this.sound.add(key, { ...options, volume: effectiveSfxVolume(this.balance, key) });
+    // Unlike fire-and-forget SFX this still returns a silent sound while
+    // muted: callers such as Coffin use COMPLETE to serialize animation
+    // transitions, and muting audio must never change gameplay timing.
+    return this.sound.add(key, this.sfxConfig(key, options));
   }
 
   /** Plays one exact excerpt and releases its temporary sound instance afterward. */
   playSfxSegment(key: string, start: number, duration: number): void {
-    if (this.destroyed || !this.exists(key)) return;
+    if (this.destroyed || this.balance.muted || this.balance.sfxMuted || !this.exists(key)) return;
 
-    const sound = this.sound.add(key, { volume: effectiveSfxVolume(this.balance, key) });
+    const sound = this.sound.add(key, this.sfxConfig(key));
     sound.addMarker({ name: 'segment', start, duration });
     const destroy = (): void => sound.destroy();
     sound.once(Phaser.Sound.Events.COMPLETE, destroy);
@@ -344,7 +356,40 @@ export class AudioDirector {
 
   setMuted(muted: boolean): void {
     this.balance.muted = muted;
+    // "Mute all" remains an honest all-channels control. Keeping the channel
+    // flags in step also means either player-facing toggle can later unmute
+    // just its own channel without unexpectedly reviving the other one.
+    this.balance.musicMuted = muted;
+    this.balance.sfxMuted = muted;
     this.commitBalance();
+  }
+
+  setMusicMuted(muted: boolean): void {
+    if (!muted && this.balance.muted) {
+      this.balance.muted = false;
+      this.balance.sfxMuted = true;
+    }
+    this.balance.musicMuted = muted;
+    this.commitBalance();
+  }
+
+  setSfxMuted(muted: boolean): void {
+    if (!muted && this.balance.muted) {
+      this.balance.muted = false;
+      this.balance.musicMuted = true;
+    }
+    this.balance.sfxMuted = muted;
+    this.commitBalance();
+  }
+
+  /**
+   * Observes persisted audio-setting changes. The current value is delivered
+   * immediately, which keeps UI installation free of one-off sync paths.
+   */
+  onBalanceChange(listener: AudioBalanceListener): () => void {
+    this.balanceListeners.add(listener);
+    listener(this.getBalance());
+    return () => this.balanceListeners.delete(listener);
   }
 
   resetBalance(): void {
@@ -355,8 +400,21 @@ export class AudioDirector {
   private commitBalance(): void {
     this.balance = normalizeBalance(this.balance);
     this.sound.mute = this.balance.muted;
+    this.syncChannelMutes();
     this.refreshMusicVolume();
     saveBalance(this.balance);
+    const snapshot = this.getBalance();
+    for (const listener of this.balanceListeners) listener(snapshot);
+  }
+
+  /** Applies group mute changes to sounds that were already in flight. */
+  private syncChannelMutes(): void {
+    for (const sound of this.sound.getAll<LevelledSound>()) {
+      sound.mute =
+        audioGroupOf(sound.key) === 'music'
+          ? this.balance.musicMuted
+          : this.balance.sfxMuted;
+    }
   }
 
   /** Music already playing follows the sliders live, mid-fade included. */
@@ -466,6 +524,7 @@ export class AudioDirector {
     if (this.currentSound) this.discard(this.currentSound);
     this.currentSound = null;
     this.currentKey = null;
+    this.balanceListeners.clear();
   }
 }
 

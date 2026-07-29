@@ -18,6 +18,10 @@ export interface AudioBalanceConfig {
   sfx: number;
   /** "Mute all" from the audio balance editor; applied as the global mute. */
   muted: boolean;
+  /** Player-facing soundtrack toggle. Kept separate from SFX on purpose. */
+  musicMuted: boolean;
+  /** Player-facing sound-effects toggle. Kept separate from music on purpose. */
+  sfxMuted: boolean;
   /** Per-key level, 0..1, keyed by the Phaser audio key. */
   assets: Record<string, number>;
 }
@@ -30,6 +34,8 @@ export const DEFAULT_AUDIO_BALANCE: AudioBalanceConfig = {
   music: 0.7,
   sfx: 0.8,
   muted: false,
+  musicMuted: false,
+  sfxMuted: false,
   assets: Object.fromEntries(AUDIO_MANIFEST.map((asset) => [asset.key, asset.defaultVolume])),
 };
 
@@ -48,10 +54,12 @@ export function assetVolume(balance: AudioBalanceConfig, key: string): number {
 }
 
 export function effectiveMusicVolume(balance: AudioBalanceConfig, key: string): number {
+  if (balance.muted || balance.musicMuted) return 0;
   return clamp01(clamp01(balance.master) * clamp01(balance.music) * assetVolume(balance, key));
 }
 
 export function effectiveSfxVolume(balance: AudioBalanceConfig, key: string): number {
+  if (balance.muted || balance.sfxMuted) return 0;
   return clamp01(clamp01(balance.master) * clamp01(balance.sfx) * assetVolume(balance, key));
 }
 
@@ -96,6 +104,20 @@ export function normalizeBalance(raw: unknown): AudioBalanceConfig {
     music: readNumber(source, 'music', defaults.music),
     sfx: readNumber(source, 'sfx', defaults.sfx),
     muted: typeof source.muted === 'boolean' ? source.muted : defaults.muted,
+    // A save from before the split only has `muted`. Carry that choice into
+    // both channels so an existing "mute all" preference stays respected.
+    musicMuted:
+      typeof source.musicMuted === 'boolean'
+        ? source.musicMuted
+        : typeof source.muted === 'boolean'
+          ? source.muted
+          : defaults.musicMuted,
+    sfxMuted:
+      typeof source.sfxMuted === 'boolean'
+        ? source.sfxMuted
+        : typeof source.muted === 'boolean'
+          ? source.muted
+          : defaults.sfxMuted,
     assets,
   };
 }

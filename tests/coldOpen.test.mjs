@@ -3,21 +3,26 @@ import assert from 'node:assert/strict';
 
 import {
   COLD_OPEN,
+  COLD_OPEN_ARMED_STATS,
   COLD_OPEN_CAPTAIN_STATS,
   COLD_OPEN_CENTER,
+  COLD_OPEN_HUNTER_STATS,
   COLD_OPEN_MARCH_SPEED,
   COLD_OPEN_PRIEST_STATS,
   COLD_OPEN_THROWER_STATS,
+  coldOpenFormationPoint,
   coldOpenRingSlot,
   coldOpenSlotActor,
   coldOpenSlotIsThrower,
   coldOpenTimerSeconds,
   coldOpenSkyProgress,
 } from '../src/systems/coldOpen.ts';
-import { BOSS, HUNTER, PRIEST, THROWER } from '../src/data/balance.ts';
+import { ARMED, BOSS, HUNTER, PRIEST, THROWER } from '../src/data/balance.ts';
 import { ARENA, GAME_WIDTH, GAME_HEIGHT } from '../src/game/constants.ts';
+import { chainLightningDuration } from '../src/systems/chainLightning.ts';
 
 test('the cold open clock opens on the full countdown', () => {
+  assert.equal(COLD_OPEN.startSeconds, 10);
   assert.equal(coldOpenTimerSeconds(0), COLD_OPEN.startSeconds);
 });
 
@@ -67,9 +72,18 @@ test('the beats stage in the order the scene needs them', () => {
   assert.ok(COLD_OPEN.flyInMs <= COLD_OPEN.lineStartMs);
   // The line is gone (or forcibly cleared) before the demo fires.
   assert.ok(COLD_OPEN.lineStartMs < COLD_OPEN.demoMs);
+  // The Priest gets a readable head start on the harmless cross before the
+  // Count answers it with the Ultimate pose.
+  assert.ok(COLD_OPEN.orbitStartMs < COLD_OPEN.priestCueMs);
+  assert.ok(COLD_OPEN.priestCueMs < COLD_OPEN.demoMs);
   // The kill lands after the summon pose and the flash, and before blood starts.
   const killAt = COLD_OPEN.demoMs + COLD_OPEN.demoSummonMs + COLD_OPEN.demoStrikeMs;
   assert.ok(killAt <= COLD_OPEN.bloodStartMs, 'blood starts flying before the kill lands');
+  const chainDoneAt =
+    killAt +
+    COLD_OPEN.chainLeadMs +
+    chainLightningDuration(COLD_OPEN.hunterCount, COLD_OPEN.chainHopMs);
+  assert.ok(chainDoneAt < COLD_OPEN.toCoffinMs, 'chain lightning overlaps the escape spin');
 
   // The last bloodlet has to arrive before he leaves for the coffin, or the
   // meter would still be filling while he is already asleep.
@@ -80,7 +94,10 @@ test('the beats stage in the order the scene needs them', () => {
   assert.ok(lastBloodletAt <= COLD_OPEN.toCoffinMs, `bloodlets still arriving at ${lastBloodletAt}ms`);
 
   // And the flight has to actually be over when the lid shuts.
-  assert.equal(COLD_OPEN.toCoffinMs + COLD_OPEN.coffinFlightMs, COLD_OPEN.coffinShutMs);
+  assert.equal(
+    COLD_OPEN.toCoffinMs + COLD_OPEN.retireSpinMs + COLD_OPEN.coffinFlightMs,
+    COLD_OPEN.coffinShutMs,
+  );
 });
 
 test('the whole cold open fits inside its own countdown', () => {
@@ -101,22 +118,23 @@ test('the sky reaches the edge of sunrise but never dawn', () => {
   assert.ok(coldOpenSkyProgress(999_999) < 1);
 });
 
-test('every actor is standing in its ring slot before the Ultimate demo fires', () => {
-  // They walk in at the ring's marching pace and the demo does not wait.
-  // This margin is asserted rather than eyeballed, same as the old block
-  // formation's version of this test.
+test('every actor reaches its ring before it begins orbiting or any attack cue fires', () => {
   for (let i = 0; i < COLD_OPEN.hunterCount; i++) {
     const { spawn, arrival } = coldOpenRingSlot(i, COLD_OPEN.hunterCount);
     const distance = Math.hypot(spawn.x - arrival.x, spawn.y - arrival.y);
     const inPlaceAt = COLD_OPEN.huntersInMs + (distance / COLD_OPEN_MARCH_SPEED) * 1000;
     assert.ok(
-      inPlaceAt <= COLD_OPEN.demoMs,
-      `actor ${i} (${coldOpenSlotActor(i)}) is still walking at the demo (in place at ${Math.round(inPlaceAt)}ms)`,
+      inPlaceAt <= COLD_OPEN.orbitStartMs,
+      `actor ${i} (${coldOpenSlotActor(i)}) misses the orbit (arrives ${Math.round(inPlaceAt)}ms)`,
     );
+    if (coldOpenSlotActor(i) === 'priest') {
+      assert.ok(inPlaceAt < COLD_OPEN.priestCueMs, 'the Priest is still entering at his cross cue');
+    }
   }
 });
 
-test('the ring stands inside the hall, and every actor enters from off-canvas', () => {
+test('the ring stands inside the hall, and every actor enters through a solid outer wall', () => {
+  const usedWalls = new Set();
   for (let i = 0; i < COLD_OPEN.hunterCount; i++) {
     const { spawn, arrival } = coldOpenRingSlot(i, COLD_OPEN.hunterCount);
     assert.ok(arrival.x > ARENA.left && arrival.x < ARENA.right, `actor ${i} stands outside the hall`);
@@ -125,7 +143,12 @@ test('the ring stands inside the hall, and every actor enters from off-canvas', 
     // walks into view instead of appearing already on screen.
     const offCanvas = spawn.x < 0 || spawn.x > GAME_WIDTH || spawn.y < 0 || spawn.y > GAME_HEIGHT;
     assert.ok(offCanvas, `actor ${i} pops into the open hall from (${spawn.x}, ${spawn.y})`);
+    assert.ok(spawn.y >= 0, `actor ${i} enters through the north/window wall`);
+    if (spawn.x < 0) usedWalls.add('left');
+    if (spawn.x > GAME_WIDTH) usedWalls.add('right');
+    if (spawn.y > GAME_HEIGHT) usedWalls.add('bottom');
   }
+  assert.deepEqual(usedWalls, new Set(['left', 'right', 'bottom']));
 });
 
 test('the ring surrounds him from every side, not one flank', () => {
@@ -151,6 +174,17 @@ test('the ring is evenly spaced around one shared centre', () => {
   for (const r of radii) {
     assert.ok(Math.abs(r - COLD_OPEN.ringRadius) < 1, `arrival radius ${r} does not match ringRadius`);
   }
+});
+
+test('the ring visibly rotates and closes without entering contact range', () => {
+  const start = coldOpenFormationPoint(0, COLD_OPEN.hunterCount, COLD_OPEN.orbitStartMs);
+  const end = coldOpenFormationPoint(0, COLD_OPEN.hunterCount, COLD_OPEN.priestCueMs);
+  const startRadius = Math.hypot(start.x - COLD_OPEN_CENTER.x, start.y - COLD_OPEN_CENTER.y);
+  const endRadius = Math.hypot(end.x - COLD_OPEN_CENTER.x, end.y - COLD_OPEN_CENTER.y);
+  assert.ok(endRadius < startRadius, 'the formation never closes in');
+  assert.ok(Math.abs(endRadius - COLD_OPEN.closingRadius) < 1);
+  assert.ok(Math.abs(end.y - start.y) > 20, 'the formation never circles');
+  assert.ok(COLD_OPEN.closingRadius > HUNTER.meleeRange, 'formation enters melee/contact range');
 });
 
 test('the roster includes every kind of enemy the player will actually face', () => {
@@ -181,9 +215,16 @@ test('the roster is mixed: both melee and ranged flavours actually turn up', () 
 });
 
 test('the whole ring marches at one shared pace, not any flavour own', () => {
-  // The override exists for one reason, so state it for every overridden
-  // flavour: at its own pace it is still walking when the demo fires.
-  assert.equal(COLD_OPEN_MARCH_SPEED, HUNTER.moveSpeed);
+  // Three-wall staging and the ten-second clock need a genuinely cinematic
+  // pace; every flavour receives exactly the same isolated override.
+  assert.equal(COLD_OPEN_MARCH_SPEED, HUNTER.moveSpeed * 2);
+
+  assert.equal(COLD_OPEN_HUNTER_STATS.moveSpeed, COLD_OPEN_MARCH_SPEED);
+  assert.equal(COLD_OPEN_HUNTER_STATS.health, HUNTER.health);
+
+  assert.ok(ARMED.moveSpeed < COLD_OPEN_MARCH_SPEED);
+  assert.equal(COLD_OPEN_ARMED_STATS.moveSpeed, COLD_OPEN_MARCH_SPEED);
+  assert.equal(COLD_OPEN_ARMED_STATS.health, ARMED.health);
 
   assert.ok(THROWER.moveSpeed < COLD_OPEN_MARCH_SPEED);
   assert.equal(COLD_OPEN_THROWER_STATS.moveSpeed, COLD_OPEN_MARCH_SPEED);
