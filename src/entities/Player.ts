@@ -3,7 +3,7 @@ import { BAT, DASH, PLAYER } from '../data/balance';
 import { DEPTHS } from '../game/constants';
 import { EVENTS, type GameEventEmitter } from '../game/events';
 import { ANIMS, TEXTURES, animKey, type Dir4 } from '../utils/assetKeys';
-import { angleToDir4 } from '../utils/direction';
+import { angleToDir4, deathRenderDirection } from '../utils/direction';
 import { VAMPIRE_ATTACK_DURATION_MS } from '../utils/animations';
 
 /** The charge-and-burst stretch of the magic layer, used as his cast. */
@@ -394,7 +394,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
   playDeathAnim(): void {
     this.stopForDeath();
-    this.play(animKey('vampire', 'death', this.facing), true);
+    const render = deathRenderDirection(this.facing);
+    this.setFlipX(render.flipX);
+    this.play(animKey('vampire', 'death', render.animationDirection), true);
   }
 
   /**
@@ -404,7 +406,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    */
   playSunburnAnim(): void {
     this.stopForDeath();
-    this.play(animKey('vampire', 'sunburn', this.facing), true);
+    const render = deathRenderDirection(this.facing);
+    this.setFlipX(render.flipX);
+    this.play(animKey('vampire', 'sunburn', render.animationDirection), true);
   }
 
   /**

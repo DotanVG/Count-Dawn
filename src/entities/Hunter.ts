@@ -3,6 +3,7 @@ import { HUNTER, KNOCKBACK } from '../data/balance';
 import { ARENA, DEPTHS } from '../game/constants';
 import { TEXTURES, animKey, type CharacterKey, type Dir4 } from '../utils/assetKeys';
 import { angleToDir4 } from '../utils/direction';
+import { coffinDetourWaypoints, type NavigationPoint } from '../systems/enemyNavigation';
 
 export interface HunterStats {
   health: number;
@@ -93,7 +94,12 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     faceX: number;
     faceY: number;
   } | null = null;
-  private coffinDetour: { x: number; y: number } | null = null;
+  private coffinDetour: {
+    waypoints: NavigationPoint[];
+    index: number;
+    lastDistance: number;
+    lastProgressAt: number;
+  } | null = null;
   private knockbackUntil = 0;
   private readonly knockbackVelocity = new Phaser.Math.Vector2();
   /** Bumped whenever a swing is started or interrupted; a stale token can't land a hit. */
@@ -317,10 +323,35 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     }
 
     if (this.coffinDetour) {
-      this.walkToward(this.coffinDetour.x, this.coffinDetour.y);
-      if (Phaser.Math.Distance.Between(this.x, this.y, this.coffinDetour.x, this.coffinDetour.y) < 12) {
-        this.coffinDetour = null;
+      const route = this.coffinDetour;
+      const waypoint = route.waypoints[route.index];
+      const distance = Phaser.Math.Distance.Between(this.x, this.y, waypoint.x, waypoint.y);
+
+      if (distance < 14) {
+        route.index++;
+        const next = route.waypoints[route.index];
+        if (!next) {
+          this.coffinDetour = null;
+          return false;
+        }
+        route.lastDistance = Phaser.Math.Distance.Between(this.x, this.y, next.x, next.y);
+        route.lastProgressAt = this.scene.time.now;
+        this.walkToward(next.x, next.y);
+        return true;
       }
+
+      if (distance < route.lastDistance - 2) {
+        route.lastDistance = distance;
+        route.lastProgressAt = this.scene.time.now;
+      } else if (this.scene.time.now - route.lastProgressAt > 700) {
+        // Physics or a moving crowd can still pin a route temporarily. Drop
+        // stale steering so direct pursuit resumes and the next coffin contact
+        // can calculate a fresh route from the hunter's new position.
+        this.coffinDetour = null;
+        return false;
+      }
+
+      this.walkToward(waypoint.x, waypoint.y);
       return true;
     }
 
@@ -377,15 +408,39 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     targetX: number,
   ): void {
     if (this.entering || this.coffinDetour) return;
-    const clearance = 24 + 10 * this.scaleX;
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    const waypoints = coffinDetourWaypoints(
+      { x: this.x, y: this.y },
+      { x: targetX, y: this.y },
+      {
+        x: coffinX,
+        y: coffinY,
+        halfWidth: coffinHalfWidth,
+        halfHeight: coffinHalfHeight,
+      },
+      ARENA,
+      {
+        halfWidth: body.halfWidth,
+        halfHeight: body.halfHeight,
+      },
+    );
+    const first = waypoints[0];
     this.coffinDetour = {
-      x: targetX >= coffinX
-        ? coffinX + coffinHalfWidth + clearance
-        : coffinX - coffinHalfWidth - clearance,
-      y: this.y < coffinY
-        ? coffinY - coffinHalfHeight - clearance
-        : coffinY + coffinHalfHeight + clearance,
+      waypoints,
+      index: 0,
+      lastDistance: Phaser.Math.Distance.Between(this.x, this.y, first.x, first.y),
+      lastProgressAt: this.scene.time.now,
     };
+  }
+
+  /**
+   * A landed strike is definitive evidence of the Count's current position.
+   * Forget any old scenery detour so, after knockback, pursuit immediately
+   * reacquires him instead of completing a route chosen for an earlier spot.
+   */
+  refreshPursuit(): void {
+    this.coffinDetour = null;
+    if (!this.entering) this.cutsceneTarget = null;
   }
 
   protected walkToward(targetX: number, targetY: number, speed = this.moveSpeed): void {
@@ -400,6 +455,7 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   /** Returns true if this hit killed the hunter. Caller handles drops/removal. */
   takeDamage(amount: number): boolean {
     if (!this.isAlive) return false;
+    this.refreshPursuit();
     this.health -= amount;
 
     // White hit flash (Phaser 4 tint API).

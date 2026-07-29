@@ -61,6 +61,14 @@
         image-rendering: pixelated;
         image-rendering: crisp-edges;
       }
+      /*
+       * A single full-game palette transform for reduced red perception.
+       * Keeping it on the root means blood, particles, sprites, UI and future
+       * art all receive the same treatment without per-asset maintenance.
+       */
+      #game-root.red-blind-palette {
+        filter: hue-rotate(145deg) saturate(1.2) contrast(1.06);
+      }
       #vampire-cursor {
         --jaw-width: 30px;
         position: fixed;

@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import {
+  BAT,
   BLOOD,
   BOSS,
   CROSS,
@@ -68,8 +69,8 @@ import { CastleMap, WINDOW_X_CENTERS, WINDOW_Y } from '../world/CastleMap';
 import { DawnSky } from '../world/DawnSky';
 import { HUD } from '../ui/HUD';
 import { MenuLightning } from '../ui/MenuLightning';
-import { TouchControls } from '../ui/TouchControls';
-import { TEXTURES, ANIMS, AUDIO, BLOOD_DECALS } from '../utils/assetKeys';
+import { TOUCH_JOYSTICK, TouchControls } from '../ui/TouchControls';
+import { TEXTURES, ANIMS, AUDIO, BLOOD_DECALS, type Dir4 } from '../utils/assetKeys';
 import { VAMPIRE_SUNBURN_DURATION_MS } from '../utils/animations';
 import { emptyRunStats } from '../types/game';
 import type { BossKind, EndCause, HunterKind, RunStats, RunSummary } from '../types/game';
@@ -77,8 +78,10 @@ import type { BossKind, EndCause, HunterKind, RunStats, RunSummary } from '../ty
 type Phase = 'menu' | 'intro' | 'playing' | 'transition' | 'ended';
 
 interface GameSceneData {
-  /** Skip the menu (used by the restart buttons) and rise straight from the coffin. */
+  /** Skip the menu and begin a run immediately. */
   autostart?: boolean;
+  /** Autostart through the full opening cinematic instead of the coffin rise. */
+  showOpening?: boolean;
 }
 
 /**
@@ -102,7 +105,12 @@ const DEATH_FALLBACK_GRACE_MS = 400;
 const CINEMATIC = {
   /** Low enough to sit in the red band, so the bar is flashing as he flies in. */
   startHealth: 12,
+  /** Space / mobile intro control must be held continuously for this long. */
+  skipHoldMs: 2000,
 } as const;
+
+/** One unmistakable clockwise look around the room before the bat poof. */
+const CINEMATIC_TURN: readonly Dir4[] = ['up', 'right', 'down', 'left'];
 
 /** The vampire's landing spot: the center of the hall. */
 const PLAYER_SPAWN = {
@@ -197,8 +205,22 @@ export class GameScene extends Phaser.Scene {
   private coldOpenCorpses: { x: number; y: number }[] = [];
   /** Stable slot per scenery actor, used to orbit the whole formation as one ring. */
   private coldOpenSlots = new Map<Hunter, number>();
-  private coldOpenStartedAt = 0;
+  /**
+   * Scene-time elapsed during the cold open. Unlike `time.now - startedAt`,
+   * this only advances from GameScene.update, so browser focus loss and the
+   * pause overlay cannot let the visible countdown run past frozen actors.
+   */
+  private coldOpenElapsedMs = 0;
   private coldOpenPriest: Priest | null = null;
+  private introSkipKey?: Phaser.Input.Keyboard.Key;
+  private introControls: Phaser.GameObjects.Container | null = null;
+  private introSkipFill: Phaser.GameObjects.Rectangle | null = null;
+  private introSkipHoldButton: Phaser.GameObjects.Arc | null = null;
+  private introSkipHoldLabel: Phaser.GameObjects.Text | null = null;
+  private introSkipBlinkTween: Phaser.Tweens.Tween | null = null;
+  private introSkipHoldMs = 0;
+  private introSkipPointerId = -1;
+  private introSkipTriggered = false;
 
   constructor() {
     super(SCENES.game);
@@ -214,8 +236,16 @@ export class GameScene extends Phaser.Scene {
     this.recentKillTimes = [];
     this.pendingHealthAfterSleep = PLAYER.maxHealth;
     this.coldOpenSlots.clear();
-    this.coldOpenStartedAt = 0;
+    this.coldOpenElapsedMs = 0;
     this.coldOpenPriest = null;
+    this.introControls = null;
+    this.introSkipFill = null;
+    this.introSkipHoldButton = null;
+    this.introSkipHoldLabel = null;
+    this.introSkipBlinkTween = null;
+    this.introSkipHoldMs = 0;
+    this.introSkipPointerId = -1;
+    this.introSkipTriggered = false;
     this.captains.clear();
     this.countdown = null;
     this.spawner = null;
@@ -282,8 +312,7 @@ export class GameScene extends Phaser.Scene {
     // Strict check: Phaser keeps the previous start()'s data when none is
     // passed, so a stale { autostart: true } must not skip the menu.
     if (data?.autostart === true) {
-      // Restart from an end screen: straight back into a night, no cold open.
-      this.playCinematic = false;
+      this.playCinematic = data.showOpening === true;
       this.startIntro();
     } else {
       this.playCinematic = true;
@@ -303,7 +332,12 @@ export class GameScene extends Phaser.Scene {
     // when something pursues them — without this he would stand off-screen
     // where he spawned and the Count would strike thin air.
     if (this.phase === 'intro') {
-      const elapsed = Math.max(0, this.time.now - this.coldOpenStartedAt);
+      // Delta belongs to the scene clock: it stops for both an explicit pause
+      // and Phaser's focus-loss pause. Keeping the cinematic clock on the same
+      // source prevents a hidden tab from aging the timer while actors freeze.
+      this.coldOpenElapsedMs += Math.max(0, delta);
+      this.updateIntroSkip(delta);
+      const elapsed = this.coldOpenElapsedMs;
       for (const hunter of this.getAttackTargets()) {
         const slot = this.coldOpenSlots.get(hunter);
         if (slot !== undefined) {
@@ -342,22 +376,35 @@ export class GameScene extends Phaser.Scene {
 
   /** Called by the mobile pause button; the Esc/P keys route here too. */
   requestPause(): void {
-    if (this.phase !== 'playing' || this.scene.isPaused()) return;
+    if (
+      (this.phase !== 'intro' && this.phase !== 'playing' && this.phase !== 'transition') ||
+      this.scene.isPaused()
+    ) {
+      return;
+    }
     this.scene.pause();
     this.scene.launch(SCENES.pause);
   }
 
   /**
-   * Music follows the scene, not the pause menu: this covers the pause
-   * overlay AND the portrait-orientation gate, and opening the pause screen
-   * never promotes the Main Title over a suspended run.
+   * PauseScene is always a cursor-visible menu. When it closes, the suspended
+   * scene takes ownership back and reapplies its own rule instead of inheriting
+   * the menu's state: live gameplay shows the fangs, cinematics hide them.
    */
+  restoreCursorForCurrentPhase(): void {
+    setVampireCursorVisible(this.phase === 'playing' || this.phase === 'menu');
+  }
+
+  /** Pause freezes every SFX while the current soundtrack ducks behind UI. */
   private onScenePaused(): void {
-    this.audio.pauseMusic();
+    this.audio.enterMenuMode(true);
   }
 
   private onSceneResumed(): void {
-    this.audio.resumeMusic();
+    // The main menu is already a quiet-music screen. Rotating it through the
+    // portrait gate must not promote its soundtrack back to gameplay volume.
+    if (this.phase === 'menu') this.audio.enterMenuMode();
+    else this.audio.exitMenuMode();
   }
 
   // ── Per-device control routing ──────────────────────────────────────────
@@ -405,23 +452,15 @@ export class GameScene extends Phaser.Scene {
 
   /** Mobile's ⚔ button: turn toward the nearest living hunter and strike, once per press. */
   private autoAttackNearest(): void {
-    const targets = this.getAttackTargets();
-    let nearest: Hunter | null = null;
-    let nearestDist = Infinity;
-    for (const t of targets) {
-      const d = Phaser.Math.Distance.Between(this.player.x, this.player.y, t.x, t.y);
-      if (d < nearestDist) {
-        nearestDist = d;
-        nearest = t;
-      }
-    }
-    if (nearest) this.player.aimAt(nearest.x, nearest.y);
-    this.combat.tryAttack(targets);
+    this.combat.tryAutoAttack(this.getAttackTargets());
   }
 
   // ── Menu & intro ────────────────────────────────────────────────────────
 
   private buildMenu(): void {
+    // Main menu owns a visible vampire cursor even when reached directly from
+    // a cutscene pause/quit path.
+    setVampireCursorVisible(true);
     const cx = GAME_WIDTH / 2;
 
     const dim = this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0d0716, 0.45).setOrigin(0);
@@ -493,6 +532,7 @@ export class GameScene extends Phaser.Scene {
     // is already playing does nothing, so coming back here from game over
     // neither restarts it nor stacks a second copy.
     this.audio.playMainTitle();
+    this.audio.enterMenuMode();
   }
 
   /** Write-stream / reverse-stream the three tagline sentences, forever. */
@@ -531,6 +571,7 @@ export class GameScene extends Phaser.Scene {
   private startIntro(): void {
     if (this.phase !== 'menu') return;
     this.phase = 'intro';
+    this.audio.exitMenuMode();
     // The cold open and the coffin flight are watched, not played — teeth
     // tracking the mouse across a cutscene read as a bug. Every screen with a
     // button on it keeps them, because they are the game's ONLY pointer.
@@ -551,10 +592,209 @@ export class GameScene extends Phaser.Scene {
 
     if (this.playCinematic) {
       this.playCinematic = false;
+      this.buildIntroControls();
       this.playOpeningCinematic();
     } else {
       this.riseFromCoffin(() => this.startPlaying());
     }
+  }
+
+  /**
+   * Opening-only controls. Desktop holds Space; touch gets a large hold target
+   * exactly where the gameplay joystick will later appear. Both share one
+   * nearly full-width progress bar so the two-second commitment is explicit.
+   * Touch also gets a pause control before TouchControls itself exists.
+   */
+  private buildIntroControls(): void {
+    this.destroyIntroControls();
+    this.introSkipHoldMs = 0;
+    this.introSkipPointerId = -1;
+    this.introSkipTriggered = false;
+    this.introSkipKey = this.input.keyboard?.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    window.addEventListener('blur', this.cancelIntroSkipHold);
+
+    const ui = this.add.container(0, 0).setDepth(DEPTHS.hud + 30).setScrollFactor(0);
+    const barLeft = 64;
+    const barWidth = GAME_WIDTH - barLeft * 2;
+    // Phones need the progress to sit clear of the browser/home-indicator
+    // edge; desktop keeps the low cinematic letterbox treatment.
+    const barY = this.isTouch ? GAME_HEIGHT - 54 : GAME_HEIGHT - 18;
+    const barTrack = this.add
+      .rectangle(GAME_WIDTH / 2, barY, barWidth, 12, 0x0d0716, 0.72)
+      .setStrokeStyle(3, 0xffffff, 0.95)
+      .setScrollFactor(0);
+    this.introSkipFill = this.add
+      .rectangle(barLeft + 3, barY, barWidth - 6, 6, 0xffffff, 1)
+      .setOrigin(0, 0.5)
+      .setScale(0, 1)
+      .setScrollFactor(0);
+    ui.add([barTrack, this.introSkipFill]);
+
+    if (this.isTouch) {
+      const joyX = TOUCH_JOYSTICK.x;
+      const joyY = TOUCH_JOYSTICK.y;
+      const hold = this.add
+        .circle(joyX, joyY, TOUCH_JOYSTICK.radius, 0xffffff, 0.1)
+        .setStrokeStyle(4, 0xffffff, 0.8)
+        .setInteractive()
+        .setScrollFactor(0);
+      const label = this.add
+        .text(joyX, joyY, 'HOLD TO\nSKIP INTRO', {
+          fontFamily: FONT,
+          fontSize: '18px',
+          color: '#ffffff',
+          fontStyle: 'bold',
+          align: 'center',
+          stroke: '#0d0716',
+          strokeThickness: 5,
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0);
+      this.introSkipHoldButton = hold;
+      this.introSkipHoldLabel = label;
+      const pause = this.add
+        .circle(GAME_WIDTH - 56, 140, 30, 0xc41e2f, 0.28)
+        .setStrokeStyle(4, 0xff4d4d, 0.8)
+        .setInteractive()
+        .setScrollFactor(0);
+      const pauseLabel = this.add
+        .text(GAME_WIDTH - 56, 140, '⏸', { fontSize: '27px' })
+        .setOrigin(0.5)
+        .setScrollFactor(0);
+      hold.on(
+        Phaser.Input.Events.POINTER_DOWN,
+        (
+          pointer: Phaser.Input.Pointer,
+          _localX: number,
+          _localY: number,
+          event: Phaser.Types.Input.EventData,
+        ) => {
+          event.stopPropagation();
+          this.introSkipPointerId = pointer.id;
+          this.setIntroSkipHeldVisual(true);
+        },
+      );
+      pause.on(
+        Phaser.Input.Events.POINTER_DOWN,
+        (
+          _pointer: Phaser.Input.Pointer,
+          _localX: number,
+          _localY: number,
+          event: Phaser.Types.Input.EventData,
+        ) => {
+          event.stopPropagation();
+          this.requestPause();
+        },
+      );
+      this.input.on(Phaser.Input.Events.POINTER_UP, this.releaseIntroSkipPointer, this);
+      this.input.on(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.releaseIntroSkipPointer, this);
+      this.introSkipBlinkTween = this.tweens.add({
+        targets: [hold, label],
+        alpha: { from: 1, to: 0.42 },
+        duration: 1050,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
+      ui.add([hold, label, pause, pauseLabel]);
+    } else {
+      const label = this.add
+        .text(GAME_WIDTH / 2, GAME_HEIGHT - 48, 'HOLD SPACE TO SKIP INTRO', {
+          fontFamily: FONT,
+          fontSize: '20px',
+          color: '#ffffff',
+          fontStyle: 'bold',
+          stroke: '#0d0716',
+          strokeThickness: 5,
+        })
+        .setOrigin(0.5)
+        .setScrollFactor(0);
+      this.tweens.add({
+        targets: label,
+        alpha: { from: 1, to: 0.42 },
+        duration: 1050,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
+      ui.add(label);
+    }
+
+    this.introControls = ui;
+  }
+
+  private releaseIntroSkipPointer(pointer: Phaser.Input.Pointer): void {
+    if (pointer.id !== this.introSkipPointerId) return;
+    this.introSkipPointerId = -1;
+    this.setIntroSkipHeldVisual(false);
+  }
+
+  /** Mobile press feedback: red means the two-second hold is actively counting. */
+  private setIntroSkipHeldVisual(held: boolean): void {
+    const button = this.introSkipHoldButton;
+    const label = this.introSkipHoldLabel;
+    if (!button || !label) return;
+    if (held) {
+      this.introSkipBlinkTween?.pause();
+      button
+        .setAlpha(1)
+        .setFillStyle(0xc41e2f, 0.72)
+        .setStrokeStyle(4, 0xff4d4d, 1);
+      label.setAlpha(1).setColor('#ff6d7a');
+      return;
+    }
+
+    button
+      .setFillStyle(0xffffff, 0.1)
+      .setStrokeStyle(4, 0xffffff, 0.8);
+    label.setColor('#ffffff');
+    this.introSkipBlinkTween?.resume();
+  }
+
+  /** A hold interrupted by leaving the page is not a completed two-second hold. */
+  private readonly cancelIntroSkipHold = (): void => {
+    this.introSkipPointerId = -1;
+    this.introSkipHoldMs = 0;
+    this.introSkipFill?.setScale(0, 1);
+    this.introSkipKey?.reset();
+    this.setIntroSkipHeldVisual(false);
+  };
+
+  /** Advance only while the relevant control is continuously held. */
+  private updateIntroSkip(delta: number): void {
+    if (!this.introControls || this.introSkipTriggered) return;
+    const held = this.isTouch
+      ? this.introSkipPointerId >= 0
+      : (this.introSkipKey?.isDown ?? false);
+    this.introSkipHoldMs = held
+      ? Math.min(CINEMATIC.skipHoldMs, this.introSkipHoldMs + Math.max(0, delta))
+      : 0;
+    this.introSkipFill?.setScale(this.introSkipHoldMs / CINEMATIC.skipHoldMs, 1);
+    if (this.introSkipHoldMs < CINEMATIC.skipHoldMs) return;
+
+    this.introSkipTriggered = true;
+    this.inputController.discardBufferedActions();
+    // Restarting through the existing autostart route is the clean skip: it
+    // tears down every pending cinematic tween/timer/actor, then performs the
+    // normal coffin rise with no duplicated effects left behind.
+    this.scene.restart({ autostart: true });
+  }
+
+  private destroyIntroControls(): void {
+    window.removeEventListener('blur', this.cancelIntroSkipHold);
+    this.input.off(Phaser.Input.Events.POINTER_UP, this.releaseIntroSkipPointer, this);
+    this.input.off(Phaser.Input.Events.POINTER_UP_OUTSIDE, this.releaseIntroSkipPointer, this);
+    if (this.introControls) {
+      this.tweens.killTweensOf(this.introControls.getAll());
+      this.introControls.destroy(true);
+      this.introControls = null;
+    }
+    this.introSkipFill = null;
+    this.introSkipHoldButton = null;
+    this.introSkipHoldLabel = null;
+    this.introSkipBlinkTween = null;
+    this.introSkipPointerId = -1;
+    this.introSkipHoldMs = 0;
   }
 
   /**
@@ -612,13 +852,13 @@ export class GameScene extends Phaser.Scene {
     // own clock rather than a CountdownSystem, so the arithmetic is guaranteed
     // to land on one second left exactly as the lid shuts (see coldOpen.ts).
     this.emitter.emit(EVENTS.FINAL_TEN_SECONDS);
-    this.coldOpenStartedAt = this.time.now;
+    this.coldOpenElapsedMs = 0;
     let lastShown = -1;
     this.coldOpenClock = this.time.addEvent({
       delay: 50,
       loop: true,
       callback: () => {
-        const elapsed = this.time.now - this.coldOpenStartedAt;
+        const elapsed = this.coldOpenElapsedMs;
         const seconds = coldOpenTimerSeconds(elapsed);
         if (seconds !== lastShown) {
           lastShown = seconds;
@@ -811,7 +1051,11 @@ export class GameScene extends Phaser.Scene {
       this.cameras.main.shake(190, 0.009);
       this.spawnUltimateScreenPulse();
       this.time.delayedCall(65, () => this.cameras.main.flash(90, 238, 226, 255));
-      this.spawnBatSwarm();
+      // Make the cutscene swarm begin leaving through the windows exactly as
+      // the Count starts his own turn, so his eventual bat is easy to follow.
+      this.spawnBatSwarm(
+        COLD_OPEN.toCoffinMs - (COLD_OPEN.demoMs + COLD_OPEN.demoSummonMs),
+      );
 
       this.time.delayedCall(COLD_OPEN.demoStrikeMs, () => {
         this.cameras.main.shake(520, 0.014);
@@ -981,25 +1225,29 @@ export class GameScene extends Phaser.Scene {
         quantity: 3,
       })
       .setDepth(DEPTHS.attackFx + 1);
-    let transformed = false;
+    let facingIndex = -1;
 
     this.tweens.addCounter({
       from: 0,
       to: 1,
       duration: COLD_OPEN.retireSpinMs,
-      ease: 'Cubic.easeIn',
+      ease: 'Linear',
       onUpdate: (tween) => {
         const t = tween.getValue() ?? 0;
-        this.player.setAngle(t * 720);
-        vortex.setPosition(this.player.x, this.player.y);
-        if (!transformed && t >= 0.52) {
-          transformed = true;
-          this.setBatForm(true);
+        const nextFacing = Math.min(
+          CINEMATIC_TURN.length - 1,
+          Math.floor(t * CINEMATIC_TURN.length),
+        );
+        if (nextFacing !== facingIndex) {
+          facingIndex = nextFacing;
+          this.player.setFacing(CINEMATIC_TURN[nextFacing]);
         }
+        vortex.setPosition(this.player.x, this.player.y);
       },
       onComplete: () => {
-        if (!transformed) this.setBatForm(true);
-        this.player.setAngle(0);
+        // Only transform after every directional pose has read. The poof and
+        // immediate launch then identify this bat among the departing swarm.
+        this.setBatForm(true);
         vortex.stop();
         this.time.delayedCall(600, () => vortex.destroy());
 
@@ -1040,7 +1288,8 @@ export class GameScene extends Phaser.Scene {
               () => {},
             );
             this.playDayCycle(2200, () => {
-              this.hud?.resetForNewRound(bloodTargetForNight(this.night));
+              // The opening is the one scripted full refill in the run.
+              this.hud?.resetForNewRound(bloodTargetForNight(this.night), PLAYER.maxHealth);
               this.riseFromCoffin(() => this.startPlaying());
             });
           },
@@ -1140,6 +1389,8 @@ export class GameScene extends Phaser.Scene {
 
   /** First-ever round start (from the menu): builds the HUD/touch UI that persist for the whole scene. */
   private startPlaying(): void {
+    this.destroyIntroControls();
+    this.inputController.discardBufferedActions();
     this.phase = 'playing';
     this.setPlayerDormant(false);
     // Control goes live, so the aiming fangs come out. Before this the menu and
@@ -1665,7 +1916,7 @@ export class GameScene extends Phaser.Scene {
    * AUDIO.batDashSound's manifest entry) so thirty plays read as a swarm
    * rather than one sound stamped out thirty times in the same frame.
    */
-  private spawnBatSwarm(): void {
+  private spawnBatSwarm(swirlUntilExitMs = WRATH.durationMs - 700): void {
     const centerX = (ARENA.left + ARENA.right) / 2;
     const centerY = (ARENA.top + ARENA.bottom) / 2;
     const halfWidth = (ARENA.right - ARENA.left) / 2 - 30;
@@ -1693,7 +1944,9 @@ export class GameScene extends Phaser.Scene {
         const bat = this.add
           .sprite(startX, startY, TEXTURES.bat, 0)
           .setDepth(DEPTHS.attackFx + 1)
-          .setScale(Phaser.Math.FloatBetween(0.9, 1.3))
+          // These are the same creatures as the Count's dash form, so they
+          // share its exact rendered size rather than reading as giant bats.
+          .setScale(BAT.dashRenderScale)
           .setAlpha(0);
         bat.play(ANIMS.batFly);
         this.tweens.add({ targets: bat, alpha: 1, duration: 160 });
@@ -1708,7 +1961,7 @@ export class GameScene extends Phaser.Scene {
         const swirlY = Phaser.Math.FloatBetween(halfHeight * 0.4, halfHeight);
         // Leaves for its window well before the Ultimate ends, so the exit
         // flight (below) always has room to play out in full.
-        const swirlMs = Math.max(300, WRATH.durationMs - spawnDelay - 700);
+        const swirlMs = Math.max(300, swirlUntilExitMs - spawnDelay);
 
         this.tweens.addCounter({
           from: 0,
@@ -2424,9 +2677,15 @@ export class GameScene extends Phaser.Scene {
         // The moon that rises at the end of this day belongs to the coming night.
         this.night++;
         this.playDayCycle(2600, () => {
-          this.hud?.resetForNewRound(bloodTargetForNight(this.night));
+          // Normal nights retain the real blood-funded heal computed in
+          // playVictoryOutro; only the opening cinematic gets a scripted 100.
+          this.hud?.resetForNewRound(
+            bloodTargetForNight(this.night),
+            this.pendingHealthAfterSleep,
+          );
           this.riseFromCoffin(() => {
             this.physics.resume();
+            this.inputController.discardBufferedActions();
             this.phase = 'playing';
             this.cameras.main.shake(120, 0.004);
             this.beginRoundSystems();
@@ -2481,6 +2740,7 @@ export class GameScene extends Phaser.Scene {
     this.menuLightning?.destroy();
     this.menuLightning = null;
     this.coldOpenClock?.remove();
+    this.destroyIntroControls();
     this.events.off(Phaser.Scenes.Events.PAUSE, this.onScenePaused, this);
     this.events.off(Phaser.Scenes.Events.RESUME, this.onSceneResumed, this);
     this.input.keyboard?.off('keydown-ESC', this.requestPause, this);

@@ -22,6 +22,9 @@ import type { MusicState } from './MusicStateMachine';
  * implementation (WebAudio, HTML5 and the no-audio stub) does.
  */
 type LevelledSound = Phaser.Sound.BaseSound & { volume: number; mute: boolean };
+type ResumableSoundManager = Phaser.Sound.BaseSoundManager & {
+  context?: AudioContext;
+};
 
 export type AudioBalanceListener = (balance: AudioBalanceConfig) => void;
 
@@ -40,6 +43,9 @@ export interface SfxOptions {
 
 /** Short enough to feel like one gesture, long enough not to click. */
 const CROSSFADE_MS = 300;
+
+/** Menus keep the soundtrack present, but behind the player's attention. */
+const MENU_MUSIC_DUCK = 0.2;
 
 /** Cache key suffix for the in-memory reversed copy of a sound. */
 const REVERSED_SUFFIX = '--reversed';
@@ -87,6 +93,12 @@ export class AudioDirector {
   private currentLevel = 0;
   /** State to fall back to when the editor's music preview is stopped. */
   private previewRestore: MusicState | null = null;
+  /** True while a menu or pause overlay owns the screen. */
+  private menuMode = false;
+  /** Pause overlays resume captured SFX; terminal/main menus discard them. */
+  private resumeCapturedSfx = false;
+  /** Only SFX active at the pause boundary are eligible to resume. */
+  private readonly pausedSfx = new Set<LevelledSound>();
   /** Keys proven un-reversible on this backend; never retried. */
   private readonly unreversible = new Set<string>();
   /** Keeps player-facing audio toggles and developer controls in sync. */
@@ -147,9 +159,70 @@ export class AudioDirector {
   }
 
   resumeMusic(): void {
+    this.resumeFromGesture();
     const sound = this.currentSound;
     if (sound?.isPaused) sound.resume();
   }
+
+  /**
+   * Freezes the game soundscape while leaving music audible at one fifth of
+   * the player's chosen level. The captured set prevents completed cues from
+   * being restarted when play resumes.
+   */
+  enterMenuMode(resumeSfxOnExit = false): void {
+    if (this.destroyed) return;
+    if (this.menuMode) {
+      // Quitting a paused run converts a resumable overlay into a terminal
+      // menu. Nothing from the abandoned run may wake in the next one.
+      if (!resumeSfxOnExit && this.resumeCapturedSfx) {
+        for (const sound of this.pausedSfx) sound.stop();
+        this.pausedSfx.clear();
+        this.resumeCapturedSfx = false;
+      }
+      return;
+    }
+    this.menuMode = true;
+    this.resumeCapturedSfx = resumeSfxOnExit;
+    this.pausedSfx.clear();
+    for (const sound of this.sound.getAll<LevelledSound>()) {
+      if (audioGroupOf(sound.key) === 'music' || !sound.isPlaying) continue;
+      if (resumeSfxOnExit) {
+        sound.pause();
+        this.pausedSfx.add(sound);
+      } else {
+        sound.stop();
+      }
+    }
+    this.refreshMusicVolume();
+  }
+
+  /** Restores exactly the in-flight SFX captured by enterMenuMode. */
+  exitMenuMode(): void {
+    if (this.destroyed || !this.menuMode) return;
+    this.menuMode = false;
+    this.resumeFromGesture();
+    if (this.resumeCapturedSfx) {
+      for (const sound of this.pausedSfx) {
+        if (sound.isPaused) sound.resume();
+      }
+    }
+    this.pausedSfx.clear();
+    this.resumeCapturedSfx = false;
+    this.refreshMusicVolume();
+  }
+
+  /**
+   * Must run synchronously inside a user input callback for iOS/Safari.
+   * Safe on HTML5 Audio and on an already-running Web Audio context.
+   */
+  resumeFromGesture = (): void => {
+    const context = (this.sound as ResumableSoundManager).context;
+    if (!context || context.state === 'running') return;
+    void context.resume().catch(() => {
+      // A browser may reject a non-qualifying event. The next real gesture
+      // retries; audio failure must never interrupt input or gameplay.
+    });
+  };
 
   private applyMusicState(state: MusicState): void {
     this.releaseCurrentMusic();
@@ -182,34 +255,31 @@ export class AudioDirector {
     // truthful and a later unlock/reload has something to act on.
     this.currentKey = key;
     this.currentSound = null;
-    if (!this.exists(key)) return;
+    // Safari can accept play() while locked and report isPlaying without ever
+    // scheduling an audible source. Remember the requested key, but create no
+    // sound until Phaser emits its definitive UNLOCKED event after a genuine
+    // tap. Desktop is normally unlocked already and follows the same path.
+    if (!this.exists(key) || this.sound.locked) return;
 
     // An older instance of this same key may still be fading out (fast
     // A -> B -> A). Kill it now rather than let two copies overlap.
     this.finishFadesFor(key);
 
-    const sound = this.sound.add(key, {
-      loop: true,
-      mute: this.balance.musicMuted,
-    }) as LevelledSound;
+    const sound = this.sound.add(key, { loop: true }) as LevelledSound;
     this.currentSound = sound;
     sound.play();
     // Silenced AFTER play(): starting playback re-applies the sound's own
     // config volume, so zeroing it beforehand is undone and the track comes
     // in at full level.
     this.applyMusicLevel(0);
-    this.fade(sound, 0, effectiveMusicVolume(this.balance, key), CROSSFADE_MS, false);
+    this.fade(sound, 0, this.musicTarget(key), CROSSFADE_MS, false);
   }
 
   private onUnlocked(): void {
     if (this.destroyed) return;
     const key = this.currentKey;
     if (!key) return;
-    const sound = this.currentSound;
-    if (sound && (sound.isPlaying || sound.isPaused)) return; // already running
-    if (sound) this.discard(sound);
-    this.currentSound = null;
-    this.startMusic(key);
+    if (!this.currentSound) this.startMusic(key);
   }
 
   // ── SFX ─────────────────────────────────────────────────────────────────
@@ -220,7 +290,31 @@ export class AudioDirector {
    * asks for the cue and gets whatever that sound is currently defined to be.
    */
   playSfx(key: string, options?: SfxOptions): void {
-    if (this.destroyed || this.balance.muted || this.balance.sfxMuted || !this.exists(key)) return;
+    this.playSfxInternal(key, options, false);
+  }
+
+  /**
+   * Dev-tool escape hatch: the Audio Editor can audition a cue while its
+   * menu-like DOM panel is open.
+   */
+  previewSfx(key: string): void {
+    this.playSfxInternal(key, undefined, true);
+  }
+
+  private playSfxInternal(
+    key: string,
+    options: SfxOptions | undefined,
+    allowInMenu: boolean,
+  ): void {
+    if (
+      this.destroyed ||
+      (!allowInMenu && this.menuMode) ||
+      this.balance.muted ||
+      this.balance.sfxMuted ||
+      !this.exists(key)
+    ) {
+      return;
+    }
 
     const config = this.sfxConfig(key, options);
     const variance = audioAsset(key)?.variance;
@@ -247,7 +341,6 @@ export class AudioDirector {
     const { volumeScale, ...rest } = options ?? {};
     return {
       ...rest,
-      mute: this.balance.sfxMuted,
       volume: clamp01(effectiveSfxVolume(this.balance, key) * clamp01(volumeScale ?? 1)),
     };
   }
@@ -312,7 +405,15 @@ export class AudioDirector {
 
   /** Plays one exact excerpt and releases its temporary sound instance afterward. */
   playSfxSegment(key: string, start: number, duration: number): void {
-    if (this.destroyed || this.balance.muted || this.balance.sfxMuted || !this.exists(key)) return;
+    if (
+      this.destroyed ||
+      this.menuMode ||
+      this.balance.muted ||
+      this.balance.sfxMuted ||
+      !this.exists(key)
+    ) {
+      return;
+    }
 
     const sound = this.sound.add(key, this.sfxConfig(key));
     sound.addMarker({ name: 'segment', start, duration });
@@ -423,7 +524,7 @@ export class AudioDirector {
     const key = this.currentKey;
     if (!sound || !key) return;
 
-    const target = effectiveMusicVolume(this.balance, key);
+    const target = this.musicTarget(key);
     const fade = this.fades.find((f) => f.sound === sound && !f.destroyWhenDone);
     if (fade) fade.to = target;
     else this.applyMusicLevel(target);
@@ -432,6 +533,15 @@ export class AudioDirector {
   private applyMusicLevel(level: number): void {
     this.currentLevel = level;
     if (this.currentSound) this.currentSound.volume = level;
+  }
+
+  /**
+   * Editor previews intentionally stay at the configured level; game/menu
+   * music alone participates in pause-menu ducking.
+   */
+  private musicTarget(key: string): number {
+    const duck = this.menuMode && this.previewRestore === null ? MENU_MUSIC_DUCK : 1;
+    return effectiveMusicVolume(this.balance, key) * duck;
   }
 
   // ── Editor preview ──────────────────────────────────────────────────────
@@ -450,6 +560,7 @@ export class AudioDirector {
     const restore = this.previewRestore;
     this.previewRestore = null;
     this.setMusicState(restore ?? 'none');
+    this.refreshMusicVolume();
   }
 
   // ── Fade engine ─────────────────────────────────────────────────────────
@@ -524,6 +635,7 @@ export class AudioDirector {
     if (this.currentSound) this.discard(this.currentSound);
     this.currentSound = null;
     this.currentKey = null;
+    this.pausedSfx.clear();
     this.balanceListeners.clear();
   }
 }

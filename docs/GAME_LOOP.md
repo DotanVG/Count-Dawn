@@ -2,11 +2,11 @@
 
 ## Core loop
 
-1. From the menu (the castle hall itself), START makes the vampire fly in through the center window; the sunrise countdown begins (60s, or 25s with `FAST_DEV_MODE`).
-2. Human hunters spawn at random arena-edge positions and pursue the player. Night 1 starts at ~1.25s between spawns with max 18 alive; later nights spawn faster and allow more hunters.
+1. From the menu (the castle hall itself), START plays the opening demonstration once, then the vampire rises from the coffin and the sunrise countdown begins (60s, or 25s with `FAST_DEV_MODE`). The opening can be paused or skipped by holding Space/the mobile skip control for two seconds.
+2. Human hunters enter from the left, right and lower walls and pursue the player. The upper window wall is never a gameplay spawn route. Night 1 starts at ~1.25s between spawns with max 18 alive; later nights spawn faster and allow more hunters.
 3. The player kites and kills hunters with a mouse-aimed melee arc, and escapes crowds with the bat dash (see below).
 4. Each dead hunter drops five bloodlets worth 1 blood each. Night 1 targets 50 blood; each later night requires 15 more.
-5. The instant the player fills that round's Blood Meter, that night's **boss lineup** spawns at the arena edges farthest from the player. Boss entrance never depends on remaining time.
+5. The instant the player fills that round's Blood Meter, that night's **boss lineup** enters from an allowed side/bottom route farthest from the player. Boss entrance never depends on remaining time.
 6. When the Blood Meter is full **and** every boss is dead, the coffin activates (pulsing glow).
 7. Enter the active coffin before the timer reaches zero.
 
@@ -29,7 +29,18 @@ against each other, then the ash frames, with embers pouring off him the whole
 way. Nothing is tinted on top of either; the fire in the dawn ending is the
 fire she painted.
 
-Either way the end screen shows the cause, blood collected, and time survived, with instant restart (**R** or button).
+Either way the end screen shows the cause, blood collected, and time survived.
+Restart (**R** or button) begins a fresh run through the full opening
+cinematic again; its two-second hold-to-skip remains available.
+
+### Final countdown presentation
+
+The countdown remains visible in the centre window for the whole playable
+night. Its entrance fade and per-tick scale pulse are separate tweens so a
+tick can never cancel the timer's visibility. At ten seconds the HUD enters
+panic mode. Screen flashes land at 10, 5, 3, 2 and 1; 2 and 1 also get a
+half-second follow-up. Each of the final five whole-second beats briefly grows
+the timer to twice its normal size before it settles back.
 
 ## Boss entrance
 
@@ -89,7 +100,7 @@ A third meter, `WRATH` in `src/data/balance.ts`, sits between the health and blo
 - **Mid-round overflow while HP is already full** — `GameScene.hopBloodToHealth` normally flies overflow blood to the health bar and heals it; when health is already at `PLAYER.maxHealth` it flies to the Wrath bar instead and calls `gainWrath`.
 - **Overnight leftovers** — `GameScene.computeOvernightTransfer` heals HP from that night's whole blood pool (`bloodTargetForNight`) at a real `BLOOD.overnightHealPerBlood` (1) rate — a genuine cost, not an unconditional top-off: if the pool is smaller than the HP actually missing, the Count wakes up still short of full. Whatever the pool has left over after healing keeps draining straight into Wrath in the same continuous transfer animation, not a separate step afterward. The result (`newHealth`, `wrathBlood`) is computed the moment the night's real numbers are known and stashed in `pendingHealthAfterSleep`, which `beginRoundSystems` applies via `Player.resetForNewRound(health)` once the day-cycle animation finishes.
 
-Wrath persists across nights exactly like `RunStats` — reset only in `create()`, never between rounds. A full meter glows gold with six dark motes orbiting it plus small sparkles flickering on the bar's own fill, and is spent all at once on the **Ultimate** (`GameScene.fireUltimate`, bound to Space on desktop — the bar itself prompts "WRATH READY — Press SPACE" — and a ⚡ button on mobile that only appears once charged):
+Wrath persists across nights exactly like `RunStats` — reset only in `create()`, never between rounds. Its orbit communicates charge without pretending an empty bar is active: one mote appears per completed 10% step through 90%, then a full meter glows gold with twenty orbiting motes plus small sparkles flickering on the fill. It is spent all at once on the **Ultimate** (`GameScene.fireUltimate`, bound to Space on desktop — the bar itself prompts "WRATH READY — Press SPACE" — and a ⚡ button on mobile that only appears once charged):
 
 1. The Count plays `Player.playSpecialAttackAnim` — the rear-up-and-roar pose Romi drew first, which the bite replaced as the regular attack — alone, for `summonMs` (500ms), so it reads as summoning something rather than the strike itself.
 2. A hard screen flash fires as "the lightning arriving," then the hall darkens by `WRATH.screenDarkenAlpha` (~18%) for the rest of the Ultimate's duration — noticeably dimmer, nowhere near the pause menu's near-black.

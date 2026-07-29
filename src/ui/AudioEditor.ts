@@ -152,7 +152,7 @@ function assetRow(parent: HTMLElement, director: AudioDirector, asset: AudioAsse
     actions.appendChild(button('Play', () => director.previewMusic(asset.key), !loaded));
     actions.appendChild(button('Stop', () => director.stopPreview(), !loaded));
   } else {
-    actions.appendChild(button('Preview', () => director.playSfx(asset.key), !loaded));
+    actions.appendChild(button('Preview', () => director.previewSfx(asset.key), !loaded));
   }
   row.input.parentElement?.appendChild(actions);
   return row;

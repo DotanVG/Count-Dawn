@@ -78,6 +78,23 @@ export class InputController {
     return pressed;
   }
 
+  /**
+   * Drop clicks collected while gameplay was not accepting input.
+   *
+   * InputController exists before the main menu, so the pointerdown that
+   * presses START NIGHT would otherwise remain latched throughout the whole
+   * opening and become a bite on the first playable frame. GameScene calls
+   * this at each cinematic-to-gameplay handoff.
+   */
+  discardBufferedActions(): void {
+    this.mouseAttackPressed = false;
+    // JustDown is consumed lazily. Clear action keys as well so a Space held
+    // for intro skip (or Shift pressed during a transition) cannot fire on
+    // the first frame after the cinematic.
+    this.keys.dash.reset();
+    this.keys.ultimate.reset();
+  }
+
   /** Shift, edge-triggered: holding it must not chain dashes on every frame. */
   isDashJustPressed(): boolean {
     return Phaser.Input.Keyboard.JustDown(this.keys.dash);

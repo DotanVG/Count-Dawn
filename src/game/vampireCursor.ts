@@ -1,3 +1,5 @@
+import { gameSettings } from '../data/gameSettings';
+
 const CURSOR_ID = 'vampire-cursor';
 const MIN_BITE_MS = 220;
 /** Set while the fangs should stay hidden regardless of pointer movement. */
@@ -59,10 +61,41 @@ export function installVampireCursor(): void {
   let pressed = false;
   let pressedAt = 0;
   let releaseTimer: number | undefined;
+  let targetX = 0;
+  let targetY = 0;
+  let currentX = 0;
+  let currentY = 0;
+  let hasPosition = false;
+  let cursorSpeed = 1;
+
+  gameSettings.subscribe((settings) => {
+    cursorSpeed = settings.cursorSpeed;
+    cursor.style.setProperty('--jaw-width', `${30 * settings.cursorScale}px`);
+  });
+
+  const render = (): void => {
+    if (hasPosition) {
+      // The browser owns the real pointer, so "speed" here controls how
+      // quickly the visible fangs catch it. At 200% they are effectively
+      // immediate; lower values add progressively more follow-through.
+      const response = 1 - Math.pow(0.18, cursorSpeed);
+      currentX += (targetX - currentX) * response;
+      currentY += (targetY - currentY) * response;
+      cursor.style.transform = `translate3d(${currentX}px, ${currentY}px, 0)`;
+    }
+    window.requestAnimationFrame(render);
+  };
+  window.requestAnimationFrame(render);
 
   const move = (event: PointerEvent): void => {
     if (event.pointerType === 'touch') return;
-    cursor.style.transform = `translate3d(${event.clientX}px, ${event.clientY}px, 0)`;
+    targetX = event.clientX;
+    targetY = event.clientY;
+    if (!hasPosition) {
+      currentX = targetX;
+      currentY = targetY;
+      hasPosition = true;
+    }
     cursor.classList.add('is-visible');
   };
 

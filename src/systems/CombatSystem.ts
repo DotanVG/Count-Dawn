@@ -4,6 +4,7 @@ import { DEPTHS } from '../game/constants';
 import type { Player } from '../entities/Player';
 import { Hunter } from '../entities/Hunter';
 import { TEXTURES, ANIMS } from '../utils/assetKeys';
+import { selectAutoAttackTarget } from './enemyNavigation';
 
 /** The impact burst on a struck hunter — sized to read as a hit, not a spark. */
 const HIT_BURST_SCALE = 1.8;
@@ -44,7 +45,7 @@ export class CombatSystem {
 
     const halfArc = Phaser.Math.DegToRad(PLAYER.attackArcHalfAngleDeg);
     for (const hunter of targets) {
-      if (!hunter.active || !hunter.isAlive) continue;
+      if (!hunter.active || !hunter.isAlive || hunter.isEntering) continue;
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, hunter.x, hunter.y);
       // Padding by half the target's body keeps big targets (the boss) fair to hit.
       if (dist > PLAYER.attackRange + hunter.displayWidth / 2) continue;
@@ -62,6 +63,17 @@ export class CombatSystem {
         hunter.applyKnockback(this.player.x, this.player.y);
       }
     }
+  }
+
+  /**
+   * Mobile's sword snaps only to a living, fully-entered hunter this swing can
+   * reach. This prevents an off-canvas left-wall spawn from stealing aim from
+   * the enemy standing beside the Count.
+   */
+  tryAutoAttack(targets: Hunter[]): void {
+    const nearest = selectAutoAttackTarget(this.player, targets, PLAYER.attackRange);
+    if (nearest) this.player.aimAt(nearest.x, nearest.y);
+    this.tryAttack(targets);
   }
 
   /** One-shot magic burst on the hunter that got hit, self-destroying when it finishes. */

@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 import { SCENES } from '../game/constants';
 import { installAudioDirector } from '../systems/AudioDirector';
 import { installAudioEditor } from '../ui/AudioEditor';
-import { installAudioToggles } from '../ui/AudioToggles';
 
 /**
  * First scene: HTML loader removal, then PreloadScene. Placeholder textures
@@ -22,7 +21,6 @@ export class BootScene extends Phaser.Scene {
     document.getElementById('boot-loader')?.remove();
 
     const director = installAudioDirector(this.game);
-    installAudioToggles(this.game, director);
     installAudioEditor(this.game, director);
 
     this.scene.start(SCENES.preload);

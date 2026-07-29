@@ -1,11 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  BAT,
+  PLAYER,
   bossLineupForNight,
   captainCountForNight,
   throwerCapForNight,
   weaponsForNight,
 } from '../src/data/balance.ts';
+
+test('ultimate swarm bats use the same rendered scale as the dash bat', () => {
+  assert.equal(BAT.dashRenderScale, PLAYER.spriteScale * BAT.scaleFactor);
+});
 
 test('captain squads gain one member every five nights', () => {
   assert.equal(captainCountForNight(1), 1);

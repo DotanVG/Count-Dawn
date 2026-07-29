@@ -143,8 +143,9 @@ const audio = getAudioDirector(this);
 audio.playMainTitle();          // menu / cold open / run-ending screens
 audio.playLevelMusic();         // the gameplay cue
 audio.stopMusic();
-audio.pauseMusic();             // pause overlay, orientation gate
-audio.resumeMusic();
+audio.enterMenuMode(true);      // pause overlay: duck + capture active SFX
+audio.enterMenuMode();          // terminal/main menu: duck + discard game SFX
+audio.exitMenuMode();           // restore music and resumable captured SFX
 audio.playSfx(key, options);
 audio.playSfxStack([a, b]);     // several layers, one cue
 audio.playSfxSegment(key, start, duration);
@@ -169,6 +170,12 @@ Guarantees it makes:
   (`Phaser.Core.Events.PRE_STEP`), not a scene tween manager — a fade has to
   survive the teardown of the scene that started it (death fades out while
   GameScene is shutting down), and must never be a stray timer.
+- **Menu audio is a mode, not a new track.** The current soundtrack stays at
+  exactly 20% of its configured effective volume. A pause overlay captures
+  SFX already playing; only those same still-paused instances resume on exit.
+  Main, victory and defeat menus discard game SFX so an abandoned run cannot
+  leak into a restart. Gameplay cues requested while any menu owns the screen
+  are suppressed.
 
 > Implementation note: a sound's volume can **not** be read back. The Web
 > Audio getter reports the gain computed at the audio clock's current time, so
@@ -197,7 +204,7 @@ changed, which is what makes every repeated event idempotent.
 | Cold-start cutscene, coffin opening, the Count's flight | *(no change)* |
 | **First night begins, player gains control** | `main-title → level` |
 | Night survived, seamless next night | *(no change)* |
-| Pause / resume | stays `level`; the sound pauses and resumes in place |
+| Pause / resume | stays `level`; music ducks to 20%, active SFX pause/resume |
 | Player death or dawn defeat | `level → main-title` |
 | Game Over screen | *(no change)* |
 | Game Over → Main Menu | *(no change)* |
@@ -338,6 +345,10 @@ Previewing music does not damage the real music state: **Play** remembers what
 was playing and **Stop** puts it back. Preview goes through the same single-
 instance director, so it cannot spawn a duplicate loop.
 
+Music and SFX previews deliberately bypass menu ducking/suppression. This is a
+developer-only exception: an editor used to judge levels must audition the
+configured level, while ordinary game code remains silent behind menus.
+
 ### Saved values
 
 Values are written to `localStorage` under `count-dawn-audio-balance-v1` on
@@ -376,6 +387,10 @@ sfx   volume = master × sfx group   × individual level
 Every factor and the product are clamped to `0..1`. "Mute all" is applied as
 the Phaser global mute, not as a volume of zero.
 
+While a menu owns the screen, the final music product is multiplied by `0.2`.
+The player's sliders do not change, so leaving the menu restores the exact
+configured level rather than writing a temporary value into browser storage.
+
 No scene carries a volume number. Scene code asks for a track or a cue; the
 director applies the balance. If you find yourself typing `volume: 0.5` in a
 scene, it belongs in the manifest instead.
@@ -413,10 +428,15 @@ pickup, boss appearance, final seconds, dawn, victory, defeat) work today.
 
 ## 8. Pause and cleanup
 
-`GameScene` listens for the scene's own `PAUSE`/`RESUME` events, so the Level
-Music pauses and resumes from the same position for both the pause overlay and
-the portrait-orientation gate. Opening the pause screen never promotes the Main
-Title over a suspended run. Already-playing SFX finish naturally.
+`GameScene` listens for the scene's own `PAUSE`/`RESUME` events. Entering a
+menu keeps the current track and drops its effective level to 20%; it never
+promotes the Main Title over a suspended run. Every active SFX instance is
+paused, including loops such as bat form, and resumes from the same position
+only when gameplay resumes. New gameplay SFX requests are ignored in menu
+mode. Quitting the paused run converts that captured set into discarded SFX;
+the next run never resumes audio from the previous one. The portrait-
+orientation gate pauses `GameScene` through this same path, so its soundtrack
+also remains audible at 20% rather than being globally suspended.
 
 Those two listeners are registered with `.on()` and removed in `cleanup()`:
 `scene.events` survives a scene restart, so an unpaired `.on()` would stack a

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, SCENES } from '../game/constants';
 import { isTouchDevice } from '../game/device';
+import { setVampireCursorVisible } from '../game/vampireCursor';
 import { getAudioDirector } from '../systems/AudioDirector';
 import { RunDebrief } from '../ui/RunDebrief';
 import type { RunSummary } from '../types/game';
@@ -18,12 +19,15 @@ export class GameOverScene extends Phaser.Scene {
   }
 
   create(summary: RunSummary): void {
+    setVampireCursorVisible(true);
     const cx = GAME_WIDTH / 2;
 
     // GameScene already handed the music back at the moment the run ended,
     // so this is a no-op in the normal flow — it is here so the screen is
     // never reached with the Level Music still running underneath.
-    getAudioDirector(this).playMainTitle();
+    const audio = getAudioDirector(this);
+    audio.playMainTitle();
+    audio.enterMenuMode();
 
     this.add
       .text(cx, 62, 'DAWN CLAIMS YOU', {
@@ -67,9 +71,12 @@ export class GameOverScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
     restart.on('pointerover', () => restart.setBackgroundColor('#e8ddff'));
     restart.on('pointerout', () => restart.setBackgroundColor('#c9a7ff'));
-    restart.on('pointerdown', () => this.scene.start(SCENES.game, { autostart: true }));
+    const restartRun = (): void => {
+      this.scene.start(SCENES.game, { autostart: true, showOpening: true });
+    };
+    restart.on('pointerdown', restartRun);
 
-    this.input.keyboard?.on('keydown-R', () => this.scene.start(SCENES.game, { autostart: true }));
+    this.input.keyboard?.on('keydown-R', restartRun);
     this.input.keyboard?.on('keydown-M', () => this.scene.start(SCENES.game, { autostart: false }));
 
     const menuLink = this.add

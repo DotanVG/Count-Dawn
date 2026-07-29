@@ -7,15 +7,16 @@ import { SCENES } from './constants';
  * `orientation: portrait` + `pointer: coarse` media query), so it is large
  * and crisp regardless of how the Phaser canvas is letterboxed. This module
  * is only the coordination layer: while a touch device is in portrait it
- * pauses an in-progress GameScene and suspends audio, and undoes exactly that
- * on return to landscape (a user-opened PauseScene is left untouched).
+ * pauses an in-progress GameScene, which lets AudioDirector apply the same
+ * quiet-music/frozen-SFX policy as the pause menu. Returning to landscape
+ * resumes exactly that auto-paused scene (a user-opened PauseScene is left
+ * untouched).
  * Desktop (fine pointer) never trips it.
  */
 export function installOrientationGate(game: Phaser.Game): void {
   const coarsePointerQuery = window.matchMedia('(pointer: coarse)');
   let gateActive = false;
   let autoPausedGame = false;
-  let autoPausedAudio = false;
 
   const sync = (): void => {
     const active = coarsePointerQuery.matches && window.innerHeight > window.innerWidth;
@@ -23,19 +24,11 @@ export function installOrientationGate(game: Phaser.Game): void {
     gateActive = active;
 
     if (active) {
-      if (!game.sound.locked) {
-        game.sound.pauseAll();
-        autoPausedAudio = true;
-      }
       if (game.scene.isActive(SCENES.game) && !game.scene.isPaused(SCENES.game)) {
         game.scene.pause(SCENES.game);
         autoPausedGame = true;
       }
     } else {
-      if (autoPausedAudio && !game.sound.locked) {
-        game.sound.resumeAll();
-        autoPausedAudio = false;
-      }
       if (autoPausedGame) {
         game.scene.resume(SCENES.game);
         autoPausedGame = false;

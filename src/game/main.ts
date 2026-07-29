@@ -3,11 +3,13 @@ import { gameConfig } from './config';
 import { installFullscreenButton } from './fullscreen';
 import { installOrientationGate } from './orientation';
 import { installVampireCursor } from './vampireCursor';
+import { gameSettings } from '../data/gameSettings';
 
 /** Entry point. The HTML boot loader is removed in BootScene. */
 const game = new Phaser.Game(gameConfig);
 
 installFullscreenButton(game);
+gameSettings.install();
 installVampireCursor();
 // Landscape-only gate: pauses gameplay + audio while a phone is in portrait.
 installOrientationGate(game);

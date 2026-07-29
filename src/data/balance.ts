@@ -54,9 +54,13 @@ export const DASH = {
  * frame-filling, so the sprite renders at a fraction of whatever scale the
  * Count is currently at rather than at his full size; see Player.setBaseScale.
  */
+const BAT_SCALE_FACTOR = 0.3;
+
 export const BAT = {
   /** Multiplier on the Count's display scale while he is a bat. */
-  scaleFactor: 0.3,
+  scaleFactor: BAT_SCALE_FACTOR,
+  /** Exact rendered scale of the Count's bat during a normal gameplay dash. */
+  dashRenderScale: PLAYER.spriteScale * BAT_SCALE_FACTOR,
   flapFrames: 2,
   flapFrameRate: 12,
   /** Smoke motes in the *poof* burst on each transformation. */

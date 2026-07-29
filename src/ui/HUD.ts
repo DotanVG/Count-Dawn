@@ -5,6 +5,7 @@ import { EVENTS } from '../game/events';
 import { TEXTURES } from '../utils/assetKeys';
 import { pluralBossName } from '../entities/HunterCaptain';
 import type { Objective } from '../types/game';
+import { countdownUrgencyCue, wrathOrbitParticleCount } from './hudUrgency';
 
 const OBJECTIVE_TEXT: Record<Objective, string> = {
   'collect-blood': 'Collect blood before sunrise',
@@ -67,8 +68,8 @@ const WRATH_DARK = 0x241830;
 const BAR_W = 216;
 /** Smaller than the HP/blood bars — Wrath is a bonus meter, not a survival stat. */
 const WRATH_BAR_W = 150;
-/** Dots swinging around the charged Wrath meter — see setWrathFullGlow. */
-const WRATH_ORBIT_DOT_COUNT = 6;
+/** Enough dots for the deliberately extravagant fully charged Wrath state. */
+const WRATH_ORBIT_DOT_COUNT = 20;
 
 /**
  * Health ratio at or below which the bar turns orange, then red - even
@@ -105,6 +106,8 @@ function healthColor(ratio: number): number {
  */
 export class HUD {
   private timerText: Phaser.GameObjects.Text;
+  /** Owns only the per-second scale pulse; never touches the timer's fade-in. */
+  private timerPopTween: Phaser.Tweens.Tween | null = null;
   /**
    * Low in the wall band, clear of the window openings. It used to sit at the
    * top of the middle window, which is exactly where the sun and moon cross at
@@ -147,9 +150,11 @@ export class HUD {
   /** Ring around the Wrath meter, shown only once the Ultimate is charged. */
   private wrathGlow: Phaser.GameObjects.Rectangle;
   private wrathGlowTween: Phaser.Tweens.Tween | null = null;
-  /** Dark motes orbiting the Wrath meter on an ellipse, only while charged. */
+  /** Motes earned per 10% of Wrath, with a twenty-particle full-charge orbit. */
   private wrathOrbitDots: Phaser.GameObjects.Arc[] = [];
   private wrathOrbitTween: Phaser.Tweens.Tween | null = null;
+  private wrathOrbitCount = 0;
+  private wrathRatio = 0;
   private wrathMotes: Phaser.GameObjects.Particles.ParticleEmitter;
   /** Spawns spawnWrathSparkle on a beat while charged; see setWrathFullGlow. */
   private wrathSparkleTimer: Phaser.Time.TimerEvent | null = null;
@@ -511,7 +516,7 @@ export class HUD {
    * bars back to a fresh-round look (the coffin transfer already set the
    * numbers; this just resets cosmetic state — color, size, jitter, vignette).
    */
-  resetForNewRound(bloodTarget: number): void {
+  resetForNewRound(bloodTarget: number, health: number): void {
     // Last night's bosses are dead; a stale roster would name them again.
     this.bossRoster = [];
     this.panic = false;
@@ -524,7 +529,11 @@ export class HUD {
     this.setLowHealthFlash(false);
     this.setBloodFullGlow(false);
     this.setHealthFullGlow(false);
-    this.setHealth(PLAYER.maxHealth, PLAYER.maxHealth);
+    // The opening cinematic deliberately wakes the Count at full health, but
+    // later nights must display the real result of the blood-funded overnight
+    // heal. Requiring the caller to supply health keeps those two policies in
+    // GameScene instead of hiding a scripted full refill in this shared reset.
+    this.setHealth(health, PLAYER.maxHealth);
     this.setBlood(0, bloodTarget);
     // Without this the objective kept reading "Return to your coffin" (the
     // previous round's final state) until the new round's first
@@ -677,7 +686,9 @@ export class HUD {
           ease: 'Sine.easeInOut',
           onUpdate: (tween) => {
             const t = tween.getValue() ?? 0;
-            this.wrathBarFill.width = WRATH_BAR_W * Phaser.Math.Linear(wrathBeforeRatio, wrathAfterRatio, t);
+            const visualRatio = Phaser.Math.Linear(wrathBeforeRatio, wrathAfterRatio, t);
+            this.wrathBarFill.width = WRATH_BAR_W * visualRatio;
+            this.setWrathOrbitCount(wrathOrbitParticleCount(visualRatio));
           },
           onComplete: finish,
         });
@@ -776,13 +787,14 @@ export class HUD {
 
   /**
    * One tick of the clock. The timer stays PUT - it pops in place and never
-   * wanders off its anchor. The final ten seconds pop hard (a full second's
-   * worth of scale, settling back to normal before the next tick) instead of
-   * jittering around the sky window, and the last five blink white on top of
-   * the red so the very end reads differently from the merely urgent part.
+   * wanders off its anchor. The last five briefly double in size on each
+   * whole-second beat. Screen pulses happen at 10, 5, 3, 2 and 1; the final
+   * two complete seconds also pulse halfway through, turning the warning into
+   * a visible double-beat.
    */
   private onTick(secondsRemaining: number): void {
     this.timerText.setText(this.format(secondsRemaining));
+    const cue = countdownUrgencyCue(secondsRemaining);
 
     // Tension ramp: 0 while relaxed -> 1 at the final seconds.
     const tension = Phaser.Math.Clamp(
@@ -790,14 +802,27 @@ export class HUD {
       0,
       1,
     );
-    const pop = this.panic ? 1.75 : 1 + 0.08 + tension * 0.22;
+    const pop = this.panic ? cue.timerPopScale : 1 + 0.08 + tension * 0.22;
 
-    this.scene.tweens.add({
+    // Stopping every tween on timerText also killed animateIn's alpha tween,
+    // leaving the game's centerpiece permanently transparent. The tick owns
+    // only this scale tween, so it may replace only this scale tween.
+    this.timerPopTween?.stop();
+    this.timerText.setScale(pop);
+    this.timerPopTween = this.scene.tweens.add({
       targets: this.timerText,
-      scale: { from: pop, to: 1 },
-      duration: this.panic ? 520 : 220,
+      scale: 1,
+      duration: this.panic && secondsRemaining <= BLINK_SECONDS ? 440 : 220,
       ease: this.panic ? 'Back.easeOut' : 'Quad.easeOut',
+      onComplete: () => (this.timerPopTween = null),
     });
+
+    if (cue.screenFlash) this.flashUrgencyScreen();
+    if (cue.followUpFlashDelayMs !== null) {
+      this.scene.time.delayedCall(cue.followUpFlashDelayMs, () => {
+        if (this.panic) this.flashUrgencyScreen(0.88);
+      });
+    }
 
     if (this.panic) {
       const blinking = secondsRemaining <= BLINK_SECONDS;
@@ -813,20 +838,25 @@ export class HUD {
         this.timerText.setColor(secondsRemaining % 2 === 0 ? '#ff4d4d' : '#ffd76b');
       }
       this.scene.cameras.main.shake(60, 0.0015 + 0.002 * (1 - secondsRemaining / 10));
-      this.vignette.setAlpha(blinking ? 0.24 : 0.16);
-      this.scene.tweens.add({ targets: this.vignette, alpha: 0.05, duration: 420 });
     }
+  }
+
+  /** Strong, brief whole-screen red pulse; the HUD remains readable above it. */
+  private flashUrgencyScreen(strength = 1): void {
+    this.scene.tweens.killTweensOf(this.vignette);
+    this.vignette.setAlpha(0.34 * strength);
+    this.scene.tweens.add({
+      targets: this.vignette,
+      alpha: this.panic ? 0.05 : 0,
+      duration: 320,
+      ease: 'Quad.easeOut',
+    });
   }
 
   private onFinalSeconds(): void {
     this.panic = true;
     this.timerText.setColor('#ff4d4d');
     this.timerText.setFontSize('72px');
-    this.scene.tweens.add({
-      targets: this.vignette,
-      alpha: { from: 0, to: 0.08 },
-      duration: 300,
-    });
   }
 
   private onPlayerDamaged(current: number, max: number): void {
@@ -990,6 +1020,13 @@ export class HUD {
     } else {
       this.wrathText.setText(`Wrath ${Math.floor(current)}/${target}`);
     }
+    this.setWrathOrbitCount(wrathOrbitParticleCount(ratio));
+    if (ratio > this.wrathRatio) {
+      const gained = ratio - this.wrathRatio;
+      const particleCount = Phaser.Math.Clamp(Math.ceil(4 + gained * 20), 5, 14);
+      this.wrathMotes.explode(particleCount, this.wrathBarEdge.x, this.wrathBarEdge.y);
+    }
+    this.wrathRatio = ratio;
     this.setWrathFullGlow(ratio >= 1);
   }
 
@@ -999,13 +1036,46 @@ export class HUD {
   }
 
   /**
-   * The charged flourish: the yellow ring every full bar gets, six dark motes
-   * swinging around the box on an ellipse (bigger and brighter at the bottom
-   * of the loop than the top — the cheapest way flat circles read as passing
-   * in front of, then behind, the meter), a steady drift of dark particles
-   * off the box, and small bright sparkles flickering directly on the bar's
-   * own fill (spawnWrathSparkle) so the bar itself looks charged, not just
-   * the space around it.
+   * Starts/stops the orbit while preserving its phase as Wrath crosses each
+   * 10% threshold. The visible count is one through nine, then twenty at full.
+   */
+  private setWrathOrbitCount(count: number): void {
+    if (count === this.wrathOrbitCount) return;
+    this.wrathOrbitCount = count;
+    this.wrathOrbitDots.forEach((dot, index) => dot.setVisible(index < count));
+
+    if (count === 0) {
+      this.wrathOrbitTween?.stop();
+      this.wrathOrbitTween = null;
+      return;
+    }
+    if (this.wrathOrbitTween) return;
+
+    const centerX = GAME_WIDTH / 2;
+    const orbitX = WRATH_BAR_W / 2 + 16;
+    const orbitY = 15;
+    this.wrathOrbitTween = this.scene.tweens.addCounter({
+      from: 0,
+      to: Math.PI * 2,
+      duration: 1500,
+      repeat: -1,
+      onUpdate: (tween) => {
+        const base = tween.getValue() ?? 0;
+        const visibleCount = this.wrathOrbitCount;
+        this.wrathOrbitDots.forEach((dot, i) => {
+          if (i >= visibleCount) return;
+          const a = base + (i / visibleCount) * Math.PI * 2;
+          const depth = Math.sin(a) * 0.5 + 0.5;
+          dot.setPosition(centerX + Math.cos(a) * orbitX, 24 + Math.sin(a) * orbitY);
+          dot.setScale(0.6 + 0.6 * depth).setAlpha(0.5 + 0.5 * depth);
+        });
+      },
+    });
+  }
+
+  /**
+   * The charged flourish layers a breathing ring, drifting dark energy and
+   * bright bar sparkles on top of the twenty-particle full orbit.
    */
   private setWrathFullGlow(on: boolean): void {
     if (on === (this.wrathGlowTween !== null)) return;
@@ -1014,9 +1084,6 @@ export class HUD {
       this.wrathGlowTween?.stop();
       this.wrathGlowTween = null;
       this.wrathGlow.setVisible(false);
-      this.wrathOrbitTween?.stop();
-      this.wrathOrbitTween = null;
-      for (const dot of this.wrathOrbitDots) dot.setVisible(false);
       this.wrathMotes.stop();
       this.wrathSparkleTimer?.remove();
       this.wrathSparkleTimer = null;
@@ -1032,26 +1099,6 @@ export class HUD {
       yoyo: true,
       repeat: -1,
       ease: 'Sine.easeInOut',
-    });
-
-    for (const dot of this.wrathOrbitDots) dot.setVisible(true);
-    const centerX = GAME_WIDTH / 2;
-    const orbitX = WRATH_BAR_W / 2 + 16;
-    const orbitY = 15;
-    this.wrathOrbitTween = this.scene.tweens.addCounter({
-      from: 0,
-      to: Math.PI * 2,
-      duration: 1500,
-      repeat: -1,
-      onUpdate: (tween) => {
-        const base = tween.getValue() ?? 0;
-        this.wrathOrbitDots.forEach((dot, i) => {
-          const a = base + (i / this.wrathOrbitDots.length) * Math.PI * 2;
-          const depth = Math.sin(a) * 0.5 + 0.5; // 0 at the top of the loop, 1 at the bottom
-          dot.setPosition(centerX + Math.cos(a) * orbitX, 24 + Math.sin(a) * orbitY);
-          dot.setScale(0.6 + 0.6 * depth).setAlpha(0.5 + 0.5 * depth);
-        });
-      },
     });
 
     this.wrathMotes.start();

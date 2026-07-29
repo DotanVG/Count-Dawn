@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { GAME_WIDTH, GAME_HEIGHT, SCENES } from '../game/constants';
 import { isTouchDevice } from '../game/device';
+import { setVampireCursorVisible } from '../game/vampireCursor';
 import { getAudioDirector } from '../systems/AudioDirector';
 import type { RunSummary } from '../types/game';
 
@@ -12,10 +13,13 @@ export class VictoryScene extends Phaser.Scene {
   }
 
   create(summary: RunSummary): void {
+    setVampireCursorVisible(true);
     const cx = GAME_WIDTH / 2;
 
     // Any run-ending screen is Main Title territory, same as game over.
-    getAudioDirector(this).playMainTitle();
+    const audio = getAudioDirector(this);
+    audio.playMainTitle();
+    audio.enterMenuMode();
 
     this.add
       .text(cx, GAME_HEIGHT * 0.26, 'SAFE BEFORE SUNRISE', {

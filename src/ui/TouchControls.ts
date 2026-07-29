@@ -4,6 +4,17 @@ import { DEPTHS, GAME_WIDTH, GAME_HEIGHT } from '../game/constants';
 const JOY_COLOR = 0xc41e2f;
 const THUMB_COLOR = 0xff4d4d;
 
+/**
+ * Shared by the live joystick and the opening hold-to-skip affordance so the
+ * hand target does not jump between cinematic and gameplay.
+ */
+export const TOUCH_JOYSTICK = Object.freeze({
+  x: 142,
+  y: GAME_HEIGHT - 150,
+  radius: 68,
+  grabRadius: 100,
+});
+
 export interface TouchCallbacks {
   /** Tap anywhere on the playfield: strike toward that world point. */
   onTapAttack(worldX: number, worldY: number): void;
@@ -28,10 +39,13 @@ export interface TouchCallbacks {
  */
 export class TouchControls {
   private moveVec = { x: 0, y: 0 };
+  private joyGlow: Phaser.GameObjects.Arc;
   private base: Phaser.GameObjects.Arc;
+  private innerRing: Phaser.GameObjects.Arc;
   private thumb: Phaser.GameObjects.Arc;
+  private thumbGlyph: Phaser.GameObjects.Text;
   private joyPointerId = -1;
-  private readonly radius = 92;
+  private readonly radius = TOUCH_JOYSTICK.radius;
   /** Latched by the ⚔ button, consumed once by GameScene — one press, one strike. */
   private autoAttackPressed = false;
   /** Latched by the 🦇 button, consumed once by GameScene — one press, one dash. */
@@ -57,19 +71,54 @@ export class TouchControls {
     // Without this, moving and attacking are mutually exclusive.
     scene.input.addPointer(2);
 
-    const joyX = 150;
-    const joyY = GAME_HEIGHT - 150;
+    const joyX = TOUCH_JOYSTICK.x;
+    const joyY = TOUCH_JOYSTICK.y;
+    this.joyGlow = scene.add
+      .circle(joyX, joyY, this.radius + 7, 0x1b0d26, 0.18)
+      .setStrokeStyle(2, 0x6b4d8f, 0.42)
+      .setDepth(DEPTHS.hud + 9)
+      .setScrollFactor(0);
     this.base = scene.add
-      .circle(joyX, joyY, this.radius, 0xffffff, 0.06)
-      .setStrokeStyle(4, JOY_COLOR, 0.55)
+      .circle(joyX, joyY, this.radius, 0x160c20, 0.58)
+      .setStrokeStyle(4, JOY_COLOR, 0.72)
+      .setDepth(DEPTHS.hud + 10)
+      .setScrollFactor(0);
+    this.innerRing = scene.add
+      .circle(joyX, joyY, this.radius * 0.62, 0x000000, 0)
+      .setStrokeStyle(2, 0xc9a7ff, 0.45)
       .setDepth(DEPTHS.hud + 10)
       .setScrollFactor(0);
     this.thumb = scene.add
-      .circle(joyX, joyY, this.radius * 0.45, THUMB_COLOR, 0.45)
+      .circle(joyX, joyY, 27, THUMB_COLOR, 0.58)
+      .setStrokeStyle(3, 0xff9aaa, 0.9)
       .setDepth(DEPTHS.hud + 10)
       .setScrollFactor(0);
+    this.thumbGlyph = scene.add
+      .text(joyX, joyY, 'V', {
+        fontFamily: 'Trebuchet MS, sans-serif',
+        fontSize: '18px',
+        color: '#f1e8ff',
+        fontStyle: 'bold',
+      })
+      .setOrigin(0.5)
+      .setDepth(DEPTHS.hud + 11)
+      .setScrollFactor(0);
+
+    // Four small notches give the control a deliberate compass/socket shape
+    // without adding interactive objects that could steal combat taps.
+    for (const [x, y, horizontal] of [
+      [joyX, joyY - this.radius + 8, true],
+      [joyX, joyY + this.radius - 8, true],
+      [joyX - this.radius + 8, joyY, false],
+      [joyX + this.radius - 8, joyY, false],
+    ] as const) {
+      scene.add
+        .rectangle(x, y, horizontal ? 15 : 3, horizontal ? 3 : 15, 0xff7180, 0.75)
+        .setDepth(DEPTHS.hud + 11)
+        .setScrollFactor(0);
+    }
     this.joyBlinkTween = scene.tweens.add({
-      targets: [this.base, this.thumb],
+      targets: [this.joyGlow, this.base, this.innerRing, this.thumb, this.thumbGlyph],
       alpha: { from: 1, to: 0.35 },
       duration: 1500,
       yoyo: true,
@@ -185,13 +234,17 @@ export class TouchControls {
 
     // Joystick: a touch starting on/near the fixed base engages it.
     const joyDist = Math.hypot(pointer.x - this.base.x, pointer.y - this.base.y);
-    if (this.joyPointerId < 0 && joyDist <= this.radius * 1.35) {
+    if (this.joyPointerId < 0 && joyDist <= TOUCH_JOYSTICK.grabRadius) {
       this.joyPointerId = pointer.id;
       // Held: steady and fully lit, not blinking — the blink is the "use me"
       // tell, and it stops making that point the moment it is in use.
       this.joyBlinkTween.pause();
+      this.joyGlow.setAlpha(1);
       this.base.setAlpha(1);
+      this.innerRing.setAlpha(1);
       this.thumb.setAlpha(1);
+      this.thumbGlyph.setAlpha(1);
+      this.onMove(pointer);
       return;
     }
 
@@ -208,11 +261,15 @@ export class TouchControls {
     const dx = pointer.x - this.base.x;
     const dy = pointer.y - this.base.y;
     const len = Math.hypot(dx, dy) || 1;
-    const clamped = Math.min(len, this.radius);
+    const travelRadius = this.radius * 0.58;
+    const clamped = Math.min(len, travelRadius);
     const nx = dx / len;
     const ny = dy / len;
-    this.thumb.setPosition(this.base.x + nx * clamped, this.base.y + ny * clamped);
-    const mag = clamped / this.radius;
+    const thumbX = this.base.x + nx * clamped;
+    const thumbY = this.base.y + ny * clamped;
+    this.thumb.setPosition(thumbX, thumbY);
+    this.thumbGlyph.setPosition(thumbX, thumbY);
+    const mag = clamped / travelRadius;
     this.moveVec = { x: nx * mag, y: ny * mag };
   }
 
@@ -221,6 +278,7 @@ export class TouchControls {
     this.joyPointerId = -1;
     this.moveVec = { x: 0, y: 0 };
     this.thumb.setPosition(this.base.x, this.base.y);
+    this.thumbGlyph.setPosition(this.base.x, this.base.y);
     this.joyBlinkTween.resume();
   }
 }

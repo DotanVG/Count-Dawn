@@ -14,7 +14,7 @@ The castle great hall **is** the main menu. Press START and the coffin opens; th
 
 Each night runs on one clock:
 
-1. Hunters walk in from the arena edges and come straight at you.
+1. Hunters enter only through the side and lower walls, then come straight at you. The window wall is never a spawn route.
 2. Kill them. Every corpse scatters bloodlets that fly to your Blood Meter.
 3. Filling the meter summons that night's **boss lineup** at the far edge of the hall.
 4. When the meter is full **and** every boss is dead, the coffin lights up.
@@ -60,7 +60,8 @@ The Priest's ward is the clearest case. The full circle is painted gold on the f
 | Bat dash | Shift | 🦇 button |
 | Ultimate | Space, once Wrath is full | ⚡ button, once Wrath is full |
 | Pause | Esc / P | ⏸ button |
-| Restart | R (on end screens) | Tap the button |
+| Skip opening intro | Hold Space for 2 seconds | Hold the flashing skip control for 2 seconds |
+| Restart | R (on end screens) | Tap the button; the skippable opening plays again |
 
 Every strike is one press, one hit — clicking, tapping the ⚔ button or tapping the playfield all land a single swing each time, with no holding a button down for a stream of free hits.
 
@@ -68,28 +69,31 @@ The Count faces the cursor — he is aiming, not steering, so you can back away 
 
 The **bat dash** is a short invulnerable burst with after-images and a HUD charge strip. It is how you break out of a crowd, how you dodge a garlic lock, and how you cross a Priest's ward.
 
-Mobile requires landscape; a rotate prompt appears in portrait.
+Mobile requires landscape; a rotate prompt appears in portrait. Gameplay and
+SFX pause behind it while the current soundtrack continues quietly at the same
+20% level used by the pause menu.
 
 ## Player-Facing Features
 
-- Wordless **cold open** that teaches the loop: the Count comes home nearly dead through the middle window, the whole cast of what hunts him closes in from every side, and he answers with the Ultimate itself — lightning and a bat swarm wiping the ring in one demonstrated cast — before drinking his fill and sleeping off a day.
+- Wordless **cold open** that teaches the loop: the Count comes home nearly dead through the middle window, the whole cast of what hunts him closes in from the sides and below, and he answers with the Ultimate itself — layered lightning, chain bolts, screen flashes, shake, particles and a bat swarm wiping the ring in one demonstrated cast — before drinking his fill and sleeping off a day. It can be paused, or skipped with a deliberate two-second hold.
 - **Lightning title gag** on the menu — the cover rests on COUNT DAWN, a storm flash stutters it onto COUNT DOWN, and another knocks it back.
 - **Seamless night cycle** with no screen in between: coffin, blood-to-health transfer, sunrise, a full day, and the next night's moon rising over the hall.
 - Living sky behind the windows — night gradient, twinkling stars, a sun that rises into the middle window and fully sets into the right one, and a moon that carries a real lunar phase per night.
-- Sunrise countdown framed in the centre window, with tick pops, a growing tremble, and a red panic mode with vignette and camera shake in the final ten seconds.
+- Sunrise countdown framed in the centre window, with tick pops, a growing tremble, and a red panic mode with vignette and camera shake in the final ten seconds. The final five beats briefly double the timer, while 2 and 1 add half-second flashes.
 - **Bat form** for the dash and both coffin flights, with a *poof* of smoke on every transformation.
 - Mouse-aimed melee arc with a cooldown pip, hit flash, knockback and a magic burst on every landed strike.
 - Blood overflow past the night's quota heals the Count instead of being thrown away — and once health is already full too, feeds the **Wrath** meter toward an Ultimate instead.
 - **Ultimate**: hall-wide lightning that kills every enemy standing (mini-bosses included), a swarm of ~30 bats out of dark magic, and a few seconds of the hall dimming.
 - Mini-bosses flood the floor with far more blood than a regular hunter on death, and a burst of several kills in quick succession — or any mini-boss — splatters big, semi-transparent blood across the screen itself.
 - **End-of-run debrief** on any death: nights survived, total blood drained across the whole run, and full breakdowns of hunters drained and mini-bosses slain — each line with the thing it counts animated beside it.
-- Pause overlay, fullscreen button, rotate-to-landscape gate, and device-aware menus and hint text.
-- Mobile controls that visibly respond: every button flashes and pops on press, and the joystick pulses gently until it is actually grabbed.
+- Pause overlay with General and Sound settings, fullscreen button, rotate-to-landscape gate, and device-aware menus and hint text. Pausing freezes active SFX and keeps the soundtrack in the background at 20% of the configured level.
+- General settings include a whole-canvas red-friendly palette. Desktop also gets 50–200% cursor size and 25–200% cursor speed controls; cursor settings are not constructed on touch devices. Sound settings include Master, Music and SFX levels, independent channel mutes and reset controls.
+- Mobile controls that visibly respond: every button flashes and pops on press, and the compact gothic joystick pulses gently until it is grabbed. Its invisible finger target is larger than the art without swallowing ordinary playfield attack taps.
 - **In-game audio balance editor** (see below) for tuning every track and effect live.
 
 ## Audio Balance Editor
 
-Append `?audioEditor=1` to the URL and press **F8**. A panel lists every music track and sound effect with a live volume slider, a master mute, and a button that dumps the current values as a code block ready to paste into `src/data/audioBalance.ts`. The OS mouse pointer is restored while the panel is open so the sliders can be dragged.
+Append `?audioEditor=1` to the URL and press **F8**. A panel lists every music track and sound effect with a live volume slider, a master mute, preview controls, and a button that dumps the current values as a code block ready to paste into `src/data/audioBalance.ts`. The OS mouse pointer is restored only while this editor is open so the sliders can be dragged. Editor previews intentionally bypass pause-menu SFX suppression and music ducking.
 
 Full details in [docs/AUDIO.md](docs/AUDIO.md).
 
@@ -121,9 +125,17 @@ Open the printed localhost URL.
 
 Set `FAST_DEV_MODE = true` in [`src/data/balance.ts`](src/data/balance.ts) for a 25-second night — every balance number the game uses lives in that one file.
 
+### Development tools
+
+- **Audio Balance Editor:** use `?audioEditor=1`, then **F8**, to preview and tune every manifest audio asset. Copy Configuration produces values ready for `src/data/audioBalance.ts`; full operation and browser-storage details are in [docs/AUDIO.md](docs/AUDIO.md).
+- **Fast nights:** `FAST_DEV_MODE` reduces the round clock to 25 seconds for loop, dawn and urgency testing.
+- **Browser inspection:** development builds expose the Phaser instance as `window.game`; production builds do not.
+- **QA sweep:** [docs/QA_CHECKLIST.md](docs/QA_CHECKLIST.md) covers desktop, mobile, menus, cutscenes, audio, deaths and multi-night regressions.
+- **Sprite pipeline:** the scripts under `tools/` rebuild shipped sheets from committed source art. They are offline build tools and never ship to players.
+
 ### Rebuilding the sprite sheets
 
-Romi's original drawings ship under [`public/assets/RAW/`](public/assets/RAW/README.md) so no sheet is ever orphaned from its source. Each build script takes its folder as the only argument and is idempotent:
+Romi's original drawings ship under [`public/assets/RAW/`](public/assets/RAW/README.md) so no sheet is ever orphaned from its source. The builders take their source folder as the only argument and are idempotent; the final no-argument helper cleans partial-alpha dither from the castle windows:
 
 ```bash
 python tools/build_count_sheets.py public/assets/RAW/count
@@ -132,6 +144,7 @@ python tools/build_priest_sheet.py public/assets/RAW/priest
 python tools/build_weapon_props.py public/assets/RAW/weapons
 python tools/build_green_props.py public/assets/RAW
 python tools/build_bat_sheet.py public/assets/RAW/bat
+python tools/clean_window_dither.py
 ```
 
 How the keying works and why each script does it differently is in [docs/ASSET_INTEGRATION.md](docs/ASSET_INTEGRATION.md).
@@ -144,9 +157,11 @@ src/
   scenes/    Boot, Preload, Game (also the menu), Pause, GameOver, Victory
   entities/  Player, Hunter, ArmedHunter, GarlicThrower, HunterCaptain,
              GarlicCaptain, Priest, BossCharge, Garlic, BloodPickup, Coffin
-  systems/   Input, Combat, Spawn, Countdown, GameFlow (rules), AudioDirector, coldOpen
-  ui/        HUD, BossHealthBar, TouchControls, MenuLightning, RunDebrief, AudioEditor
-  data/      balance.ts — every tunable number; audioManifest.ts / audioBalance.ts
+  systems/   Input, Combat, Spawn, entrance/navigation, Countdown, GameFlow,
+             AudioDirector, coldOpen
+  ui/        HUD + urgency rules, BossHealthBar, TouchControls, MenuLightning,
+             RunDebrief, AudioEditor
+  data/      balance.ts — tunable game numbers; gameSettings; audio manifest/balance
   utils/     assetKeys, animations, direction, runtime placeholder textures
   types/     shared game types
 public/assets/  shipped art and audio; RAW/ holds the source drawings
@@ -175,8 +190,9 @@ Shipped and implemented:
 - Wrath meter and Ultimate: hall-wide lightning kill, a bat swarm, and a screen darken, charged by blood the Count has no use for.
 - Hand-drawn Count with idle/run/attack and two distinct death sequences, plus bat form.
 - Cold open, seamless between-night cycle, victory outro, and both defeat endings with a full run debrief.
-- Desktop and touch control paths, landscape gate, fullscreen, pause.
-- Original music and SFX with an OGG/MP3 pair per key, a music state machine, and a live balance editor.
+- Desktop and touch control paths, landscape gate, fullscreen, pauseable cinematics and hold-to-skip intro controls.
+- Persistent, compact player settings for accessibility, cursor and audio; default General values remove their browser-storage entry instead of leaving unnecessary data behind.
+- Original music and SFX with an OGG/MP3 pair per key, a music state machine, menu ducking/SFX suspension, and a live balance editor.
 - Offline sprite pipeline with all source art committed alongside the built sheets.
 
 Pending:
