@@ -52,7 +52,8 @@ export const WINDOW_X_CENTERS = WINDOW_COLS.map((col) => (col + 1) * TILE);
 export const WINDOW_Y = TILE * 1.5;
 
 /** World-x centers of the torch sconces, in the gaps between windows. */
-const TORCH_X = [96, 448, 832, 1184];
+export const TORCH_X_CENTERS = [96, 448, 832, 1184] as const;
+export const TORCH_Y = TILE * 2 + 8;
 
 export class CastleMap {
   constructor(scene: Phaser.Scene) {
@@ -90,9 +91,9 @@ export class CastleMap {
     this.buildLayer(scene, wallGrid, DEPTHS.wall);
 
     // Torch sconces on the wall face, flickering through the night.
-    for (const x of TORCH_X) {
+    for (const x of TORCH_X_CENTERS) {
       const torch = scene.add
-        .sprite(x, TILE * 2 + 8, TEXTURES.fire, 1)
+        .sprite(x, TORCH_Y, TEXTURES.fire, 1)
         .setScale(1.6)
         .setDepth(DEPTHS.torch);
       torch.play({ key: ANIMS.torch, startFrame: Phaser.Math.Between(0, 5) });

@@ -61,6 +61,8 @@ export class TouchControls {
    *  tell that it is there to be used, not just idle chrome. Paused the
    *  instant a touch grabs it and resumed on release. */
   private joyBlinkTween!: Phaser.Tweens.Tween;
+  private readonly ownedObjects: Phaser.GameObjects.GameObject[] = [];
+  private destroyed = false;
 
   constructor(
     private readonly scene: Phaser.Scene,
@@ -73,27 +75,27 @@ export class TouchControls {
 
     const joyX = TOUCH_JOYSTICK.x;
     const joyY = TOUCH_JOYSTICK.y;
-    this.joyGlow = scene.add
+    this.joyGlow = this.own(scene.add
       .circle(joyX, joyY, this.radius + 7, 0x1b0d26, 0.18)
       .setStrokeStyle(2, 0x6b4d8f, 0.42)
       .setDepth(DEPTHS.hud + 9)
-      .setScrollFactor(0);
-    this.base = scene.add
+      .setScrollFactor(0));
+    this.base = this.own(scene.add
       .circle(joyX, joyY, this.radius, 0x160c20, 0.58)
       .setStrokeStyle(4, JOY_COLOR, 0.72)
       .setDepth(DEPTHS.hud + 10)
-      .setScrollFactor(0);
-    this.innerRing = scene.add
+      .setScrollFactor(0));
+    this.innerRing = this.own(scene.add
       .circle(joyX, joyY, this.radius * 0.62, 0x000000, 0)
       .setStrokeStyle(2, 0xc9a7ff, 0.45)
       .setDepth(DEPTHS.hud + 10)
-      .setScrollFactor(0);
-    this.thumb = scene.add
+      .setScrollFactor(0));
+    this.thumb = this.own(scene.add
       .circle(joyX, joyY, 27, THUMB_COLOR, 0.58)
       .setStrokeStyle(3, 0xff9aaa, 0.9)
       .setDepth(DEPTHS.hud + 10)
-      .setScrollFactor(0);
-    this.thumbGlyph = scene.add
+      .setScrollFactor(0));
+    this.thumbGlyph = this.own(scene.add
       .text(joyX, joyY, 'V', {
         fontFamily: 'Trebuchet MS, sans-serif',
         fontSize: '18px',
@@ -102,7 +104,7 @@ export class TouchControls {
       })
       .setOrigin(0.5)
       .setDepth(DEPTHS.hud + 11)
-      .setScrollFactor(0);
+      .setScrollFactor(0));
 
     // Four small notches give the control a deliberate compass/socket shape
     // without adding interactive objects that could steal combat taps.
@@ -112,10 +114,10 @@ export class TouchControls {
       [joyX - this.radius + 8, joyY, false],
       [joyX + this.radius - 8, joyY, false],
     ] as const) {
-      scene.add
+      this.own(scene.add
         .rectangle(x, y, horizontal ? 15 : 3, horizontal ? 3 : 15, 0xff7180, 0.75)
         .setDepth(DEPTHS.hud + 11)
-        .setScrollFactor(0);
+        .setScrollFactor(0));
     }
     this.joyBlinkTween = scene.tweens.add({
       targets: [this.joyGlow, this.base, this.innerRing, this.thumb, this.thumbGlyph],
@@ -161,17 +163,17 @@ export class TouchControls {
     label: string,
     onDown: (pointer: Phaser.Input.Pointer) => void,
   ): { circle: Phaser.GameObjects.Arc; text: Phaser.GameObjects.Text } {
-    const btn = this.scene.add
+    const btn = this.own(this.scene.add
       .circle(x, y, r, JOY_COLOR, 0.28)
       .setStrokeStyle(4, THUMB_COLOR, 0.8)
       .setDepth(DEPTHS.hud + 10)
       .setScrollFactor(0)
-      .setInteractive();
-    const text = this.scene.add
+      .setInteractive());
+    const text = this.own(this.scene.add
       .text(x, y, label, { fontSize: `${Math.round(r * 0.9)}px` })
       .setOrigin(0.5)
       .setDepth(DEPTHS.hud + 11)
-      .setScrollFactor(0);
+      .setScrollFactor(0));
     btn.on('pointerdown', (p: Phaser.Input.Pointer, _lx: number, _ly: number, e: Phaser.Types.Input.EventData) => {
       e.stopPropagation();
       this.flashButton(btn);
@@ -280,5 +282,35 @@ export class TouchControls {
     this.thumb.setPosition(this.base.x, this.base.y);
     this.thumbGlyph.setPosition(this.base.x, this.base.y);
     this.joyBlinkTween.resume();
+  }
+
+  /** Drop edge-triggered actions gathered while gameplay was suspended. */
+  discardBufferedActions(): void {
+    this.autoAttackPressed = false;
+    this.dashPressed = false;
+    this.ultimatePressed = false;
+  }
+
+  destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    this.scene.input.off('pointerdown', this.onDown, this);
+    this.scene.input.off('pointermove', this.onMove, this);
+    this.scene.input.off('pointerup', this.onUp, this);
+    this.scene.input.off('pointerupoutside', this.onUp, this);
+    this.joyBlinkTween.stop();
+    for (const object of this.ownedObjects) {
+      this.scene.tweens.killTweensOf(object);
+      if (object.active) object.destroy();
+    }
+    this.ownedObjects.length = 0;
+    this.controlZones = [];
+    this.moveVec = { x: 0, y: 0 };
+    this.discardBufferedActions();
+  }
+
+  private own<T extends Phaser.GameObjects.GameObject>(object: T): T {
+    this.ownedObjects.push(object);
+    return object;
   }
 }

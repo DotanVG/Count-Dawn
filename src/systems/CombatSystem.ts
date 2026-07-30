@@ -9,6 +9,13 @@ import { selectAutoAttackTarget } from './enemyNavigation';
 /** The impact burst on a struck hunter — sized to read as a hit, not a spark. */
 const HIT_BURST_SCALE = 1.8;
 
+export interface CombatResolution {
+  hits: number;
+  kills: number;
+  heavyHit: boolean;
+  heavyKill: boolean;
+}
+
 /**
  * The player's directional melee strike: cooldown and arc hit detection
  * against all living hunters (boss included). No overlay on the player
@@ -26,6 +33,12 @@ export class CombatSystem {
     /** Kill callback so the scene owns drops/removal, not the combat math. */
     private readonly onKill: (hunter: Hunter) => void,
     private readonly onAttack: () => void,
+    /**
+     * Presentation callback runs while the target still exists. Returning true
+     * marks a boss/heavy impact for the single post-swing camera response.
+     */
+    private readonly onImpact: (hunter: Hunter, killed: boolean) => boolean,
+    private readonly onResolved: (resolution: CombatResolution) => void,
   ) {}
 
   /** Fraction of the cooldown already recovered, 0..1, for the HUD meter. */
@@ -44,6 +57,12 @@ export class CombatSystem {
     this.onAttack();
 
     const halfArc = Phaser.Math.DegToRad(PLAYER.attackArcHalfAngleDeg);
+    const resolution: CombatResolution = {
+      hits: 0,
+      kills: 0,
+      heavyHit: false,
+      heavyKill: false,
+    };
     for (const hunter of targets) {
       if (!hunter.active || !hunter.isAlive || hunter.isEntering) continue;
       const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, hunter.x, hunter.y);
@@ -56,6 +75,11 @@ export class CombatSystem {
 
       const killed = hunter.takeDamage(PLAYER.attackDamage);
       this.spawnHitMagic(hunter.x, hunter.y);
+      const heavy = this.onImpact(hunter, killed);
+      resolution.hits++;
+      resolution.kills += killed ? 1 : 0;
+      resolution.heavyHit ||= heavy;
+      resolution.heavyKill ||= heavy && killed;
       if (killed) {
         this.onKill(hunter);
       } else {
@@ -63,6 +87,7 @@ export class CombatSystem {
         hunter.applyKnockback(this.player.x, this.player.y);
       }
     }
+    this.onResolved(resolution);
   }
 
   /**

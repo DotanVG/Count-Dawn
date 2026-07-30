@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { HUNTER, KNOCKBACK } from '../data/balance';
+import { POLISH } from '../data/polish';
 import { ARENA, DEPTHS } from '../game/constants';
 import { TEXTURES, animKey, type CharacterKey, type Dir4 } from '../utils/assetKeys';
 import { angleToDir4 } from '../utils/direction';
@@ -104,6 +105,7 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   private readonly knockbackVelocity = new Phaser.Math.Vector2();
   /** Bumped whenever a swing is started or interrupted; a stale token can't land a hit. */
   private swingToken = 0;
+  private hitFlashTimer: Phaser.Time.TimerEvent | null = null;
 
   constructor(
     scene: Phaser.Scene,
@@ -459,9 +461,11 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     this.health -= amount;
 
     // White hit flash (Phaser 4 tint API).
+    this.hitFlashTimer?.remove(false);
     this.setTint(0xffffff);
     this.setTintMode(Phaser.TintModes.FILL);
-    this.scene.time.delayedCall(70, () => {
+    this.hitFlashTimer = this.scene.time.delayedCall(POLISH.flashes.hitMs, () => {
+      this.hitFlashTimer = null;
       if (!this.active) return;
       this.clearTint();
       this.setTintMode(Phaser.TintModes.MULTIPLY);
@@ -469,6 +473,12 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     });
 
     return this.health <= 0;
+  }
+
+  override destroy(fromScene?: boolean): void {
+    this.hitFlashTimer?.remove(false);
+    this.hitFlashTimer = null;
+    super.destroy(fromScene);
   }
 
   /** Re-applied after hit flashes; the Captain overrides with his color. */
@@ -491,6 +501,11 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
       .sprite(this.x, this.y, this.look.sheet, 0)
       .setScale(this.scaleX, this.scaleY)
       .setDepth(DEPTHS.corpse);
+    corpse.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);
+    this.scene.time.delayedCall(POLISH.flashes.killMs, () => {
+      if (!corpse.active) return;
+      corpse.clearTint().setTintMode(Phaser.TintModes.MULTIPLY);
+    });
     corpse.play(animKey(this.look.charKey, 'death', this.facing));
     // Away from whichever way he was facing, so he does not fall through
     // himself, and never straight up- or down-screen where it reads as nothing.

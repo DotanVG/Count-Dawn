@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { THROWER } from '../data/balance';
 import { DEPTHS } from '../game/constants';
+import { PresentationSystem } from '../systems/PresentationSystem';
 
 /** Sickly garlic-green — the thrower's targeting light. */
 const GREEN = 0x7dff9b;
@@ -36,7 +37,7 @@ export class GarlicTarget {
   /** Freeze the crosshair where it is and switch to the fast lock strobe. */
   lock(): void {
     this.locked = true;
-    this.scene.cameras.main.shake(90, 0.002);
+    PresentationSystem.forScene(this.scene)?.cameraShake(90, 0.002);
   }
 
   /** Resume following between shots of a garlic Captain's two-bulb volley. */

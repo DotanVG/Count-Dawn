@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { BOSS, CROSS, KNOCKBACK, THROWER } from '../data/balance';
 import { DEPTHS } from '../game/constants';
 import type { GameEventEmitter } from '../game/events';
+import { PresentationSystem } from '../systems/PresentationSystem';
 import { BossHealthBar } from '../ui/BossHealthBar';
 import { BossCharge } from './BossCharge';
 import { GarlicThrower } from './GarlicThrower';
@@ -111,7 +112,7 @@ export class CrossCaptain extends GarlicThrower implements CaptainTraits {
     if (!this.scene) return; // already destroyed; see the note in Priest.destroy
     this.charge?.destroy();
     this.charge = null;
-    this.healthBar.destroy();
+    this.healthBar.destroy(fromScene !== true);
     super.destroy(fromScene);
   }
 
@@ -123,6 +124,6 @@ export class CrossCaptain extends GarlicThrower implements CaptainTraits {
       duration: 260,
       ease: 'Back.easeOut',
     });
-    this.scene.cameras.main.shake(250, 0.006);
+    PresentationSystem.forScene(this.scene)?.cameraShake(250, 0.006);
   }
 }

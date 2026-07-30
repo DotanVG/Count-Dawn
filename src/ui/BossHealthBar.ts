@@ -18,8 +18,9 @@ export class BossHealthBar {
   private fill: Phaser.GameObjects.Rectangle;
   /** Set by suppress() — a cutscene actor that should show no boss UI at all. */
   private suppressed = false;
+  private destroying = false;
 
-  constructor(scene: Phaser.Scene, label: string) {
+  constructor(private readonly scene: Phaser.Scene, label: string) {
     const bg = scene.add.rectangle(0, 0, BAR_WIDTH, 10, 0x000000, 0.7).setOrigin(0.5);
     this.fill = scene.add
       .rectangle(-BAR_WIDTH / 2 + 2, 0, BAR_WIDTH - 4, 6, 0xffd76b)
@@ -66,7 +67,22 @@ export class BossHealthBar {
     this.container.setVisible(false);
   }
 
-  destroy(): void {
-    this.container.destroy();
+  destroy(animate = true): void {
+    if (this.destroying || !this.container.active) return;
+    this.destroying = true;
+    this.suppressed = true;
+    if (!animate || !this.container.visible) {
+      this.container.destroy();
+      return;
+    }
+    this.scene.tweens.add({
+      targets: this.container,
+      alpha: 0,
+      y: this.container.y - 8,
+      scaleX: 0.92,
+      duration: 180,
+      ease: 'Quad.easeIn',
+      onComplete: () => this.container.destroy(),
+    });
   }
 }

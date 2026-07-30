@@ -28,35 +28,58 @@ export class GameOverScene extends Phaser.Scene {
     const audio = getAudioDirector(this);
     audio.playMainTitle();
     audio.enterMenuMode();
+    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0d0716, 0.96).setOrigin(0);
 
-    this.add
+    const title = this.add
       .text(cx, 62, 'DAWN CLAIMS YOU', {
         fontFamily: FONT,
         fontSize: '52px',
         color: '#ff5f5f',
         fontStyle: 'bold',
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setAlpha(0)
+      .setScale(0.82);
 
-    this.add
+    const cause = this.add
       .text(cx, 108, CAUSE_TEXT[summary.cause] ?? 'The night is over.', {
         fontFamily: FONT,
         fontSize: '21px',
         color: '#e8ddff',
       })
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setAlpha(0);
 
     // The last night, in its own line — the debrief below is the whole run.
-    this.add
+    const finalNight = this.add
       .text(
         cx,
         140,
         `Final night: ${summary.bloodCollected}/${summary.bloodTarget} blood  ·  survived ${summary.timeSurvivedSeconds}s`,
         { fontFamily: FONT, fontSize: '16px', color: '#7d6ea3' },
       )
-      .setOrigin(0.5);
+      .setOrigin(0.5)
+      .setAlpha(0);
 
-    new RunDebrief(this, cx, 210, summary.stats);
+    const debrief = new RunDebrief(this, cx, 210, summary.stats);
+    debrief.container.setAlpha(0).setY(230);
+    this.tweens.add({
+      targets: title,
+      alpha: 1,
+      scale: 1,
+      duration: 330,
+      ease: 'Back.easeOut',
+    });
+    this.tweens.add({ targets: cause, alpha: 1, duration: 240, delay: 150 });
+    this.tweens.add({ targets: finalNight, alpha: 1, duration: 240, delay: 240 });
+    this.tweens.add({
+      targets: debrief.container,
+      alpha: 1,
+      y: 210,
+      duration: 320,
+      delay: 320,
+      ease: 'Quad.easeOut',
+    });
 
     const touch = isTouchDevice();
     const restart = this.add
@@ -68,16 +91,24 @@ export class GameOverScene extends Phaser.Scene {
         padding: { x: 24, y: 10 },
       })
       .setOrigin(0.5)
+      .setAlpha(0)
       .setInteractive({ useHandCursor: true });
     restart.on('pointerover', () => restart.setBackgroundColor('#e8ddff'));
     restart.on('pointerout', () => restart.setBackgroundColor('#c9a7ff'));
     const restartRun = (): void => {
       this.scene.start(SCENES.game, { autostart: true, showOpening: true });
     };
-    restart.on('pointerdown', restartRun);
+    restart.on('pointerdown', () => {
+      restart.disableInteractive().setScale(0.94).setBackgroundColor('#ffffff');
+      this.time.delayedCall(80, restartRun);
+    });
+    this.tweens.add({ targets: restart, alpha: 1, duration: 220, delay: 520 });
 
     this.input.keyboard?.on('keydown-R', restartRun);
-    this.input.keyboard?.on('keydown-M', () => this.scene.start(SCENES.game, { autostart: false }));
+    const returnToMenu = (): void => {
+      this.scene.start(SCENES.game, { autostart: false });
+    };
+    this.input.keyboard?.on('keydown-M', returnToMenu);
 
     const menuLink = this.add
       .text(cx, GAME_HEIGHT - 42, touch ? 'Back to menu' : 'M - back to menu', {
@@ -89,6 +120,12 @@ export class GameOverScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
     // Explicit false: Phaser reuses the previous start() data when omitted,
     // which would carry a stale autostart:true and skip the menu.
-    menuLink.on('pointerdown', () => this.scene.start(SCENES.game, { autostart: false }));
+    menuLink.on('pointerover', () => menuLink.setColor('#e8ddff').setScale(1.05));
+    menuLink.on('pointerout', () => menuLink.setColor('#9d8bbf').setScale(1));
+    menuLink.on('pointerdown', returnToMenu);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.keyboard?.off('keydown-R', restartRun);
+      this.input.keyboard?.off('keydown-M', returnToMenu);
+    });
   }
 }

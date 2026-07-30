@@ -36,13 +36,8 @@ export class InputController {
   constructor(private readonly scene: Phaser.Scene) {
     const kb = scene.input.keyboard;
     if (!kb) throw new Error('Keyboard input plugin is unavailable');
-    scene.input.on(Phaser.Input.Events.POINTER_MOVE, () => {
-      this.pointerSeen = true;
-    });
-    scene.input.on(Phaser.Input.Events.POINTER_DOWN, () => {
-      this.pointerSeen = true;
-      this.mouseAttackPressed = true;
-    });
+    scene.input.on(Phaser.Input.Events.POINTER_MOVE, this.onPointerMove, this);
+    scene.input.on(Phaser.Input.Events.POINTER_DOWN, this.onPointerDown, this);
     this.keys = {
       up: kb.addKey(Phaser.Input.Keyboard.KeyCodes.W),
       down: kb.addKey(Phaser.Input.Keyboard.KeyCodes.S),
@@ -114,5 +109,21 @@ export class InputController {
   getAimPoint(): Phaser.Math.Vector2 {
     const pointer = this.scene.input.activePointer;
     return new Phaser.Math.Vector2(pointer.worldX, pointer.worldY);
+  }
+
+  destroy(): void {
+    this.scene.input.off(Phaser.Input.Events.POINTER_MOVE, this.onPointerMove, this);
+    this.scene.input.off(Phaser.Input.Events.POINTER_DOWN, this.onPointerDown, this);
+    this.mouseAttackPressed = false;
+    for (const key of Object.values(this.keys)) key.reset();
+  }
+
+  private onPointerMove(): void {
+    this.pointerSeen = true;
+  }
+
+  private onPointerDown(): void {
+    this.pointerSeen = true;
+    this.mouseAttackPressed = true;
   }
 }

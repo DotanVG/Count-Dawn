@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
 import { KNOCKBACK, PRIEST } from '../data/balance';
+import { POLISH } from '../data/polish';
 import { DEPTHS } from '../game/constants';
 import type { GameEventEmitter } from '../game/events';
+import { PresentationSystem } from '../systems/PresentationSystem';
 import { BossHealthBar } from '../ui/BossHealthBar';
 import { TEXTURES, animKey } from '../utils/assetKeys';
 import { angleToDir4 } from '../utils/direction';
@@ -162,6 +164,11 @@ export class Priest extends Hunter implements CaptainTraits {
       .sprite(this.x, this.y, TEXTURES.priest, 0)
       .setScale(this.scaleX, this.scaleY)
       .setDepth(DEPTHS.corpse);
+    corpse.setTint(0xffffff).setTintMode(Phaser.TintModes.FILL);
+    this.scene.time.delayedCall(POLISH.flashes.killMs, () => {
+      if (!corpse.active) return;
+      corpse.clearTint().setTintMode(Phaser.TintModes.MULTIPLY);
+    });
     corpse.play(animKey('priest', 'death', this.facing));
     this.scene.tweens.add({
       targets: corpse,
@@ -196,7 +203,7 @@ export class Priest extends Hunter implements CaptainTraits {
     this.cross?.destroy();
     this.cross = null;
     this.endWard();
-    this.healthBar.destroy();
+    this.healthBar.destroy(fromScene !== true);
     super.destroy(fromScene);
   }
 
@@ -212,7 +219,7 @@ export class Priest extends Hunter implements CaptainTraits {
       duration: 260,
       ease: 'Back.easeOut',
     });
-    this.scene.cameras.main.shake(250, 0.006);
+    PresentationSystem.forScene(this.scene)?.cameraShake(250, 0.006);
   }
 
   /**
@@ -347,7 +354,7 @@ export class Priest extends Hunter implements CaptainTraits {
       .setDepth(DEPTHS.attackFx);
     motes.explode(26);
     this.scene.time.delayedCall(800, () => motes.destroy());
-    this.scene.cameras.main.shake(200, 0.005);
+    PresentationSystem.forScene(this.scene)?.cameraShake(200, 0.005);
   }
 
   /**

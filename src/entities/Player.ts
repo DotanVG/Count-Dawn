@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { BAT, DASH, PLAYER } from '../data/balance';
+import { scaledParticleCount, type PolishProfile } from '../data/polish';
 import { DEPTHS } from '../game/constants';
 import { EVENTS, type GameEventEmitter } from '../game/events';
 import { ANIMS, TEXTURES, animKey, type Dir4 } from '../utils/assetKeys';
@@ -49,12 +50,16 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * would keep driving the sprite back up to full vampire size.
    */
   private attackPopTween?: Phaser.Tweens.Tween;
+  private readonly dashTrailTimers = new Set<Phaser.Time.TimerEvent>();
+  private readonly dashGhosts = new Set<Phaser.GameObjects.Sprite>();
+  private readonly transformPuff: Phaser.GameObjects.Particles.ParticleEmitter;
 
   constructor(
     scene: Phaser.Scene,
     x: number,
     y: number,
     private readonly emitter: GameEventEmitter,
+    private readonly polish: PolishProfile,
   ) {
     super(scene, x, y, TEXTURES.vampireIdle, 0);
     scene.add.existing(this);
@@ -70,6 +75,18 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setCollideWorldBounds(true);
     this.setDepth(DEPTHS.player);
     this.play(animKey('vampire', 'idle', 'down'));
+    this.transformPuff = scene.add
+      .particles(0, 0, TEXTURES.particle, {
+        speed: { min: 40, max: 160 },
+        angle: { min: 0, max: 360 },
+        lifespan: { min: 260, max: 560 },
+        scale: { start: 2.8, end: 0 },
+        alpha: { start: 0.85, end: 0 },
+        tint: [0x9d6bff, 0x6b4d8f, 0x241830, 0xe8ddff],
+        maxParticles: Math.min(36, this.polish.maxActiveParticles),
+        emitting: false,
+      })
+      .setDepth(DEPTHS.attackFx);
   }
 
   get isAlive(): boolean {
@@ -213,27 +230,27 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * another — they are simply hidden by the burst for a frame.
    */
   private playTransformPuff(): void {
-    const puff = this.scene.add
-      .particles(this.x, this.y - 10, TEXTURES.particle, {
-        speed: { min: 40, max: 160 },
-        angle: { min: 0, max: 360 },
-        lifespan: { min: 260, max: 560 },
-        scale: { start: 2.8, end: 0 },
-        alpha: { start: 0.85, end: 0 },
-        tint: [0x9d6bff, 0x6b4d8f, 0x241830, 0xe8ddff],
-        emitting: false,
-      })
-      .setDepth(DEPTHS.attackFx);
-
-    puff.explode(BAT.puffParticles);
-    this.scene.time.delayedCall(700, () => puff.destroy());
+    this.transformPuff.explode(
+      scaledParticleCount(this.polish, BAT.puffParticles),
+      this.x,
+      this.y - 10,
+    );
   }
 
   /** Fading after-images strung along the dash path. */
   private spawnDashTrail(): void {
-    for (let i = 0; i < DASH.afterimages; i++) {
-      this.scene.time.delayedCall((DASH.durationMs / DASH.afterimages) * i, () => {
-        if (!this.active) return;
+    const afterimages = Math.max(
+      2,
+      Math.round(
+        DASH.afterimages *
+          (this.polish.isTouch ? 0.6 : this.polish.quality === 'minimal' ? 0.5 : 1),
+      ),
+    );
+    for (let i = 0; i < afterimages; i++) {
+      let timer: Phaser.Time.TimerEvent;
+      timer = this.scene.time.delayedCall((DASH.durationMs / afterimages) * i, () => {
+        this.dashTrailTimers.delete(timer);
+        if (!this.active || !this.isAlive || !this.isDashing) return;
         const ghost = this.scene.add
           .sprite(this.x, this.y, this.texture.key, this.frame.name)
           .setScale(this.scaleX, this.scaleY)
@@ -241,14 +258,19 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
           .setDepth(DEPTHS.player - 1)
           .setTint(0x9d6bff)
           .setAlpha(0.5);
+        this.dashGhosts.add(ghost);
         this.scene.tweens.add({
           targets: ghost,
           alpha: 0,
           scale: this.scaleX * 0.8,
           duration: 260,
-          onComplete: () => ghost.destroy(),
+          onComplete: () => {
+            this.dashGhosts.delete(ghost);
+            ghost.destroy();
+          },
         });
       });
+      this.dashTrailTimers.add(timer);
     }
   }
 
@@ -373,6 +395,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * and the run sat there forever with the music still going.
    */
   private stopForDeath(): void {
+    this.clearDashPresentation();
     this.dashRestore?.remove();
     this.dashRestore = undefined;
     this.dashUntil = 0;
@@ -421,6 +444,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * healing overnight is a real cost, not an unconditional reset to full.
    */
   resetForNewRound(health: number = PLAYER.maxHealth): void {
+    this.clearDashPresentation();
     this.health = Phaser.Math.Clamp(health, 0, PLAYER.maxHealth);
     this.invulnUntil = 0;
     this.dashUntil = 0;
@@ -428,6 +452,21 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.clearTint();
     this.setTintMode(Phaser.TintModes.MULTIPLY);
     this.setAlpha(1);
+  }
+
+  override destroy(fromScene?: boolean): void {
+    this.clearDashPresentation();
+    if (this.transformPuff.active) this.transformPuff.destroy();
+    super.destroy(fromScene);
+  }
+
+  private clearDashPresentation(): void {
+    for (const timer of this.dashTrailTimers) timer.remove(false);
+    this.dashTrailTimers.clear();
+    for (const ghost of this.dashGhosts) {
+      if (ghost.active) ghost.destroy();
+    }
+    this.dashGhosts.clear();
   }
 
   /**

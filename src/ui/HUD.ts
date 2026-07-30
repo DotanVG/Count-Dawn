@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { BLOOD, NIGHT, PLAYER, WRATH, bossLineupForNight } from '../data/balance';
+import { scaledParticleCount, type PolishProfile } from '../data/polish';
 import { DEPTHS, GAME_WIDTH, GAME_HEIGHT } from '../game/constants';
 import { EVENTS } from '../game/events';
 import { TEXTURES } from '../utils/assetKeys';
@@ -118,6 +119,8 @@ export class HUD {
   private healthText: Phaser.GameObjects.Text;
   private dashBarFill: Phaser.GameObjects.Rectangle;
   private dashLabel: Phaser.GameObjects.Text;
+  private dashWasReady = true;
+  private dashReadyTween: Phaser.Tweens.Tween | null = null;
   private bloodBarFill: Phaser.GameObjects.Rectangle;
   private bloodText: Phaser.GameObjects.Text;
   private wrathBarFill: Phaser.GameObjects.Rectangle;
@@ -140,16 +143,21 @@ export class HUD {
   /** Ring around the blood bar, shown only while the meter is full. */
   private bloodGlow: Phaser.GameObjects.Rectangle;
   private bloodGlowTween: Phaser.Tweens.Tween | null = null;
+  private bloodGlowOn = false;
   /** Same breathing ring, green, shown only while HP is full. */
   private healthGlow: Phaser.GameObjects.Rectangle;
+  private healthDamageFlash: Phaser.GameObjects.Rectangle;
   private healthGlowTween: Phaser.Tweens.Tween | null = null;
+  private healthGlowOn = false;
   /** Pulse on the health bar while HP is in the red band - the "you are about to die" tell. */
   private lowHealthTween: Phaser.Tweens.Tween | null = null;
+  private lowHealthOn = false;
   /** Last ratio handed to setHealth, so particle bursts can match the bar. */
   private healthRatio = 1;
   /** Ring around the Wrath meter, shown only once the Ultimate is charged. */
   private wrathGlow: Phaser.GameObjects.Rectangle;
   private wrathGlowTween: Phaser.Tweens.Tween | null = null;
+  private wrathGlowOn = false;
   /** Motes earned per 10% of Wrath, with a twenty-particle full-charge orbit. */
   private wrathOrbitDots: Phaser.GameObjects.Arc[] = [];
   private wrathOrbitTween: Phaser.Tweens.Tween | null = null;
@@ -158,10 +166,19 @@ export class HUD {
   private wrathMotes: Phaser.GameObjects.Particles.ParticleEmitter;
   /** Spawns spawnWrathSparkle on a beat while charged; see setWrathFullGlow. */
   private wrathSparkleTimer: Phaser.Time.TimerEvent | null = null;
+  private healthWidthTween: Phaser.Tweens.Tween | null = null;
+  private bloodWidthTween: Phaser.Tweens.Tween | null = null;
+  private wrathWidthTween: Phaser.Tweens.Tween | null = null;
+  private readonly feedbackTweens = new Set<Phaser.Tweens.Tween>();
+  private readonly barPulseTweens = new Map<Phaser.GameObjects.GameObject, Phaser.Tweens.Tween>();
+  private healthShakeTween: Phaser.Tweens.Tween | null = null;
+  private healthFlashTween: Phaser.Tweens.Tween | null = null;
+  private bloodRatio = 0;
 
   constructor(
     private readonly scene: Phaser.Scene,
     private readonly emitter: Phaser.Events.EventEmitter,
+    private readonly polish: PolishProfile,
     /** Desktop gets a "Press SPACE" hint on a full Wrath bar; mobile has the ⚡ button instead. */
     private readonly isTouch: boolean = false,
   ) {
@@ -235,6 +252,13 @@ export class HUD {
       .setFillStyle(HP_FULL_GLOW, 0)
       .setDepth(DEPTHS.hud + 2)
       .setVisible(false);
+    this.healthDamageFlash = scene.add
+      .rectangle(18, 24, BAR_W + 12, 26)
+      .setOrigin(0, 0.5)
+      .setStrokeStyle(4, HP_RED, 1)
+      .setFillStyle(HP_RED, 0.08)
+      .setDepth(DEPTHS.hud + 3)
+      .setVisible(false);
 
     // Wrath meter (top-middle, between health and blood): fills from blood the
     // Count has no use for — see WRATH in balance.ts. Smaller than the other
@@ -282,6 +306,7 @@ export class HUD {
         tint: [WRATH_DARK, DASH_PURPLE, 0x4a2e6b],
         frequency: 90,
         quantity: 1,
+        maxParticles: Math.min(48, polish.maxActiveParticles),
         emitting: false,
       })
       .setDepth(DEPTHS.hud + 2);
@@ -331,6 +356,7 @@ export class HUD {
         lifespan: { min: 250, max: 550 },
         scale: { start: 1.1, end: 0 },
         tint: HP_GREEN,
+        maxParticles: Math.min(64, polish.maxActiveParticles),
         emitting: false,
       })
       .setDepth(DEPTHS.hud + 2);
@@ -340,6 +366,7 @@ export class HUD {
         lifespan: { min: 250, max: 550 },
         scale: { start: 1.1, end: 0 },
         tint: 0xff4d4d,
+        maxParticles: Math.min(64, polish.maxActiveParticles),
         emitting: false,
       })
       .setDepth(DEPTHS.hud + 2);
@@ -400,6 +427,24 @@ export class HUD {
     this.dashBarFill.width = BAR_W * Phaser.Math.Clamp(progress, 0, 1);
     this.dashBarFill.setFillStyle(DASH_PURPLE, ready ? 1 : 0.45);
     this.dashLabel.setAlpha(ready ? 1 : 0.5);
+    if (ready && !this.dashWasReady && !this.polish.reducedMotion) {
+      this.dashReadyTween?.stop();
+      this.dashBarFill.setScale(1);
+      this.dashReadyTween = this.scene.tweens.add({
+        targets: [this.dashBarFill, this.dashLabel],
+        scaleY: { from: 1.8, to: 1 },
+        alpha: { from: 1, to: 0.82 },
+        duration: 210,
+        yoyo: true,
+        ease: 'Back.easeOut',
+        onComplete: () => {
+          this.dashBarFill.setScale(1).setAlpha(1);
+          this.dashLabel.setScale(1).setAlpha(1);
+          this.dashReadyTween = null;
+        },
+      });
+    }
+    this.dashWasReady = ready;
   }
 
   /**
@@ -409,7 +454,12 @@ export class HUD {
    * way, only the fill side was still bursting at the bar's centre.
    */
   burstAtBloodBar(): void {
-    this.bloodParticles.explode(8, this.bloodBarEdge.x, this.bloodBarEdge.y);
+    this.bloodParticles.explode(
+      scaledParticleCount(this.polish, 8),
+      this.bloodBarEdge.x,
+      this.bloodBarEdge.y,
+    );
+    this.pulseBar(this.bloodBarFill, 1.09);
   }
 
   /**
@@ -611,14 +661,26 @@ export class HUD {
       loop: true,
       callback: () => {
         const elapsed = this.scene.time.now - streamStart;
-        this.bloodParticles.explode(5, this.bloodBarEdge.x, this.bloodBarEdge.y);
+        this.bloodParticles.explode(
+          scaledParticleCount(this.polish, 5),
+          this.bloodBarEdge.x,
+          this.bloodBarEdge.y,
+        );
         if (elapsed < healthDuration) {
           this.hpParticles.setParticleTint(healthColor(this.healthRatio));
-          this.hpParticles.explode(5, this.healthBarEdge.x, this.healthBarEdge.y);
+          this.hpParticles.explode(
+            scaledParticleCount(this.polish, 5),
+            this.healthBarEdge.x,
+            this.healthBarEdge.y,
+          );
         } else if (wrathDuration > 0) {
           // wrathMotes, not bloodParticles' fixed red — Wrath reads gold/purple
           // everywhere else, and a red puff at its bar would look like a mistake.
-          this.wrathMotes.explode(4, this.wrathBarEdge.x, this.wrathBarEdge.y);
+          this.wrathMotes.explode(
+            scaledParticleCount(this.polish, 4),
+            this.wrathBarEdge.x,
+            this.wrathBarEdge.y,
+          );
         }
       },
     });
@@ -767,7 +829,11 @@ export class HUD {
    * by GameScene once the pickup's second hop arrives.
    */
   burstAtBloodBarOverflow(): void {
-    this.bloodParticles.explode(6, this.bloodBarEdge.x, this.bloodBarEdge.y);
+    this.bloodParticles.explode(
+      scaledParticleCount(this.polish, 6),
+      this.bloodBarEdge.x,
+      this.bloodBarEdge.y,
+    );
   }
 
   destroy(): void {
@@ -777,6 +843,25 @@ export class HUD {
     this.emitter.off(EVENTS.PLAYER_HEALED, this.onPlayerHealed, this);
     this.emitter.off(EVENTS.BLOOD_CHANGED, this.onBloodChanged, this);
     this.emitter.off(EVENTS.OBJECTIVE_CHANGED, this.onObjective, this);
+    this.timerPopTween?.stop();
+    this.dashReadyTween?.stop();
+    this.healthWidthTween?.stop();
+    this.bloodWidthTween?.stop();
+    this.wrathWidthTween?.stop();
+    this.healthShakeTween?.stop();
+    this.healthFlashTween?.stop();
+    this.bloodGlowTween?.stop();
+    this.healthGlowTween?.stop();
+    this.lowHealthTween?.stop();
+    this.wrathGlowTween?.stop();
+    this.wrathOrbitTween?.stop();
+    this.wrathSparkleTimer?.remove(false);
+    for (const tween of this.feedbackTweens) tween.stop();
+    this.feedbackTweens.clear();
+    this.barPulseTweens.clear();
+    this.hpParticles.stop();
+    this.bloodParticles.stop();
+    this.wrathMotes.stop();
   }
 
   private format(seconds: number): string {
@@ -802,7 +887,13 @@ export class HUD {
       0,
       1,
     );
-    const pop = this.panic ? cue.timerPopScale : 1 + 0.08 + tension * 0.22;
+    const pop = this.polish.reducedMotion
+      ? this.panic
+        ? 1.06
+        : 1.03
+      : this.panic
+        ? cue.timerPopScale
+        : 1 + 0.08 + tension * 0.22;
 
     // Stopping every tween on timerText also killed animateIn's alpha tween,
     // leaving the game's centerpiece permanently transparent. The tick owns
@@ -818,7 +909,7 @@ export class HUD {
     });
 
     if (cue.screenFlash) this.flashUrgencyScreen();
-    if (cue.followUpFlashDelayMs !== null) {
+    if (!this.polish.reducedMotion && cue.followUpFlashDelayMs !== null) {
       this.scene.time.delayedCall(cue.followUpFlashDelayMs, () => {
         if (this.panic) this.flashUrgencyScreen(0.88);
       });
@@ -837,14 +928,13 @@ export class HUD {
       } else {
         this.timerText.setColor(secondsRemaining % 2 === 0 ? '#ff4d4d' : '#ffd76b');
       }
-      this.scene.cameras.main.shake(60, 0.0015 + 0.002 * (1 - secondsRemaining / 10));
     }
   }
 
   /** Strong, brief whole-screen red pulse; the HUD remains readable above it. */
   private flashUrgencyScreen(strength = 1): void {
     this.scene.tweens.killTweensOf(this.vignette);
-    this.vignette.setAlpha(0.34 * strength);
+    this.vignette.setAlpha(0.34 * strength * this.polish.flashMultiplier);
     this.scene.tweens.add({
       targets: this.vignette,
       alpha: this.panic ? 0.05 : 0,
@@ -863,12 +953,15 @@ export class HUD {
     this.setHealth(current, max);
     // Motes falling away from the end of the bar, tinted to the band the
     // Count just dropped into - green, then orange, then red.
-    this.burstAtHealthBar(10);
+    this.burstAtHealthBar(scaledParticleCount(this.polish, 10));
+    this.flashHealthDamage();
+    this.shakeHealthHud();
   }
 
   private onPlayerHealed(current: number, max: number): void {
     this.setHealth(current, max);
-    this.burstAtHealthBar(8);
+    this.burstAtHealthBar(scaledParticleCount(this.polish, 8));
+    this.pulseBar(this.healthBarFill, 1.08);
   }
 
   /** Puff at the live end of the health bar, in the bar's current colour. */
@@ -877,8 +970,86 @@ export class HUD {
     this.hpParticles.explode(count, this.healthBarEdge.x, this.healthBarEdge.y);
   }
 
+  private pulseBar(target: Phaser.GameObjects.Rectangle, peakScale: number): void {
+    const previous = this.barPulseTweens.get(target);
+    if (previous) {
+      previous.stop();
+      this.feedbackTweens.delete(previous);
+    }
+    target.setScale(1);
+    if (this.polish.reducedMotion) {
+      target.setAlpha(0.78);
+      this.scene.time.delayedCall(90, () => {
+        if (target.active) target.setAlpha(1);
+      });
+      return;
+    }
+
+    let tween: Phaser.Tweens.Tween;
+    tween = this.scene.tweens.add({
+      targets: target,
+      scaleY: { from: peakScale, to: 1 },
+      duration: 155,
+      ease: 'Back.easeOut',
+      onComplete: () => {
+        target.setScale(1);
+        this.feedbackTweens.delete(tween);
+        this.barPulseTweens.delete(target);
+      },
+    });
+    this.barPulseTweens.set(target, tween);
+    this.feedbackTweens.add(tween);
+  }
+
+  private flashHealthDamage(): void {
+    this.healthFlashTween?.stop();
+    this.healthDamageFlash.setVisible(true).setAlpha(1).setScale(1);
+    this.healthFlashTween = this.scene.tweens.add({
+      targets: this.healthDamageFlash,
+      alpha: 0,
+      scaleY: this.polish.reducedMotion ? 1 : 1.2,
+      duration: 210,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        this.healthDamageFlash.setVisible(false).setScale(1);
+        this.healthFlashTween = null;
+      },
+    });
+  }
+
+  private shakeHealthHud(): void {
+    if (this.polish.reducedMotion) return;
+    this.healthShakeTween?.stop();
+    const fillX = 22;
+    const textX = 24;
+    const glowX = 18;
+    this.healthShakeTween = this.scene.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: 145,
+      ease: 'Sine.easeOut',
+      onUpdate: (tween) => {
+        const t = tween.getValue() ?? 0;
+        const offset = Math.sin(t * Math.PI * 6) * 4 * (1 - t);
+        this.healthBarFill.x = fillX + offset;
+        this.healthText.x = textX + offset;
+        this.healthGlow.x = glowX + offset;
+        this.healthDamageFlash.x = glowX + offset;
+      },
+      onComplete: () => {
+        this.healthBarFill.x = fillX;
+        this.healthText.x = textX;
+        this.healthGlow.x = glowX;
+        this.healthDamageFlash.x = glowX;
+        this.healthShakeTween = null;
+      },
+    });
+  }
+
   private onBloodChanged(current: number, target: number): void {
+    const previous = this.bloodRatio;
     this.setBlood(current, target);
+    if (this.bloodRatio > previous) this.pulseBar(this.bloodBarFill, 1.06);
   }
 
   /**
@@ -902,6 +1073,10 @@ export class HUD {
     this.setLowHealthFlash(false);
     this.setHealthFullGlow(false);
     this.setBloodFullGlow(false);
+    this.healthWidthTween?.stop();
+    this.healthWidthTween = null;
+    this.bloodWidthTween?.stop();
+    this.bloodWidthTween = null;
 
     const healthRatio = Phaser.Math.Clamp(health / maxHealth, 0, 1);
     this.healthRatio = healthRatio;
@@ -910,6 +1085,7 @@ export class HUD {
     this.healthText.setText(`HP ${Math.round(health)}/${maxHealth}`);
 
     const bloodRatio = Phaser.Math.Clamp(blood / bloodTarget, 0, 1);
+    this.bloodRatio = bloodRatio;
     this.bloodBarFill.width = BAR_W * bloodRatio;
     this.bloodText.setText(`Blood ${Math.min(blood, bloodTarget)}/${bloodTarget}`);
   }
@@ -917,7 +1093,20 @@ export class HUD {
   private setHealth(current: number, max: number): void {
     const ratio = Phaser.Math.Clamp(current / max, 0, 1);
     this.healthRatio = ratio;
-    this.healthBarFill.width = BAR_W * ratio;
+    const targetWidth = BAR_W * ratio;
+    this.healthWidthTween?.stop();
+    if (this.polish.reducedMotion || Math.abs(this.healthBarFill.width - targetWidth) < 1) {
+      this.healthBarFill.width = targetWidth;
+      this.healthWidthTween = null;
+    } else {
+      this.healthWidthTween = this.scene.tweens.add({
+        targets: this.healthBarFill,
+        width: targetWidth,
+        duration: 150,
+        ease: 'Quad.easeOut',
+        onComplete: () => (this.healthWidthTween = null),
+      });
+    }
     this.healthBarFill.setFillStyle(healthColor(ratio));
     // Overflow healing restores half a point per blood, so health is not
     // necessarily whole - the readout rounds, the bar uses the real value.
@@ -933,12 +1122,18 @@ export class HUD {
    * time a hit lands.
    */
   private setLowHealthFlash(on: boolean): void {
-    if (on === (this.lowHealthTween !== null)) return;
+    if (on === this.lowHealthOn) return;
+    this.lowHealthOn = on;
 
     if (!on) {
       this.lowHealthTween?.stop();
       this.lowHealthTween = null;
       this.healthBarFill.setAlpha(1);
+      return;
+    }
+
+    if (this.polish.reducedMotion) {
+      this.healthBarFill.setAlpha(0.72);
       return;
     }
 
@@ -954,14 +1149,29 @@ export class HUD {
 
   private setBlood(current: number, target: number): void {
     const ratio = Phaser.Math.Clamp(current / target, 0, 1);
-    this.bloodBarFill.width = BAR_W * ratio;
+    this.bloodRatio = ratio;
+    const targetWidth = BAR_W * ratio;
+    this.bloodWidthTween?.stop();
+    if (this.polish.reducedMotion || Math.abs(this.bloodBarFill.width - targetWidth) < 1) {
+      this.bloodBarFill.width = targetWidth;
+      this.bloodWidthTween = null;
+    } else {
+      this.bloodWidthTween = this.scene.tweens.add({
+        targets: this.bloodBarFill,
+        width: targetWidth,
+        duration: 135,
+        ease: 'Quad.easeOut',
+        onComplete: () => (this.bloodWidthTween = null),
+      });
+    }
     this.bloodText.setText(`Blood ${Math.min(current, target)}/${target}`);
     this.setBloodFullGlow(ratio >= 1);
   }
 
   /** Breathing ring around the blood meter, on only while it reads full. */
   private setBloodFullGlow(on: boolean): void {
-    if (on === (this.bloodGlowTween !== null)) return;
+    if (on === this.bloodGlowOn) return;
+    this.bloodGlowOn = on;
 
     if (!on) {
       this.bloodGlowTween?.stop();
@@ -971,6 +1181,10 @@ export class HUD {
     }
 
     this.bloodGlow.setVisible(true).setAlpha(1).setScale(1);
+    if (this.polish.reducedMotion) {
+      this.bloodGlow.setAlpha(0.78);
+      return;
+    }
     this.bloodGlowTween = this.scene.tweens.add({
       targets: this.bloodGlow,
       alpha: { from: 1, to: 0.35 },
@@ -984,7 +1198,8 @@ export class HUD {
 
   /** Same breathing ring, green, on only while HP reads full. */
   private setHealthFullGlow(on: boolean): void {
-    if (on === (this.healthGlowTween !== null)) return;
+    if (on === this.healthGlowOn) return;
+    this.healthGlowOn = on;
 
     if (!on) {
       this.healthGlowTween?.stop();
@@ -994,6 +1209,10 @@ export class HUD {
     }
 
     this.healthGlow.setVisible(true).setAlpha(1).setScale(1);
+    if (this.polish.reducedMotion) {
+      this.healthGlow.setAlpha(0.78);
+      return;
+    }
     this.healthGlowTween = this.scene.tweens.add({
       targets: this.healthGlow,
       alpha: { from: 1, to: 0.35 },
@@ -1010,24 +1229,42 @@ export class HUD {
    * balance.ts). Reads "WRATH READY" once charged rather than a fraction —
    * a full meter is a thing to spend, not a number to watch.
    */
-  setWrath(current: number, target: number): void {
+  setWrath(current: number, target: number, readyAllowed = true): void {
     const ratio = Phaser.Math.Clamp(current / target, 0, 1);
-    this.wrathBarFill.width = WRATH_BAR_W * ratio;
-    if (ratio >= 1) {
+    const ready = ratio >= 1 && readyAllowed;
+    const targetWidth = WRATH_BAR_W * ratio;
+    this.wrathWidthTween?.stop();
+    if (this.polish.reducedMotion || Math.abs(this.wrathBarFill.width - targetWidth) < 1) {
+      this.wrathBarFill.width = targetWidth;
+      this.wrathWidthTween = null;
+    } else {
+      this.wrathWidthTween = this.scene.tweens.add({
+        targets: this.wrathBarFill,
+        width: targetWidth,
+        duration: ratio < this.wrathRatio ? 220 : 150,
+        ease: ratio < this.wrathRatio ? 'Cubic.easeIn' : 'Quad.easeOut',
+        onComplete: () => (this.wrathWidthTween = null),
+      });
+    }
+    if (ready) {
       // Mobile already shows a dedicated ⚡ button; desktop has no equivalent
       // on-screen control, so the bar's own text carries the prompt instead.
       this.wrathText.setText(this.isTouch ? 'WRATH READY' : 'WRATH READY — Press SPACE');
     } else {
       this.wrathText.setText(`Wrath ${Math.floor(current)}/${target}`);
     }
-    this.setWrathOrbitCount(wrathOrbitParticleCount(ratio));
+    this.setWrathOrbitCount(ready ? wrathOrbitParticleCount(ratio) : Math.min(9, wrathOrbitParticleCount(ratio)));
     if (ratio > this.wrathRatio) {
       const gained = ratio - this.wrathRatio;
-      const particleCount = Phaser.Math.Clamp(Math.ceil(4 + gained * 20), 5, 14);
+      const particleCount = scaledParticleCount(
+        this.polish,
+        Phaser.Math.Clamp(Math.ceil(4 + gained * 20), 5, 14),
+      );
       this.wrathMotes.explode(particleCount, this.wrathBarEdge.x, this.wrathBarEdge.y);
+      this.pulseBar(this.wrathBarFill, ready ? 1.14 : 1.07);
     }
     this.wrathRatio = ratio;
-    this.setWrathFullGlow(ratio >= 1);
+    this.setWrathFullGlow(ready);
   }
 
   /** Live right edge of the Wrath bar's current fill; see bloodBarEdge. */
@@ -1040,13 +1277,46 @@ export class HUD {
    * 10% threshold. The visible count is one through nine, then twenty at full.
    */
   private setWrathOrbitCount(count: number): void {
-    if (count === this.wrathOrbitCount) return;
-    this.wrathOrbitCount = count;
-    this.wrathOrbitDots.forEach((dot, index) => dot.setVisible(index < count));
+    const qualityMultiplier = this.polish.isTouch
+      ? 0.6
+      : this.polish.quality === 'minimal'
+        ? 0.35
+        : this.polish.quality === 'reduced'
+          ? 0.65
+          : 1;
+    const displayCount =
+      count === 0
+        ? 0
+        : Math.max(
+            1,
+            Math.min(
+              this.polish.reducedMotion ? 6 : WRATH_ORBIT_DOT_COUNT,
+              Math.round(count * qualityMultiplier),
+            ),
+          );
+    if (displayCount === this.wrathOrbitCount) return;
+    this.wrathOrbitCount = displayCount;
+    this.wrathOrbitDots.forEach((dot, index) => dot.setVisible(index < displayCount));
 
-    if (count === 0) {
+    if (displayCount === 0) {
       this.wrathOrbitTween?.stop();
       this.wrathOrbitTween = null;
+      return;
+    }
+    if (this.polish.reducedMotion) {
+      this.wrathOrbitTween?.stop();
+      this.wrathOrbitTween = null;
+      this.wrathOrbitDots.forEach((dot, index) => {
+        if (index >= displayCount) return;
+        const angle = (index / displayCount) * Math.PI * 2;
+        dot
+          .setPosition(
+            GAME_WIDTH / 2 + Math.cos(angle) * (WRATH_BAR_W / 2 + 16),
+            24 + Math.sin(angle) * 15,
+          )
+          .setScale(0.85)
+          .setAlpha(0.75);
+      });
       return;
     }
     if (this.wrathOrbitTween) return;
@@ -1078,7 +1348,8 @@ export class HUD {
    * bright bar sparkles on top of the twenty-particle full orbit.
    */
   private setWrathFullGlow(on: boolean): void {
-    if (on === (this.wrathGlowTween !== null)) return;
+    if (on === this.wrathGlowOn) return;
+    this.wrathGlowOn = on;
 
     if (!on) {
       this.wrathGlowTween?.stop();
@@ -1091,6 +1362,10 @@ export class HUD {
     }
 
     this.wrathGlow.setVisible(true).setAlpha(1).setScale(1);
+    if (this.polish.reducedMotion) {
+      this.wrathGlow.setAlpha(0.9);
+      return;
+    }
     this.wrathGlowTween = this.scene.tweens.add({
       targets: this.wrathGlow,
       alpha: { from: 1, to: 0.35 },
@@ -1101,13 +1376,17 @@ export class HUD {
       ease: 'Sine.easeInOut',
     });
 
-    this.wrathMotes.start();
+    if (this.polish.enableAmbientParticles || !this.polish.isTouch) {
+      this.wrathMotes.start();
+    }
 
-    this.wrathSparkleTimer = this.scene.time.addEvent({
-      delay: 140,
-      loop: true,
-      callback: () => this.spawnWrathSparkle(),
-    });
+    if (this.polish.quality === 'high') {
+      this.wrathSparkleTimer = this.scene.time.addEvent({
+        delay: this.polish.isTouch ? 260 : 140,
+        loop: true,
+        callback: () => this.spawnWrathSparkle(),
+      });
+    }
   }
 
   /**

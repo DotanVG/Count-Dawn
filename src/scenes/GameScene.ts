@@ -17,6 +17,7 @@ import {
   throwerCapForNight,
   weaponsForNight,
 } from '../data/balance';
+import { POLISH, getPolishProfile, scaledParticleCount } from '../data/polish';
 import {
   ARENA,
   COLORS,
@@ -44,6 +45,9 @@ import { BloodPickup } from '../entities/BloodPickup';
 import { Coffin } from '../entities/Coffin';
 import { InputController } from '../systems/InputController';
 import { CombatSystem } from '../systems/CombatSystem';
+import { PresentationSystem } from '../systems/PresentationSystem';
+import { SingleFireGate } from '../systems/SingleFireGate';
+import { UltimateState, ultimateWaveDelays } from '../systems/ultimateState';
 import { SpawnSystem } from '../systems/SpawnSystem';
 import { offCanvasSpawnPoint } from '../systems/entrance';
 import { CountdownSystem } from '../systems/CountdownSystem';
@@ -61,7 +65,10 @@ import {
   coldOpenTimerSeconds,
   type ColdOpenActor,
 } from '../systems/coldOpen';
-import { playPurpleChainLightning } from '../systems/ChainLightningEffect';
+import {
+  playPurpleChainLightning,
+  type ChainLightningPlayback,
+} from '../systems/ChainLightningEffect';
 import { orderChainTargets, type ChainPoint } from '../systems/chainLightning';
 import { GameFlowSystem } from '../systems/GameFlowSystem';
 import { AudioDirector, getAudioDirector } from '../systems/AudioDirector';
@@ -164,6 +171,7 @@ export class GameScene extends Phaser.Scene {
   private crosses!: Phaser.Physics.Arcade.Group;
   private inputController!: InputController;
   private combat!: CombatSystem;
+  private presentation!: PresentationSystem;
   private spawner: SpawnSystem | null = null;
   private hud: HUD | null = null;
   private touch: TouchControls | null = null;
@@ -188,9 +196,13 @@ export class GameScene extends Phaser.Scene {
    * nights like runStats — reset only in create(), never in
    * beginRoundSystems — and is spent all at once on the Ultimate.
    */
-  private wrath = 0;
-  /** True for the Ultimate's whole duration, so a second press can't restart it mid-swing. */
-  private ultimateActive = false;
+  private readonly ultimate = new UltimateState(WRATH.target);
+  /** Guards corpse/reward/progression side effects when delayed attacks race. */
+  private readonly deathGate = new SingleFireGate<Hunter>();
+  private readonly ultimateTimers = new Set<Phaser.Time.TimerEvent>();
+  private readonly ultimateVisuals = new Set<Phaser.GameObjects.GameObject>();
+  private ultimateDarkenTween: Phaser.Tweens.Tween | null = null;
+  private ultimateChain: ChainLightningPlayback | null = null;
   private ultDarkenOverlay!: Phaser.GameObjects.Rectangle;
   /** Timestamps of recent kills, for spawnScreenBloodSplatter's burst sizing. */
   private recentKillTimes: number[] = [];
@@ -231,8 +243,12 @@ export class GameScene extends Phaser.Scene {
     this.isTouch = isTouchDevice();
     this.night = 1;
     this.runStats = emptyRunStats();
-    this.wrath = 0;
-    this.ultimateActive = false;
+    this.ultimate.reset();
+    this.deathGate.reset();
+    this.ultimateTimers.clear();
+    this.ultimateVisuals.clear();
+    this.ultimateDarkenTween = null;
+    this.ultimateChain = null;
     this.recentKillTimes = [];
     this.pendingHealthAfterSleep = PLAYER.maxHealth;
     this.coldOpenSlots.clear();
@@ -258,9 +274,16 @@ export class GameScene extends Phaser.Scene {
 
     new CastleMap(this);
     this.sky = new DawnSky(this);
+    this.presentation = new PresentationSystem(this, getPolishProfile(this.isTouch));
 
     this.coffin = new Coffin(this, COFFIN_POS.x, COFFIN_POS.y);
-    this.player = new Player(this, PLAYER_SPAWN.x, PLAYER_SPAWN.y, this.emitter);
+    this.player = new Player(
+      this,
+      PLAYER_SPAWN.x,
+      PLAYER_SPAWN.y,
+      this.emitter,
+      this.presentation.profile,
+    );
     this.setPlayerDormant(true);
 
     this.hunters = this.physics.add.group();
@@ -279,11 +302,32 @@ export class GameScene extends Phaser.Scene {
       // an attack; the drink belongs to the blood arriving, not to the strike
       // (see collectPickup).
       () => this.audio.playSfx(AUDIO.playerAttackWhoosh),
+      (hunter, killed) => {
+        const boss = this.isBossHunter(hunter);
+        this.presentation.combatImpact(hunter, killed, boss);
+        return boss;
+      },
+      ({ hits, kills, heavyHit, heavyKill }) => {
+        this.presentation.combatResolved(
+          hits,
+          kills,
+          heavyHit,
+          heavyKill,
+          () => this.phase === 'playing' && !this.scene.isPaused(),
+        );
+      },
     );
 
     // Cold ambient darkness that lifts as the night passes…
     this.nightOverlay = this.add
-      .rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x150c33, 0.42)
+      .rectangle(
+        0,
+        0,
+        GAME_WIDTH,
+        GAME_HEIGHT,
+        0x150c33,
+        POLISH.atmosphere.nightOverlayAlpha,
+      )
       .setOrigin(0)
       .setDepth(DEPTHS.dawnOverlay - 1);
     // …and warm dawn light that ramps in near sunrise.
@@ -327,6 +371,7 @@ export class GameScene extends Phaser.Scene {
     if (this.phase !== 'transition' && this.phase !== 'intro') {
       this.sky.update(this.countdown?.progress ?? 0);
     }
+    this.presentation.syncActorShadows(this.player, this.getAttackTargets());
 
     // The opening cinematic has a hunter walking in, and hunters only move
     // when something pursues them — without this he would stand off-screen
@@ -370,8 +415,9 @@ export class GameScene extends Phaser.Scene {
     this.vacuumNearbyPickups();
 
     const p = this.countdown.progress;
-    this.nightOverlay.setAlpha(0.42 * (1 - p * p));
-    this.dawnOverlay.setAlpha(p * p * 0.18);
+    this.nightOverlay.setAlpha(POLISH.atmosphere.nightOverlayAlpha * (1 - p * p));
+    this.dawnOverlay.setAlpha(p * p * POLISH.atmosphere.dawnOverlayAlpha);
+    this.presentation.setNightProgress(p);
   }
 
   /** Called by the mobile pause button; the Esc/P keys route here too. */
@@ -401,6 +447,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onSceneResumed(): void {
+    // Keyboard JustDown and touch action flags can remain latched while this
+    // scene is paused beneath PauseScene (or the portrait gate). Clearing them
+    // here prevents a Space press in the menu from queueing an Ultimate for
+    // the first resumed gameplay frame.
+    this.inputController.discardBufferedActions();
+    this.touch?.discardBufferedActions();
     // The main menu is already a quiet-music screen. Rotating it through the
     // portrait gate must not promote its soundtrack back to gameplay volume.
     if (this.phase === 'menu') this.audio.enterMenuMode();
@@ -512,18 +564,38 @@ export class GameScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
     start.on('pointerover', () => start.setBackgroundColor('#e8ddff'));
     start.on('pointerout', () => start.setBackgroundColor('#c9a7ff'));
-    start.on('pointerdown', () => this.startIntro());
-
-    this.tweens.add({
-      targets: start,
-      scale: { from: 1, to: 1.05 },
-      duration: 800,
-      yoyo: true,
-      repeat: -1,
-      ease: 'Sine.easeInOut',
+    start.on('pointerdown', () => {
+      start.disableInteractive();
+      this.tweens.killTweensOf(start);
+      start.setScale(0.94).setBackgroundColor('#ffffff');
+      this.tweens.add({
+        targets: start,
+        scale: 1,
+        duration: 90,
+        ease: 'Back.easeOut',
+        onComplete: () => this.startIntro(),
+      });
     });
 
+    if (!this.presentation.profile.reducedMotion) {
+      this.tweens.add({
+        targets: start,
+        scale: { from: 1, to: 1.05 },
+        duration: 800,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
+    }
+
     this.menuUi = this.add.container(0, 0, [dim, cover, tagline, controls, start]).setDepth(DEPTHS.menu);
+    this.menuUi.setAlpha(0);
+    this.tweens.add({
+      targets: this.menuUi,
+      alpha: 1,
+      duration: this.presentation.profile.reducedMotion ? 80 : 260,
+      ease: 'Quad.easeOut',
+    });
 
     this.input.keyboard?.once('keydown-ENTER', () => this.startIntro());
 
@@ -812,7 +884,7 @@ export class GameScene extends Phaser.Scene {
    * actual night afterwards regardless.
    */
   private playOpeningCinematic(): void {
-    this.hud = new HUD(this, this.emitter, this.isTouch);
+    this.hud = new HUD(this, this.emitter, this.presentation.profile, this.isTouch);
 
     const bloodTarget = bloodTargetForNight(1);
     let blood = bloodTarget - COLD_OPEN.bloodlets;
@@ -834,7 +906,7 @@ export class GameScene extends Phaser.Scene {
     // confirmation the Ultimate exists before the player has even taken
     // control — and cinematicUltimateDemo spends it back to zero the moment
     // it actually fires, the same depletion a real cast leaves behind.
-    this.wrath = WRATH.target;
+    this.ultimate.gain(WRATH.target);
     this.hud.setWrath(WRATH.target, WRATH.target);
 
     // Held until animateIn's alpha tween is done: the low-health flash drives
@@ -867,8 +939,9 @@ export class GameScene extends Phaser.Scene {
         // Night racing toward a sunrise it never quite reaches.
         const p = coldOpenSkyProgress(elapsed);
         this.sky.update(p);
-        this.nightOverlay.setAlpha(0.42 * (1 - p * p));
-        this.dawnOverlay.setAlpha(p * p * 0.18);
+        this.nightOverlay.setAlpha(POLISH.atmosphere.nightOverlayAlpha * (1 - p * p));
+        this.dawnOverlay.setAlpha(p * p * POLISH.atmosphere.dawnOverlayAlpha);
+        this.presentation.setNightProgress(p);
       },
     });
 
@@ -897,7 +970,7 @@ export class GameScene extends Phaser.Scene {
       },
       onComplete: () => {
         this.setBatForm(false);
-        this.cameras.main.shake(120, 0.003);
+        this.presentation.landingImpact();
       },
     });
 
@@ -1030,7 +1103,7 @@ export class GameScene extends Phaser.Scene {
    * behind, so night one starts with an empty meter to fill from scratch.
    */
   private cinematicUltimateDemo(): void {
-    this.wrath = 0;
+    this.ultimate.reset();
     this.hud?.setWrath(0, WRATH.target);
 
     this.player.setFacing('right');
@@ -1047,10 +1120,15 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(COLD_OPEN.demoSummonMs, () => {
       // Two distinct flash beats make the bolt read as exposure, then impact:
       // violet first, a white core a breath later, with the shake ramping up.
-      this.cameras.main.flash(120, 186, 142, 255);
-      this.cameras.main.shake(190, 0.009);
+      this.presentation.cameraFlash(0xba8eff, 120, 0.42);
+      this.presentation.cameraShake(
+        POLISH.camera.ultimateShakeDurationMs,
+        POLISH.camera.bossKillShakeIntensity,
+      );
       this.spawnUltimateScreenPulse();
-      this.time.delayedCall(65, () => this.cameras.main.flash(90, 238, 226, 255));
+      this.time.delayedCall(65, () =>
+        this.presentation.cameraFlash(0xeee2ff, 90, 0.34),
+      );
       // Make the cutscene swarm begin leaving through the windows exactly as
       // the Count starts his own turn, so his eventual bat is easy to follow.
       this.spawnBatSwarm(
@@ -1058,7 +1136,10 @@ export class GameScene extends Phaser.Scene {
       );
 
       this.time.delayedCall(COLD_OPEN.demoStrikeMs, () => {
-        this.cameras.main.shake(520, 0.014);
+        this.presentation.cameraShake(
+          POLISH.camera.bossKillShakeDurationMs,
+          POLISH.camera.ultimateShakeIntensity,
+        );
         const victims = this.getAttackTargets().filter((hunter) => hunter.active && hunter.isAlive);
 
         this.coldOpenCorpses = [];
@@ -1091,6 +1172,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Purple charge motes and an expanding sigil under the Count's summon pose. */
   private spawnUltimateChargeBurst(): void {
+    const particleCount = scaledParticleCount(this.presentation.profile, 52);
     const particles = this.add
       .particles(this.player.x, this.player.y, TEXTURES.particle, {
         speed: { min: 70, max: 230 },
@@ -1100,10 +1182,11 @@ export class GameScene extends Phaser.Scene {
         alpha: { start: 1, end: 0 },
         tint: [0xf6efff, 0xc9a7ff, 0x9d6bff, 0x5c2ca8],
         blendMode: Phaser.BlendModes.ADD,
+        maxParticles: particleCount,
         emitting: false,
       })
       .setDepth(DEPTHS.attackFx + 1);
-    particles.explode(52);
+    particles.explode(particleCount);
 
     const sigil = this.add
       .circle(this.player.x, this.player.y + 18, 38, 0x9d6bff, 0.18)
@@ -1142,10 +1225,15 @@ export class GameScene extends Phaser.Scene {
 
   /** Several oversized camera-fixed decals sell the whole-ring blood burst. */
   private spawnCinematicBloodStorm(): void {
-    for (let i = 0; i < 5; i++) {
+    const splatterCount = Math.max(
+      2,
+      scaledParticleCount(this.presentation.profile, 5),
+    );
+    for (let i = 0; i < splatterCount; i++) {
       this.time.delayedCall(i * 45, () => this.spawnScreenBloodSplatter(2, 1.65));
     }
 
+    const mistCount = scaledParticleCount(this.presentation.profile, 90);
     const mist = this.add
       .particles(0, 0, TEXTURES.particle, {
         speed: { min: 90, max: 340 },
@@ -1155,11 +1243,12 @@ export class GameScene extends Phaser.Scene {
         scale: { start: 1.8, end: 0.2 },
         alpha: { start: 0.9, end: 0 },
         tint: [0x5c0011, 0x9f1028, 0xd92c45, 0xff6578],
+        maxParticles: mistCount,
         emitting: false,
       })
       .setScrollFactor(0)
       .setDepth(DEPTHS.screenFx);
-    mist.explode(90, GAME_WIDTH / 2, GAME_HEIGHT * 0.42);
+    mist.explode(mistCount, GAME_WIDTH / 2, GAME_HEIGHT * 0.42);
     this.time.delayedCall(1500, () => mist.destroy());
   }
 
@@ -1397,7 +1486,7 @@ export class GameScene extends Phaser.Scene {
     // the cold open are watched rather than played, and a cursor tracking the
     // mouse over a cutscene reads as a bug rather than as a cursor.
     setVampireCursorVisible(true);
-    this.cameras.main.shake(120, 0.004); // landing thump
+    this.presentation.landingImpact();
 
     // THE gameplay music cue. This is the one line in the run where the cold
     // open is over, the Count has landed, controls go live and (via
@@ -1411,7 +1500,7 @@ export class GameScene extends Phaser.Scene {
     // The opening cinematic builds the HUD early (it needs the bars on screen
     // to tell its story), so only create one here if it isn't already up.
     if (!this.hud) {
-      this.hud = new HUD(this, this.emitter, this.isTouch);
+      this.hud = new HUD(this, this.emitter, this.presentation.profile, this.isTouch);
       this.hud.animateIn();
     }
 
@@ -1445,6 +1534,9 @@ export class GameScene extends Phaser.Scene {
     // moment that transfer's real numbers were known, before the day cycle
     // played out and this ran.
     this.player.resetForNewRound(this.pendingHealthAfterSleep);
+    this.presentation.setHealthRatio(this.pendingHealthAfterSleep / PLAYER.maxHealth);
+    this.presentation.clearCountdownUrgency();
+    this.presentation.setNightProgress(0);
     this.coffin.resetForNewRound();
     const bloodTarget = bloodTargetForNight(this.night);
     const pressure = hunterPressureForNight(this.night);
@@ -1830,10 +1922,10 @@ export class GameScene extends Phaser.Scene {
    * target; spending it back to zero is what fireUltimate does.
    */
   private gainWrath(bloodAmount: number): void {
-    if (this.wrath >= WRATH.target) return;
-    this.wrath = Math.min(WRATH.target, this.wrath + bloodAmount / WRATH.bloodPerPoint);
-    this.hud?.setWrath(this.wrath, WRATH.target);
-    this.touch?.setUltimateAvailable(this.wrath >= WRATH.target);
+    if (this.ultimate.full) return;
+    const charge = this.ultimate.gain(bloodAmount / WRATH.bloodPerPoint);
+    this.hud?.setWrath(charge, WRATH.target, !this.ultimate.active);
+    this.touch?.setUltimateAvailable(this.ultimate.full && !this.ultimate.active);
   }
 
   /**
@@ -1858,8 +1950,7 @@ export class GameScene extends Phaser.Scene {
 
   /** Space (desktop) or the mobile ⚡ button, once Wrath reads full. */
   private tryUseUltimate(): void {
-    if (this.phase !== 'playing' || this.ultimateActive) return;
-    if (this.wrath < WRATH.target) return;
+    if (!this.ultimate.tryActivate(this.phase === 'playing' && !this.scene.isPaused())) return;
     this.fireUltimate();
   }
 
@@ -1871,38 +1962,111 @@ export class GameScene extends Phaser.Scene {
    * standing in it, mini-bosses included.
    */
   private fireUltimate(): void {
-    this.ultimateActive = true;
-    this.wrath = 0;
     this.hud?.setWrath(0, WRATH.target);
     this.touch?.setUltimateAvailable(false);
 
-    this.tweens.add({
+    this.ultimateDarkenTween?.stop();
+    this.ultimateDarkenTween = this.tweens.add({
       targets: this.ultDarkenOverlay,
       alpha: WRATH.screenDarkenAlpha,
-      duration: 240,
-      yoyo: true,
-      hold: Math.max(0, WRATH.durationMs - 480),
-      onComplete: () => {
-        this.ultimateActive = false;
-      },
+      duration: POLISH.ultimate.anticipationMs,
+      ease: 'Sine.easeOut',
     });
 
     // Beat one: the pose plays ALONE — it has to read as summoning something,
     // not as the strike itself, so nothing else happens until it has had a
     // moment on screen.
     this.player.playSpecialAttackAnim();
+    this.presentation.ultimateAnticipation(this.player);
 
-    const summonMs = 500;
-    this.time.delayedCall(summonMs, () => {
+    this.scheduleUltimate(POLISH.ultimate.anticipationMs, () => {
+      if (!this.canContinueUltimate()) return;
       // Beat two: the lightning arrives — a hard flash, on its own, before
       // anything else moves.
-      this.cameras.main.flash(220, 220, 200, 255);
-      this.cameras.main.shake(160, 0.006);
+      this.presentation.ultimateArrival();
 
       // Beat three: the payoff. Bats and the kill land together.
       this.spawnBatSwarm();
-      this.time.delayedCall(140, () => this.lightningKillAll());
+      this.scheduleUltimate(110, () => this.lightningKillAll());
     });
+    this.scheduleUltimate(WRATH.durationMs, () => this.finishUltimate());
+  }
+
+  private scheduleUltimate(delayMs: number, callback: () => void): void {
+    let timer: Phaser.Time.TimerEvent;
+    timer = this.time.delayedCall(Math.max(0, delayMs), () => {
+      this.ultimateTimers.delete(timer);
+      if (this.canContinueUltimate()) callback();
+    });
+    this.ultimateTimers.add(timer);
+  }
+
+  private scheduleUltimateCleanup(delayMs: number, callback: () => void): void {
+    let timer: Phaser.Time.TimerEvent;
+    timer = this.time.delayedCall(Math.max(0, delayMs), () => {
+      this.ultimateTimers.delete(timer);
+      callback();
+    });
+    this.ultimateTimers.add(timer);
+  }
+
+  private trackUltimateVisual<T extends Phaser.GameObjects.GameObject>(visual: T): T {
+    if (this.ultimate.active) this.ultimateVisuals.add(visual);
+    return visual;
+  }
+
+  private destroyUltimateVisual(visual: Phaser.GameObjects.GameObject): void {
+    this.ultimateVisuals.delete(visual);
+    if (visual.active) visual.destroy();
+  }
+
+  private canContinueUltimate(): boolean {
+    return (
+      this.ultimate.active &&
+      this.phase === 'playing' &&
+      this.player.active &&
+      this.player.isAlive
+    );
+  }
+
+  private finishUltimate(): void {
+    if (!this.ultimate.active) return;
+    this.ultimate.finish();
+    this.hud?.setWrath(this.ultimate.charge, WRATH.target);
+    this.touch?.setUltimateAvailable(this.ultimate.full);
+    this.ultimateDarkenTween?.stop();
+    this.ultimateDarkenTween = this.tweens.add({
+      targets: this.ultDarkenOverlay,
+      alpha: 0,
+      duration: POLISH.ultimate.aftermathMs,
+      ease: 'Sine.easeOut',
+      onComplete: () => {
+        this.ultimateDarkenTween = null;
+      },
+    });
+    this.presentation.ultimateFinished(this.player);
+    this.scheduleUltimateCleanup(POLISH.ultimate.aftermathMs, () => {
+      for (const visual of [...this.ultimateVisuals]) this.destroyUltimateVisual(visual);
+    });
+  }
+
+  private cancelUltimatePresentation(): void {
+    for (const timer of this.ultimateTimers) timer.remove(false);
+    this.ultimateTimers.clear();
+    this.ultimateChain?.cancel();
+    this.ultimateChain = null;
+    this.ultimateDarkenTween?.stop();
+    this.ultimateDarkenTween = null;
+    this.ultDarkenOverlay?.setAlpha(0);
+    for (const visual of this.ultimateVisuals) {
+      this.tweens.killTweensOf(visual);
+      if (visual.active) visual.destroy();
+    }
+    this.ultimateVisuals.clear();
+    if (this.player?.active) this.presentation.ultimateFinished(this.player);
+    this.ultimate.interrupt();
+    this.hud?.setWrath(this.ultimate.charge, WRATH.target);
+    this.touch?.setUltimateAvailable(this.ultimate.full);
   }
 
   /**
@@ -1922,32 +2086,33 @@ export class GameScene extends Phaser.Scene {
     const halfWidth = (ARENA.right - ARENA.left) / 2 - 30;
     const halfHeight = (ARENA.bottom - ARENA.top) / 2 - 30;
 
-    for (let i = 0; i < WRATH.batCount; i++) {
+    const batMultiplier = this.presentation.profile.isTouch
+      ? POLISH.mobile.afterImageMultiplier
+      : this.presentation.profile.quality === 'minimal'
+        ? 0.45
+        : this.presentation.profile.quality === 'reduced'
+          ? 0.7
+          : 1;
+    const batCount = Math.max(8, Math.round(WRATH.batCount * batMultiplier));
+    const trackedUltimate = this.ultimate.active;
+
+    for (let i = 0; i < batCount; i++) {
       const spawnDelay = Phaser.Math.Between(0, 260);
-      this.time.delayedCall(spawnDelay, () => {
+      const spawnBat = (): void => {
         const startX = centerX + Phaser.Math.FloatBetween(-halfWidth, halfWidth);
         const startY = centerY + Phaser.Math.FloatBetween(-halfHeight, halfHeight);
 
-        const puff = this.add
-          .particles(startX, startY, TEXTURES.particle, {
-            speed: { min: 30, max: 90 },
-            lifespan: { min: 220, max: 420 },
-            scale: { start: 1.6, end: 0 },
-            alpha: { start: 0.9, end: 0 },
-            tint: [0x241830, 0x9d6bff, 0x4a2e6b],
-            emitting: false,
-          })
-          .setDepth(DEPTHS.attackFx);
-        puff.explode(10);
-        this.time.delayedCall(500, () => puff.destroy());
+        this.presentation.batSpawnPuff(startX, startY);
 
-        const bat = this.add
-          .sprite(startX, startY, TEXTURES.bat, 0)
-          .setDepth(DEPTHS.attackFx + 1)
-          // These are the same creatures as the Count's dash form, so they
-          // share its exact rendered size rather than reading as giant bats.
-          .setScale(BAT.dashRenderScale)
-          .setAlpha(0);
+        const bat = this.trackUltimateVisual(
+          this.add
+            .sprite(startX, startY, TEXTURES.bat, 0)
+            .setDepth(DEPTHS.attackFx + 1)
+            // These are the same creatures as the Count's dash form, so they
+            // share its exact rendered size rather than reading as giant bats.
+            .setScale(BAT.dashRenderScale)
+            .setAlpha(0),
+        );
         bat.play(ANIMS.batFly);
         this.tweens.add({ targets: bat, alpha: 1, duration: 160 });
 
@@ -1982,9 +2147,14 @@ export class GameScene extends Phaser.Scene {
         });
 
         this.time.delayedCall(Phaser.Math.Between(0, 90), () => {
-          this.audio.playSfx(AUDIO.batDashSound, { volumeScale: 0.5 });
+          if (bat.active) this.audio.playSfx(AUDIO.batDashSound, { volumeScale: 0.5 });
         });
-      });
+      };
+      if (trackedUltimate) {
+        this.scheduleUltimate(spawnDelay, spawnBat);
+      } else {
+        this.time.delayedCall(spawnDelay, spawnBat);
+      }
     }
   }
 
@@ -2020,7 +2190,7 @@ export class GameScene extends Phaser.Scene {
           alpha: 0,
           duration: 220,
           ease: 'Quad.easeIn',
-          onComplete: () => bat.destroy(),
+          onComplete: () => this.destroyUltimateVisual(bat),
         });
       },
     });
@@ -2035,17 +2205,48 @@ export class GameScene extends Phaser.Scene {
   private lightningKillAll(): void {
     // The arrival flash already fired in fireUltimate — this is the impact,
     // a beat later and heavier: the strike itself, not the lightning showing up.
-    this.cameras.main.shake(420, 0.01);
+    if (!this.canContinueUltimate()) return;
+    const targets = orderChainTargets(
+      this.getAttackTargets().filter(
+        (target) =>
+          target.active &&
+          target.isAlive &&
+          (POLISH.ultimate.killsBosses || !this.isBossHunter(target)),
+      ),
+      { x: this.player.x, y: this.player.y },
+    );
+    const delays = ultimateWaveDelays(targets.length, POLISH.ultimate.waveDurationMs);
 
-    const targets = this.getAttackTargets().filter((t) => t.active && t.isAlive);
-    const chainTargets = targets.map((target) => ({ x: target.x, y: target.y }));
-    for (const target of targets) {
-      this.spawnLightningBolt(target.x, target.y);
-      this.onHunterKilled(target);
+    this.ultimateChain?.cancel();
+    this.ultimateChain =
+      targets.length > 0
+        ? playPurpleChainLightning(this, targets, {
+            origin: { x: this.player.x, y: this.player.y },
+            connectOrigin: true,
+            hopDelayMs:
+              targets.length > 1
+                ? Math.max(
+                    24,
+                    Math.floor(POLISH.ultimate.waveDurationMs / (targets.length - 1)),
+                  )
+                : 24,
+            cameraFx: false,
+            onComplete: () => {
+              this.ultimateChain = null;
+            },
+          })
+        : null;
+
+    for (let index = 0; index < targets.length; index++) {
+      const target = targets[index];
+      this.scheduleUltimate(delays[index], () => {
+        if (!target.active || !target.isAlive) return;
+        const boss = this.isBossHunter(target);
+        this.spawnLightningBolt(target.x, target.y, boss);
+        const killed = target.takeDamage(Number.MAX_SAFE_INTEGER);
+        if (killed) this.onHunterKilled(target);
+      });
     }
-    this.time.delayedCall(COLD_OPEN.chainLeadMs, () => {
-      this.playChainLightning(chainTargets);
-    });
   }
 
   /**
@@ -2061,7 +2262,10 @@ export class GameScene extends Phaser.Scene {
     });
     playPurpleChainLightning(this, ordered, {
       hopDelayMs: COLD_OPEN.chainHopMs,
-      cameraFx: true,
+      // Arrival and impact are already routed through PresentationSystem;
+      // disabling the helper's raw camera calls keeps mobile/reduced-motion
+      // profiles authoritative.
+      cameraFx: false,
     });
   }
 
@@ -2069,7 +2273,9 @@ export class GameScene extends Phaser.Scene {
    * One layered purple bolt from above the hall down to (x, y): a broad bloom,
    * a bright core, forked side-arcs, an impact ring and additive sparks.
    */
-  private spawnLightningBolt(x: number, y: number): void {
+  private spawnLightningBolt(x: number, y: number, boss = false): void {
+    this.presentation.ultimateStrike(x, y, boss);
+    if (!this.presentation.acquireScreenEffect('bolt')) return;
     const originY = ARENA.top - 30;
     const segments = 8;
     const points = [{ x: x + Phaser.Math.Between(-28, 28), y: originY }];
@@ -2133,21 +2339,6 @@ export class GameScene extends Phaser.Scene {
       onComplete: () => impact.destroy(),
     });
 
-    const sparks = this.add
-      .particles(x, y, TEXTURES.particle, {
-        speed: { min: 110, max: 360 },
-        angle: { min: 0, max: 360 },
-        lifespan: { min: 220, max: 620 },
-        scale: { start: 1.5, end: 0 },
-        alpha: { start: 1, end: 0 },
-        tint: [0xffffff, 0xe8ddff, 0xb987ff, 0x7b3dd4],
-        blendMode: Phaser.BlendModes.ADD,
-        emitting: false,
-      })
-      .setDepth(DEPTHS.attackFx + 3);
-    sparks.explode(24);
-    this.time.delayedCall(700, () => sparks.destroy());
-
     this.tweens.add({
       targets: [glow, core],
       alpha: 0,
@@ -2156,6 +2347,7 @@ export class GameScene extends Phaser.Scene {
       onComplete: () => {
         glow.destroy();
         core.destroy();
+        this.presentation.releaseScreenEffect('bolt');
       },
     });
   }
@@ -2218,19 +2410,30 @@ export class GameScene extends Phaser.Scene {
       if (active && cause === 'dash') {
         this.audio.stopSfx(AUDIO.batDashSound);
         this.audio.playSfxSegment(AUDIO.batDashSound, 0.5, 1);
+        this.presentation.dashChanged(this.player, true);
       } else if (active) {
         this.audio.playSfx(AUDIO.batSound1, { loop: true });
       } else if (cause === 'flight') {
         this.audio.stopSfx(AUDIO.batSound1);
+      } else {
+        this.presentation.dashChanged(this.player, false);
       }
     });
     this.emitter.on(EVENTS.PLAYER_DIED, () => this.flow.notifyPlayerDied());
-    this.emitter.on(EVENTS.PLAYER_DAMAGED, () => this.audio.playSfx(AUDIO.playerHurt));
+    this.emitter.on(EVENTS.PLAYER_DAMAGED, (health: number, maxHealth: number) => {
+      this.audio.playSfx(AUDIO.playerHurt);
+      this.presentation.playerDamaged(this.player, health, maxHealth);
+    });
+    this.emitter.on(EVENTS.PLAYER_HEALED, (health: number, maxHealth: number) => {
+      this.presentation.setHealthRatio(maxHealth > 0 ? health / maxHealth : 0);
+    });
+    this.emitter.on(EVENTS.COUNTDOWN_TICK, (seconds: number) => {
+      this.presentation.countdownTick(seconds);
+    });
     this.emitter.on(EVENTS.BLOOD_OVERFLOWED, this.hopBloodToHealth, this);
     this.emitter.on(EVENTS.COFFIN_ACTIVATED, () => this.coffin.activate());
     this.emitter.on(EVENTS.FINAL_TEN_SECONDS, () => {
       this.audio.playSfx(AUDIO.finalSeconds);
-      this.cameras.main.flash(200, 255, 154, 61);
     });
     this.emitter.on(EVENTS.GAME_ENDED, this.onGameEnded, this);
   }
@@ -2340,13 +2543,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private onHunterKilled(hunter: Hunter): void {
+    if (!hunter.active || !this.deathGate.claim(hunter)) return;
     hunter.spawnCorpse();
     this.stampBloodDecal(hunter.x, hunter.y, hunter.displayHeight);
-    const isBoss =
-      hunter instanceof HunterCaptain ||
-      hunter instanceof GarlicCaptain ||
-      hunter instanceof CrossCaptain ||
-      hunter instanceof Priest;
+    const isBoss = this.isBossHunter(hunter);
 
     if (isBoss) {
       this.runStats.bosses[this.bossKindOf(hunter)]++;
@@ -2356,6 +2556,7 @@ export class GameScene extends Phaser.Scene {
       // BOSS_SPAWN_REQUESTED), so this flood is guaranteed overflow — it tops
       // off HP, or once that is full too, fills Wrath (see hopBloodToHealth).
       this.scatterBloodlets(hunter.x, hunter.y, hunter instanceof Priest ? PRIEST.bloodDroplets : BOSS.bloodDroplets);
+      this.audio.playSfx(AUDIO.hunterDeath, { volumeScale: 1.15 });
     } else {
       // Counted where he DIES rather than where his blood lands, so a hunter
       // killed on the last tick of a night still shows up on the tally.
@@ -2365,6 +2566,15 @@ export class GameScene extends Phaser.Scene {
     }
     this.registerKillForSplatter(isBoss);
     this.hunters.remove(hunter, true, true);
+  }
+
+  private isBossHunter(hunter: Hunter): hunter is Captain {
+    return (
+      hunter instanceof HunterCaptain ||
+      hunter instanceof GarlicCaptain ||
+      hunter instanceof CrossCaptain ||
+      hunter instanceof Priest
+    );
   }
 
   /**
@@ -2389,6 +2599,7 @@ export class GameScene extends Phaser.Scene {
 
   /** One big, faint, camera-fixed splatter — blood on the screen, not the room. */
   private spawnScreenBloodSplatter(tier: number, cinematicScale = 1): void {
+    if (!this.presentation.acquireScreenEffect('overlay')) return;
     const { scale, alpha } = SCREEN_SPLATTER_TIERS[Phaser.Math.Clamp(tier, 0, SCREEN_SPLATTER_TIERS.length - 1)];
     const splatter = this.add
       .image(
@@ -2409,7 +2620,10 @@ export class GameScene extends Phaser.Scene {
       alpha: 0,
       delay: 2200,
       duration: 1400,
-      onComplete: () => splatter.destroy(),
+      onComplete: () => {
+        splatter.destroy();
+        this.presentation.releaseScreenEffect('overlay');
+      },
     });
   }
 
@@ -2485,11 +2699,14 @@ export class GameScene extends Phaser.Scene {
 
   private onDawnReached(): void {
     this.audio.playSfx(AUDIO.dawn);
+    this.presentation.sunriseWash();
     this.flow.notifyDawnReached();
   }
 
   private onGameEnded(cause: EndCause): void {
     this.spawner?.stop();
+    this.presentation.cancelHitStop(false);
+    this.cancelUltimatePresentation();
     this.physics.pause();
 
     // A run that is over hands the music back to the Main Title straight
@@ -2600,6 +2817,7 @@ export class GameScene extends Phaser.Scene {
    * begins. No screen shown; see playNightCycle / startNewRound.
    */
   private playVictoryOutro(): void {
+    this.presentation.clearCountdownUrgency();
     // Clear the field immediately so the hall reads clean through the outro
     // (clearing the hunters also takes their targeting crosshairs with them).
     this.hunters.clear(true, true);
@@ -2666,8 +2884,9 @@ export class GameScene extends Phaser.Scene {
       onUpdate: (tween) => {
         const v = tween.getValue() ?? 0;
         this.sky.update(v);
-        this.nightOverlay.setAlpha(0.42 * (1 - v * v));
-        this.dawnOverlay.setAlpha(v * v * 0.18);
+        this.nightOverlay.setAlpha(POLISH.atmosphere.nightOverlayAlpha * (1 - v * v));
+        this.dawnOverlay.setAlpha(v * v * POLISH.atmosphere.dawnOverlayAlpha);
+        this.presentation.setNightProgress(v);
       },
       onComplete: () => {
         // He made it into the coffin, so the night he just played counts as
@@ -2686,8 +2905,9 @@ export class GameScene extends Phaser.Scene {
           this.riseFromCoffin(() => {
             this.physics.resume();
             this.inputController.discardBufferedActions();
+            this.touch?.discardBufferedActions();
             this.phase = 'playing';
-            this.cameras.main.shake(120, 0.004);
+            this.presentation.landingImpact();
             this.beginRoundSystems();
           });
         });
@@ -2713,13 +2933,14 @@ export class GameScene extends Phaser.Scene {
         this.sky.updateDayCycle(t);
         // Daylight floods the hall at noon and drains back out by nightfall.
         const daylight = Math.sin(t * Math.PI);
-        this.nightOverlay.setAlpha(0.42 * (1 - daylight));
+        this.nightOverlay.setAlpha(POLISH.atmosphere.nightOverlayAlpha * (1 - daylight));
         this.dawnOverlay.setAlpha(daylight * 0.3);
       },
       onComplete: () => {
         this.sky.resetToNightStart();
-        this.nightOverlay.setAlpha(0.42);
+        this.nightOverlay.setAlpha(POLISH.atmosphere.nightOverlayAlpha);
         this.dawnOverlay.setAlpha(0);
+        this.presentation.setNightProgress(0);
         onComplete();
       },
     });
@@ -2733,8 +2954,13 @@ export class GameScene extends Phaser.Scene {
     // across game over, the menu and the next run without a gap.
     this.audio.stopSfx(AUDIO.batSound1);
     this.audio.stopSfx(AUDIO.batDashSound);
+    this.cancelUltimatePresentation();
+    this.presentation.destroy();
     this.emitter.removeAllListeners();
     this.hud?.destroy();
+    this.touch?.destroy();
+    this.touch = null;
+    this.inputController.destroy();
     this.spawner?.stop();
     this.taglineTimer?.remove();
     this.menuLightning?.destroy();

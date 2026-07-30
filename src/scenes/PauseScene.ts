@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { AudioBalanceConfig } from '../data/audioBalance';
+import { getPolishProfile } from '../data/polish';
 import {
   gameSettings,
   shouldShowCursorSettings,
@@ -41,6 +42,7 @@ export class PauseScene extends Phaser.Scene {
   private generalTab?: Phaser.GameObjects.Text;
   private soundTab?: Phaser.GameObjects.Text;
   private isTouch = false;
+  private reducedMotion = false;
 
   constructor() {
     super(SCENES.pause);
@@ -49,10 +51,15 @@ export class PauseScene extends Phaser.Scene {
   create(): void {
     const audio = getAudioDirector(this);
     this.isTouch = isTouchDevice();
+    this.reducedMotion = getPolishProfile(this.isTouch).reducedMotion;
     // Pause and settings are menus, regardless of which gameplay/cinematic
     // phase is frozen beneath them. Menus always own a visible aiming cursor.
     setVampireCursorVisible(true);
-    this.add.rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0d0716, 0.72).setOrigin(0);
+    const overlay = this.add
+      .rectangle(0, 0, GAME_WIDTH, GAME_HEIGHT, 0x0d0716, 0.72)
+      .setOrigin(0)
+      .setAlpha(0);
+    this.tweens.add({ targets: overlay, alpha: 0.72, duration: 150, ease: 'Quad.easeOut' });
 
     // The north wall ends at ARENA.top. Keeping the label below it prevents
     // the pulse from ever crossing the HUD or countdown.
@@ -63,8 +70,10 @@ export class PauseScene extends Phaser.Scene {
         color: '#e8ddff',
         fontStyle: 'bold',
       })
-      .setOrigin(0.5);
-    this.blinkUneven(paused);
+      .setOrigin(0.5)
+      .setScale(0.94);
+    this.tweens.add({ targets: paused, scale: 1, duration: 220, ease: 'Back.easeOut' });
+    if (!this.reducedMotion) this.blinkUneven(paused);
 
     this.mainUi = this.add.container(0, 0);
     const resume = this.makeButton(
@@ -82,6 +91,14 @@ export class PauseScene extends Phaser.Scene {
       this.scene.stop(SCENES.game);
       this.scene.stop();
       this.scene.start(SCENES.game, { autostart: false });
+    });
+    this.mainUi.setAlpha(0).setY(12);
+    this.tweens.add({
+      targets: this.mainUi,
+      alpha: 1,
+      y: 0,
+      duration: 180,
+      ease: 'Quad.easeOut',
     });
 
     this.settingsUi = this.add.container(0, 0).setVisible(false);
@@ -233,6 +250,7 @@ export class PauseScene extends Phaser.Scene {
 
   /** Same active-choice breathing used by START NIGHT and Resume. */
   private addGuidanceBreath(target: Phaser.GameObjects.Text): void {
+    if (this.reducedMotion) return;
     this.tweens.add({
       targets: target,
       scale: { from: 1, to: 1.05 },
@@ -265,7 +283,25 @@ export class PauseScene extends Phaser.Scene {
     button.on('pointerout', () =>
       button.setBackgroundColor(button.getData('restingBackground') ?? BUTTON),
     );
-    button.on('pointerdown', onClick);
+    button.on('pointerdown', () => {
+      if (button.getData('pressing')) return;
+      button.setData('pressing', true).setScale(0.95).setBackgroundColor('#ffffff');
+    });
+    button.on('pointerup', () => {
+      if (!button.getData('pressing')) return;
+      button.setData('pressing', false);
+      this.tweens.add({
+        targets: button,
+        scale: 1,
+        duration: 90,
+        ease: 'Back.easeOut',
+      });
+      onClick();
+    });
+    button.on('pointerout', () => {
+      button.setData('pressing', false).setScale(1);
+      button.setBackgroundColor(button.getData('restingBackground') ?? BUTTON);
+    });
     parent.add(button);
     return button;
   }
