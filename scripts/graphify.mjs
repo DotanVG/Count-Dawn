@@ -61,8 +61,7 @@ function pythonProbe(command, prefix = []) {
     "import json,sys",
     "from importlib.metadata import version",
     "import graphify",
-    "print(json.dumps({'executable':sys.executable,'python':sys.version.split()[0],",
-    "'graphify':version('graphifyy')}))",
+    "print(json.dumps({'executable':sys.executable,'python':sys.version.split()[0],'graphify':version('graphifyy')}))",
   ].join(";");
   const result = outputOf(command, [...prefix, "-c", code]);
   if (!result) return null;
