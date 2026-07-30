@@ -133,6 +133,45 @@ Set `FAST_DEV_MODE = true` in [`src/data/balance.ts`](src/data/balance.ts) for a
 - **QA sweep:** [docs/QA_CHECKLIST.md](docs/QA_CHECKLIST.md) covers desktop, mobile, menus, cutscenes, audio, deaths and multi-night regressions.
 - **Sprite pipeline:** the scripts under `tools/` rebuild shipped sheets from committed source art. They are offline build tools and never ship to players.
 
+### Optional knowledge graph
+
+[Graphify](https://pypi.org/project/graphifyy/) is optional local development
+tooling for narrowing architectural, debugging, cross-cutting, and multi-file
+questions. It is not an npm dependency, never runs during install, development,
+tests, builds, or deployment, and is not included in the game bundle.
+
+The verified distribution is `graphifyy==0.9.30`; its executable and Python
+module are both named `graphify`. Install it with uv (recommended, especially
+on Windows), pipx, or an active virtual environment:
+
+```bash
+uv tool install "graphifyy==0.9.30"
+# Alternatives:
+pipx install "graphifyy==0.9.30"
+python -m pip install "graphifyy==0.9.30"
+```
+
+The Node wrapper works from PowerShell and Bash:
+
+| Command | Purpose |
+| --- | --- |
+| `npm run graph:build` | Full source-focused rebuild (`graphify extract . --force`, then `graphify cluster-only .` for the report/HTML); uses Claude CLI for docs when available, otherwise deterministic code-only AST extraction |
+| `npm run graph:update` | Incrementally re-extract changed code with the local AST pipeline |
+| `npm run graph:query -- "How does blood overflow become healing or Wrath?"` | Intentionally query with a bounded 1,600-token context budget |
+| `npm run graph:query -- --dfs "Which systems participate in spawning and controlling bosses?"` | Intentional depth-first query |
+| `npm run graph:path -- "InputController" "CombatSystem"` | Find a shortest graph path |
+| `npm run graph:explain -- "AudioDirector"` | Explain a node and its immediate relationships |
+| `npm run graph:status` | Check graph commit, source dirtiness, outputs, and recorded statistics without requiring Graphify |
+| `npm run graph:check` | Validate the integration and run Graphify's `check-update` command |
+
+Generated JSON, HTML, reports, manifests, and local run metadata stay in
+`graphify-out/`, which is gitignored because it is machine- and checkout-local.
+Claude Code and Codex are configured with a fast session-start reminder when a
+graph exists; Symphony receives the same conditional-use policy from
+`WORKFLOW.md`. None of them builds on startup, and each must verify graph
+findings in current source. Use `npm run graph:status`; `may be stale` means
+update or rebuild before relying on it.
+
 ### Rebuilding the sprite sheets
 
 Romi's original drawings ship under [`public/assets/RAW/`](public/assets/RAW/README.md) so no sheet is ever orphaned from its source. The builders take their source folder as the only argument and are idempotent; the final no-argument helper cleans partial-alpha dither from the castle windows:

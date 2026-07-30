@@ -10,7 +10,16 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts",
-    "test": "node --experimental-transform-types --test \"tests/*.test.mjs\""
+    "test": "node --experimental-transform-types --test \"tests/*.test.mjs\"",
+    "graph:build": "node scripts/graphify.mjs build",
+    "graph:update": "node scripts/graphify.mjs update",
+    "graph:query": "node scripts/graphify.mjs query",
+    "graph:path": "node scripts/graphify.mjs path",
+    "graph:explain": "node scripts/graphify.mjs explain",
+    "graph:status": "node scripts/graphify.mjs status",
+    "graph:check": "node scripts/graphify.mjs check",
+    "graph:watch": "node scripts/graphify.mjs watch",
+    "graph:cluster": "node scripts/graphify.mjs cluster"
   },
   "keywords": [
     "phaser",
