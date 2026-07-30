@@ -31,7 +31,9 @@ npm run graph:build
 ```
 
 - `graph:query` uses a 1,600-token default budget for bounded context.
-- `graph:update` is Graphify 0.9.30's local AST incremental update.
+- `graph:update` uses Graphify 0.9.30's manifest gate so unchanged code and
+  documentation are not re-extracted; the safe native full-code AST update is
+  retained as a fallback.
 - `graph:build` performs `extract . --force`, then `cluster-only .` so JSON,
   report, and HTML outputs stay together. It uses the local `claude` CLI for
   useful documentation when available and otherwise safely falls back to

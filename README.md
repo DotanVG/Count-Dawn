@@ -156,7 +156,7 @@ The Node wrapper works from PowerShell and Bash:
 | Command | Purpose |
 | --- | --- |
 | `npm run graph:build` | Full source-focused rebuild (`graphify extract . --force`, then `graphify cluster-only .` for the report/HTML); uses Claude CLI for docs when available, otherwise deterministic code-only AST extraction |
-| `npm run graph:update` | Incrementally re-extract changed code with the local AST pipeline |
+| `npm run graph:update` | Manifest-gated update of changed code/docs, with a safe full-code AST fallback |
 | `npm run graph:query -- "How does blood overflow become healing or Wrath?"` | Intentionally query with a bounded 1,600-token context budget |
 | `npm run graph:query -- --dfs "Which systems participate in spawning and controlling bosses?"` | Intentional depth-first query |
 | `npm run graph:path -- "InputController" "CombatSystem"` | Find a shortest graph path |

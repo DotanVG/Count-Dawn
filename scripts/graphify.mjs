@@ -526,6 +526,35 @@ function semanticBuildArgs(extra) {
   };
 }
 
+function incrementalBuildArgs(extra) {
+  if (hasFlag(extra, "--force") || hasFlag(extra, "--code-only")) {
+    console.error(
+      "Incremental updates preserve the semantic documentation layer; "
+      + "use `graph:build -- --code-only` for an intentional code-only rebuild.",
+    );
+    process.exit(2);
+  }
+  if (hasFlag(extra, "--backend")) {
+    const inline = extra.find((arg) => arg.startsWith("--backend="));
+    const index = extra.indexOf("--backend");
+    return {
+      args: extra,
+      autoBackend: false,
+      backend: inline?.slice("--backend=".length)
+        || (index >= 0 ? extra[index + 1] : null),
+    };
+  }
+  const claudeCommand = process.platform === "win32" ? "claude.cmd" : "claude";
+  if (commandAvailable(claudeCommand)) {
+    return {
+      args: ["--backend", "claude-cli", "--max-concurrency", "1", ...extra],
+      autoBackend: true,
+      backend: "claude-cli",
+    };
+  }
+  return { args: extra, autoBackend: true, backend: null };
+}
+
 function showStatus() {
   if (!fs.existsSync(graphPath)) {
     console.log("Graph status: absent (optional; ordinary development is unaffected).");
@@ -590,7 +619,7 @@ function usage() {
 
 Commands:
   build [flags]             full extract . --force rebuild
-  update [flags]            incremental local AST update
+  update [flags]            manifest-gated incremental update
   query [--dfs] "question"  bounded graph traversal (default budget: 1600)
   path "node A" "node B"    shortest path
   explain "node"            node and neighbor explanation
@@ -665,11 +694,63 @@ switch (command) {
     process.exit(0);
     break;
   }
-  case "update":
+  case "update": {
     requireGraph();
-    graphifyArgs = ["update", ".", ...extra];
-    extractionMode = "incremental AST";
+    const plan = incrementalBuildArgs(extra);
+    const graphMtimeBefore = fs.statSync(graphPath).mtimeMs;
+    let exitCode = invoke(engine, ["extract", ".", ...plan.args]);
+    if (exitCode !== 0 && plan.autoBackend) {
+      console.warn(
+        "[graphify wrapper] Manifest-gated extraction was unavailable; "
+        + "falling back to Graphify's safe full-code AST update.",
+      );
+      exitCode = invoke(engine, ["update", "."]);
+      if (exitCode !== 0) process.exit(exitCode);
+      recordMetadata({
+        engine,
+        durationSeconds: Number(process.hrtime.bigint() - start) / 1e9,
+        extractionMode: "native full-code AST update fallback",
+        operation: command,
+        dirtyBefore,
+      });
+      process.exit(0);
+    }
+    if (exitCode !== 0) process.exit(exitCode);
+
+    const extractionTokens = analysisTokenUsage();
+    const graphChanged = fs.statSync(graphPath).mtimeMs > graphMtimeBefore;
+    if (graphChanged) {
+      const clusterArgs = ["cluster-only", "."];
+      if (plan.backend) clusterArgs.push("--backend", plan.backend);
+      let clusterExit = invoke(engine, clusterArgs);
+      if (clusterExit !== 0 && plan.autoBackend && plan.backend) {
+        console.warn(
+          "[graphify wrapper] Semantic community labeling failed; "
+          + "retrying deterministic clustering.",
+        );
+        clusterExit = invoke(engine, ["cluster-only", "."]);
+      }
+      if (clusterExit !== 0) process.exit(clusterExit);
+    } else {
+      console.log(
+        "[graphify wrapper] Manifest found no changed inputs; "
+        + "report and HTML were left untouched.",
+      );
+    }
+    recordMetadata({
+      engine,
+      durationSeconds: Number(process.hrtime.bigint() - start) / 1e9,
+      extractionMode: "manifest-gated incremental AST + semantic documentation",
+      operation: command,
+      dirtyBefore,
+      measuredTokens: combinedTokenUsage(
+        extractionTokens,
+        graphChanged ? reportTokenUsage() : null,
+      ),
+    });
+    process.exit(0);
     break;
+  }
   case "query":
     requireGraph();
     {
