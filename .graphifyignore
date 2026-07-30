@@ -1,0 +1,67 @@
+# Count Dawn's graph is intentionally source-focused. Graphify 0.9.30 reads
+# this file with gitignore semantics in addition to .gitignore.
+
+# Shipped and source artwork/audio are not useful code-graph inputs.
+/public/**
+/itch/**
+
+# Dependencies, build output, caches, generated artifacts, and worktrees.
+/node_modules/**
+/dist/**
+/dist-ssr/**
+/build/**
+/out/**
+/.vite/**
+/.cache/**
+/coverage/**
+/graphify-out/**
+/.claude/worktrees/**
+/.worktrees/**
+/package-lock.json
+
+# Binary/media defense in depth, including sprite sheets and raw masters.
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.svg
+*.ico
+*.bmp
+*.tif
+*.tiff
+*.psd
+*.ase
+*.aseprite
+*.mp3
+*.ogg
+*.wav
+*.flac
+*.aif
+*.aiff
+*.m4a
+*.mp4
+*.mov
+*.webm
+*.mkv
+*.avi
+*.zip
+*.7z
+*.rar
+*.map
+
+# Secrets and machine-local configuration must never enter a local graph.
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cert
+.npmrc
+.pypirc
+.netrc
+.git-credentials

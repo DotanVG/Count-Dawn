@@ -85,6 +85,25 @@ Repository layout:
 - `tests/` - pure game-rule tests
 - `docs/` - game loop, asset integration, audio, deployment
 
+## Knowledge graph policy
+
+When `graphify-out/graph.json` exists:
+
+1. For unfamiliar, architectural, debugging, cross-cutting or likely multi-file tasks, query Graphify before performing broad repository exploration.
+2. Use the graph to identify likely files, symbols, dependencies and execution paths.
+3. Open and verify the authoritative source files before editing.
+4. Never trust stale graph data over current source.
+5. For a clearly isolated edit, skip Graphify.
+6. After material structural changes, perform an incremental graph update when practical.
+7. After a major refactor, perform a full rebuild.
+8. Never commit `graphify-out/`.
+9. Do not block ordinary work only because the optional local graph is absent.
+
+Use the repository commands documented in `README.md` and the canonical skill
+at `.claude/skills/graphify/SKILL.md`. Do not add a graph build to
+`after_create`, `before_run`, normal installs, or ordinary validation; a fresh
+Symphony worktree must remain usable without the optional local graph.
+
 ## Status map
 
 | State | Meaning / action |

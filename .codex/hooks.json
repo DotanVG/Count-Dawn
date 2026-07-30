@@ -1,0 +1,20 @@
+{
+  "description": "Lightweight Count Dawn local knowledge-graph awareness.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-toplevel)/scripts/graphify-session-start.cjs\"",
+            "commandWindows": "node -e \"const c=require('node:child_process'),p=require('node:path');const r=c.execFileSync('git',['rev-parse','--show-toplevel'],{encoding:'utf8'}).trim();require(p.join(r,'scripts','graphify-session-start.cjs'));\"",
+            "timeout": 5,
+            "statusMessage": "Checking local knowledge graph",
+            "additionalContextLimit": 800
+          }
+        ]
+      }
+    ]
+  }
+}

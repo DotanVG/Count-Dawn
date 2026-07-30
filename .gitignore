@@ -43,6 +43,16 @@ coverage/
 .cache/
 .agents/
 .claude/scheduled_tasks.lock
+graphify-out/
+
+# Keep only the repository Graphify adapter discoverable by Codex. Other local
+# .agents content remains ignored.
+!.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/graphify/
+!.agents/skills/graphify/**
 
 # Playtest checklist — kept local, deliberately not shipped or deployed.
 docs/QA_CHECKLIST.md

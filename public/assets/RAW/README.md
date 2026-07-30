@@ -54,6 +54,17 @@ Four files, and the difference between them is only the title:
 - **`COUNT_DAWN_COVER_ART_ITCH_RATIO.jpeg`** — the 630x500 export used for the
   itch.io store page. Not loaded by the game.
 
+Two earlier exports are preserved alongside those active variants:
+
+- **`COUNT_DAWN_NO_CREDITS.jpeg`** — the square title art before credits were
+  added.
+- **`COUNT_DAWN_ITCH_WIDE.jpg`** — an early 256x206 wide store export.
+
+The active bat frames are the green-background files directly under `bat/`.
+Romi's earlier black-background delivery is retained under
+`bat/archive/original-black-background/` for future rework, but is not consumed
+by `build_bat_sheet.py`.
+
 ## A note on chroma keys
 
 Every script keys Romi's background out with an alpha ramp over "greenness"
