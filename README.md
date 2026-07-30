@@ -231,6 +231,7 @@ tileset remain.
 
 ## More Docs
 
+- [Visual polish](docs/VISUAL_POLISH.md) — quality tiers, presentation ownership, Wrath safety, and FX policy.
 - [Game loop](docs/GAME_LOOP.md) — rules, boss lineups, the ward, endings.
 - [Asset integration](docs/ASSET_INTEGRATION.md) — the sprite pipeline and how the chroma keys work.
 - [Audio](docs/AUDIO.md) — encoding workflow, the music state flow, the balance editor.
