@@ -18,14 +18,19 @@ export const MAP_COLS = GAME_WIDTH / TILE; // 20
 export const MAP_ROWS = 12;
 
 /**
- * Playable arena in world pixels. The north wall band (3 tile rows, with the
- * sky windows) and the 1-tile side/bottom walls sit outside these bounds.
+ * Playable arena in world pixels. The north wall band (with the sky windows)
+ * and the side/bottom walls sit outside these bounds.
+ *
+ * Phase 1 room-replacement test: measured against Romi's flat room_bg.jpeg
+ * (1280x768, stretched to the 1280x720 canvas — see CastleMap.ts) rather
+ * than derived from the tile grid. left/right land almost exactly on the old
+ * tile-based values; top/bottom shrink slightly to match the new floor.
  */
 export const ARENA = {
-  left: TILE,
-  right: GAME_WIDTH - TILE,
-  top: TILE * 3,
-  bottom: TILE * 10,
+  left: 64,
+  right: 1216,
+  top: 200,
+  bottom: 620,
 } as const;
 
 export const SCENES = {

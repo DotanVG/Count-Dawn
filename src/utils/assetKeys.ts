@@ -66,6 +66,12 @@ export const TEXTURES = {
   fire: 'fire-animation',
   objects: 'castle-objects',
   /**
+   * Phase 1 room-replacement test: Romi's flat painted great-hall (single
+   * 1280x768 image, stretched to fill the 1280x720 canvas) standing in for
+   * the walls_floor.png tilemap. See CastleMap.ts.
+   */
+  roomBg: 'castle-room-bg',
+  /**
    * Cover art (Romi's), three takes on the same painting that differ only in
    * the title. `coverDawn` is the game's real name and what the menu rests on;
    * `coverDown` is the jam theme the title is a pun on; `coverFlicker` has the

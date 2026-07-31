@@ -6,6 +6,8 @@ import { createCharacterAnimations } from '../utils/animations';
 import { createPlaceholderTextures } from '../utils/placeholderTextures';
 
 const CHAR_FRAME = { frameWidth: 64, frameHeight: 64 };
+/** Temp load key for room_bg.jpeg before chroma-keying replaces it under TEXTURES.roomBg. */
+const ROOM_BG_RAW = 'castle-room-bg-raw';
 
 /** Loads all real assets and registers the shared animations. */
 export class PreloadScene extends Phaser.Scene {
@@ -86,18 +88,58 @@ export class PreloadScene extends Phaser.Scene {
     this.load.image(TEXTURES.coffinHalf, 'assets/environment/props/coffin_half.png');
     this.load.image(TEXTURES.coffinOpen, 'assets/environment/props/coffin_open.png');
 
-    // Castle — CraftPix free top-down dungeon pack.
+    // Castle — CraftPix free top-down dungeon pack. Kept loaded (unused by
+    // CastleMap for now) so reverting the Phase 1 swap is a one-line change.
     this.load.image(TEXTURES.tiles, 'assets/environment/castle/walls_floor.png');
     this.load.spritesheet(TEXTURES.fire, 'assets/environment/castle/fire_animation.png', {
       frameWidth: 44,
       frameHeight: 48,
     });
+    // Phase 1 room-replacement test — Romi's flat painted great-hall. Loaded
+    // under a raw key; create() chroma-keys it into TEXTURES.roomBg.
+    this.load.image(ROOM_BG_RAW, 'assets/environment/castle/room_bg.jpeg');
   }
 
   create(): void {
+    this.createChromaKeyedRoomBg();
     // After loading: generated textures only fill keys no real asset claimed.
     createPlaceholderTextures(this);
     createCharacterAnimations(this);
     this.scene.start(SCENES.game);
+  }
+
+  /**
+   * Romi's room_bg.jpeg marks its three windows with flat chroma-key green
+   * (no alpha channel in a JPEG) so DawnSky can still show through them, the
+   * same way the old tile windows had transparent interiors. Bake a
+   * green-keyed copy once here rather than re-keying per CastleMap build
+   * (GameScene.restart() on night transitions would otherwise redo this
+   * every night).
+   */
+  private createChromaKeyedRoomBg(): void {
+    const source = this.textures.get(ROOM_BG_RAW).getSourceImage() as HTMLImageElement;
+    const canvasTexture = this.textures.createCanvas(TEXTURES.roomBg, source.width, source.height);
+    if (!canvasTexture) return;
+    canvasTexture.draw(0, 0, source);
+    const ctx = canvasTexture.getContext();
+    const imageData = ctx.getImageData(0, 0, source.width, source.height);
+    const data = imageData.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      // Two cases: the bulk of the flat chroma green, and its darker,
+      // JPEG-blurred edge pixels against the arch outline — both green-
+      // dominant, but the edge ring doesn't clear a brightness cutoff.
+      // Tuned against the actual room_bg.jpeg (see Phase 1 notes above):
+      // zero false positives on the portraits' dark-green backdrop or the
+      // floor grates, near-zero leftover fringe on the window edges.
+      const isBrightChroma = g > 150 && g - r > 60 && g - b > 60;
+      const isDarkChromaEdge = r < 20 && b < 20 && g > 35;
+      if (isBrightChroma || isDarkChromaEdge) data[i + 3] = 0;
+    }
+    canvasTexture.putData(imageData, 0, 0);
+    canvasTexture.refresh();
+    this.textures.remove(ROOM_BG_RAW);
   }
 }
