@@ -8,8 +8,8 @@ import { GameOverScene } from '../scenes/GameOverScene';
 import { VictoryScene } from '../scenes/VictoryScene';
 
 /**
- * Phaser configuration: stable 1280x720 internal world, FIT-scaled to the
- * window, pixel-art rendering, top-down Arcade physics (no gravity).
+ * Phaser configuration: stable 1280x720 internal world, discretely scaled by
+ * pixelPerfectScale.ts, pixel-art rendering, top-down Arcade physics (no gravity).
  * GameScene doubles as the main menu, so there is no separate menu scene.
  */
 export const gameConfig: Phaser.Types.Core.GameConfig = {
@@ -19,8 +19,12 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   pixelArt: true,
   roundPixels: true,
   scale: {
-    mode: Phaser.Scale.FIT,
+    // FIT is deliberately not used: it fills the parent with arbitrary CSS
+    // ratios. NONE lets the integer-scale controller supply exact zoom levels
+    // while Phaser retains centering and pointer-coordinate transforms.
+    mode: Phaser.Scale.NONE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
+    autoRound: true,
     width: GAME_WIDTH,
     height: GAME_HEIGHT,
   },

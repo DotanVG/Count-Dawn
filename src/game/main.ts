@@ -2,12 +2,14 @@ import Phaser from 'phaser';
 import { gameConfig } from './config';
 import { installFullscreenButton } from './fullscreen';
 import { installOrientationGate } from './orientation';
+import { installPixelPerfectScale } from './pixelPerfectScale';
 import { installVampireCursor } from './vampireCursor';
 import { gameSettings } from '../data/gameSettings';
 
 /** Entry point. The HTML boot loader is removed in BootScene. */
 const game = new Phaser.Game(gameConfig);
 
+installPixelPerfectScale(game);
 installFullscreenButton(game);
 gameSettings.install();
 installVampireCursor();

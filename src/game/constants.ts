@@ -4,7 +4,7 @@ export const GAME_TAGLINE = 'Hunt the hunters. Fill your veins. Beat the sunrise
 /** Menu tagline, typed/erased one sentence at a time. */
 export const TAGLINE_SENTENCES = ['Hunt the hunters', 'Fill your veins', 'Beat the sunrise'] as const;
 
-/** Stable internal resolution; the canvas is fitted to the window by Phaser Scale.FIT. */
+/** Stable internal resolution; the canvas is displayed at discrete pixel-safe scales. */
 export const GAME_WIDTH = 1280;
 export const GAME_HEIGHT = 720;
 
