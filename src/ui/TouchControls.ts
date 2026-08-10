@@ -33,9 +33,11 @@ export interface TouchCallbacks {
  *
  * Two idle-vs-active tells so the controls read as alive rather than static
  * chrome: every button flashes brighter and pops on press (flashButton), and
- * the joystick breathes a slow alpha pulse while NOT being held, which stops
- * dead the instant a touch grabs it (joyBlinkTween) — the pulse IS the "use
- * me to move" hint, so it has no reason to keep going once that has happened.
+ * the joystick breathes — grows and fades, the same "come use me" language
+ * as the coffin's own idle pulse — while NOT being held, which stops dead
+ * and snaps back to rest the instant a touch grabs it (joyBlinkTween) — the
+ * pulse IS the "use me to move" hint, so it has no reason to keep going once
+ * that has happened.
  */
 export class TouchControls {
   private moveVec = { x: 0, y: 0 };
@@ -117,9 +119,13 @@ export class TouchControls {
         .setDepth(DEPTHS.hud + 11)
         .setScrollFactor(0);
     }
+    // Alpha AND scale together — a fade alone read as too subtle for a
+    // control nobody has touched yet to sell "come use me", the same reason
+    // the coffin itself breathes by growing rather than just glowing.
     this.joyBlinkTween = scene.tweens.add({
       targets: [this.joyGlow, this.base, this.innerRing, this.thumb, this.thumbGlyph],
       alpha: { from: 1, to: 0.35 },
+      scale: { from: 1, to: 1.16 },
       duration: 1500,
       yoyo: true,
       repeat: -1,
@@ -239,11 +245,11 @@ export class TouchControls {
       // Held: steady and fully lit, not blinking — the blink is the "use me"
       // tell, and it stops making that point the moment it is in use.
       this.joyBlinkTween.pause();
-      this.joyGlow.setAlpha(1);
-      this.base.setAlpha(1);
-      this.innerRing.setAlpha(1);
-      this.thumb.setAlpha(1);
-      this.thumbGlyph.setAlpha(1);
+      this.joyGlow.setAlpha(1).setScale(1);
+      this.base.setAlpha(1).setScale(1);
+      this.innerRing.setAlpha(1).setScale(1);
+      this.thumb.setAlpha(1).setScale(1);
+      this.thumbGlyph.setAlpha(1).setScale(1);
       this.onMove(pointer);
       return;
     }
