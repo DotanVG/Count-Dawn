@@ -12,7 +12,7 @@ export interface HunterStats {
 }
 
 /** The doorway-shadow tint a hunter wears while still inside the door frame. */
-const ENTRANCE_SHADOW_TINT = 0x1c1c28;
+const ENTRANCE_SHADOW_TINT = 0x404060;
 
 /** Channel-wise lerp between two 0xRRGGBB colors, t clamped 0 (from) - 1 (to). */
 function lerpTint(from: number, to: number, t: number): number {
