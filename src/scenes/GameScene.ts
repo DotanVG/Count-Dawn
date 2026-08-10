@@ -4,15 +4,16 @@ import {
   BLOOD,
   BOSS,
   CROSS,
-  HUNTER,
   NIGHT,
   PLAYER,
   PRIEST,
   THROWER,
   WRATH,
   bloodTargetForNight,
+  bossBloodDropletsForNight,
   bossLineupForNight,
   captainCountForNight,
+  getBloodDropletRange,
   hunterPressureForNight,
   throwerCapForNight,
   weaponsForNight,
@@ -2366,12 +2367,17 @@ export class GameScene extends Phaser.Scene {
       // A mini-boss only ever dies once the blood meter is already full (see
       // BOSS_SPAWN_REQUESTED), so this flood is guaranteed overflow — it tops
       // off HP, or once that is full too, fills Wrath (see hopBloodToHealth).
-      this.scatterBloodlets(hunter.x, hunter.y, hunter instanceof Priest ? PRIEST.bloodDroplets : BOSS.bloodDroplets);
+      this.scatterBloodlets(
+        hunter.x,
+        hunter.y,
+        this.night,
+        hunter instanceof Priest ? PRIEST.bloodDroplets : BOSS.bloodDroplets,
+      );
     } else {
       // Counted where he DIES rather than where his blood lands, so a hunter
       // killed on the last tick of a night still shows up on the tally.
       this.runStats.hunters[this.hunterKindOf(hunter)]++;
-      this.scatterBloodlets(hunter.x, hunter.y);
+      this.scatterBloodlets(hunter.x, hunter.y, this.night);
       this.audio.playSfx(AUDIO.hunterDeath);
     }
     this.registerKillForSplatter(isBoss);
@@ -2473,8 +2479,19 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  /** Dead hunters burst into a handful of +1 bloodlets around the corpse; a mini-boss floods far more. */
-  private scatterBloodlets(x: number, y: number, count: number = HUNTER.bloodDroplets): void {
+  /**
+   * Dead hunters burst into a random handful of +1 bloodlets around the
+   * corpse — base, Armed and Thrower alike draw from the same night-scaled
+   * range (see getBloodDropletRange). Pass `bossBase` (BOSS.bloodDroplets or
+   * PRIEST.bloodDroplets) for a mini-boss kill instead: it floods far more,
+   * scaled by night through bossBloodDropletsForNight.
+   */
+  private scatterBloodlets(x: number, y: number, night: number, bossBase?: number): void {
+    const isBossFlood = bossBase !== undefined;
+    const count = isBossFlood
+      ? bossBloodDropletsForNight(bossBase, night)
+      : Phaser.Math.Between(getBloodDropletRange(night).min, getBloodDropletRange(night).max);
+
     // The corpse itself can be outside the hall (killed mid-entrance, or shoved
     // against a wall), so the spawn point is clamped as well as the landing
     // point - otherwise the droplets are born somewhere unreachable.
@@ -2485,7 +2502,7 @@ export class GameScene extends Phaser.Scene {
       const angle = (Math.PI * 2 * i) / count + Phaser.Math.FloatBetween(-0.4, 0.4);
       // A big flood reaches further out than a handful of drops would, or a
       // mini-boss's 25+ droplets would all pile up in the same tight ring.
-      const dist = Phaser.Math.Between(14, count > HUNTER.bloodDroplets ? 90 : 38);
+      const dist = Phaser.Math.Between(14, isBossFlood ? 90 : 38);
       const px = Phaser.Math.Clamp(fromX + Math.cos(angle) * dist, ARENA.left + 10, ARENA.right - 10);
       const py = Phaser.Math.Clamp(fromY + Math.sin(angle) * dist, ARENA.top + 10, ARENA.bottom - 10);
       const pickup = new BloodPickup(this, fromX, fromY);

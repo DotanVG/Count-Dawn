@@ -88,7 +88,6 @@ export const THROWER = {
   health: 35,
   contactDamage: 5,
   moveSpeed: 78,
-  bloodDroplets: 4,
   /** Nudged up slightly to close the gap with the Count (see PLAYER.spriteScale). */
   spriteScale: 1.6,
   /** Fraction of regular spawns replaced by a thrower, while under the cap. */
@@ -168,8 +167,6 @@ export const HUNTER = {
   /** Every regular hit — sword or garlic — costs the same 5 HP. */
   contactDamage: 5,
   moveSpeed: 110,
-  /** Bloodlets scattered on death; each is worth BLOOD.dropletValue. */
-  bloodDroplets: 5,
   spawnIntervalMs: 1250,
   maxAlive: 18,
   /** Hunters never spawn closer than this to the player. */
@@ -212,12 +209,23 @@ export const ARMED = {
   health: 45,
   contactDamage: 5,
   moveSpeed: 105,
-  bloodDroplets: 5,
   /** Nudged up slightly to close the gap with the Count (see PLAYER.spriteScale). */
   spriteScale: 1.6,
   /** Fraction of the melee spawns that arrive carrying a weapon. */
   spawnChance: 0.45,
 } as const;
+
+/**
+ * How many bloodlets a regular hunter kill scatters — base, Armed, and
+ * Thrower alike, none of them carries a bonus of its own. Scales with the
+ * night so the flood keeps pace with how much blood later nights demand
+ * (see bloodTargetForNight): night N drops a random N..N+4, so night 1 is
+ * 1-5 and night 5 is 5-9.
+ */
+export function getBloodDropletRange(night: number): { min: number; max: number } {
+  const min = Math.max(1, night);
+  return { min, max: min + 4 };
+}
 
 /**
  * Per-weapon feel. `reach` multiplies the hunter's melee range — the pitchfork
@@ -299,11 +307,12 @@ export const BOSS = {
   /** Delay between a garlic Captain's two throws; the target keeps tracking. */
   garlicThrowGapMs: 180,
   /**
-   * A mini-boss kill floods the floor with blood — five times a regular
-   * hunter's HUNTER.bloodDroplets. A Captain only ever dies after the meter is
-   * already full (bosses do not spawn until it is), so every one of these is
-   * guaranteed overflow: it either tops off the Count's health or, once that
-   * is full too, fills the Wrath meter (see WRATH).
+   * A mini-boss kill floods the floor with blood — base value fed through
+   * bossBloodDropletsForNight, which grows it 10% of this base per night. A
+   * Captain only ever dies after the meter is already full (bosses do not
+   * spawn until it is), so every one of these is guaranteed overflow: it
+   * either tops off the Count's health or, once that is full too, fills the
+   * Wrath meter (see WRATH).
    */
   bloodDroplets: 25,
 } as const;
@@ -370,6 +379,16 @@ export const PRIEST = {
 } as const;
 
 /**
+ * Scales a mini-boss's base blood flood (BOSS.bloodDroplets or
+ * PRIEST.bloodDroplets) by the night: the base value on his first possible
+ * night, +10% of that base for every night after. Night 1 Captain: 25.
+ * Night 2: 27.5→28. Night 3: 30. Night 4: 32.5→33.
+ */
+export function bossBloodDropletsForNight(base: number, night: number): number {
+  return Math.round(base * (1 + Math.max(0, night - 1) * 0.1));
+}
+
+/**
  * The Wrath meter: a third bar, between the health and blood bars, that fills
  * from blood the Count has no use for — overflow that arrives while HP is
  * ALREADY full (see GameScene.hopBloodToHealth) plus whatever is left over
@@ -381,20 +400,19 @@ export const PRIEST = {
  * `target` is a first estimate, not a measured one: a Captain only ever dies
  * once the blood meter is already full (bosses do not spawn before then), so
  * BOSS.bloodDroplets/PRIEST.bloodDroplets landing as overflow is the main way
- * this fills. At 25-30 blood per mini-boss against a target of 60, roughly
- * two Captain kills (or one Priest night) earns a charge — tune this once
- * real run totals are in.
+ * this fills. At a 1-for-1 bloodPerPoint and ~25-30 blood per mini-boss,
+ * roughly four Captain kills (or a bit over three Priest nights' worth)
+ * earns a charge — tune this once real run totals are in.
  */
 export const WRATH = {
   /** Raised from 60 and slowed down (see bloodPerPoint) — the first pass filled too easily. */
   target: 100,
   /**
-   * Blood spent per point of Wrath gained. 2, matching the round's own
-   * overflow-to-HP rate (BLOOD.overflowHealPerBlood) rather than a straight
-   * 1-for-1 — Wrath is meant to feel earned across several mini-boss kills,
-   * not handed over by the first one.
+   * Blood spent per point of Wrath gained — a straight 1-for-1, matching
+   * BLOOD.overflowHealPerBlood and BLOOD.overnightHealPerBlood so every
+   * blood conversion in the game reads the same.
    */
-  bloodPerPoint: 2,
+  bloodPerPoint: 1,
   /** Bats spawned for the Ultimate's swarm. */
   batCount: 30,
   /** How long the lightning + bat swarm hold the screen. */
@@ -436,17 +454,17 @@ export const BLOOD = {
   magnetRadius: 74,
   /**
    * HP restored per unit of blood collected after the meter is already full.
-   * Drinking past the quota tops the Count up instead of being thrown away -
-   * deliberately less than a point each, so topping off a health bar takes a
-   * real pile of corpses rather than one unlucky hunter.
+   * Drinking past the quota tops the Count up instead of being thrown away —
+   * a real 1-for-1, same rate as the overnight transfer below, so overflow
+   * blood is never worth less just because it landed mid-round.
    */
-  overflowHealPerBlood: 0.5,
+  overflowHealPerBlood: 1,
   /**
-   * The overnight coffin transfer's rate — a real 1-for-1 spend against the
-   * night's whole blood pool (bloodTargetForNight), unlike the flat
-   * overflowHealPerBlood rate mid-round. This is a genuine cost: if the pool
-   * is smaller than the HP actually missing, the Count wakes up still hurt
-   * rather than always topping off to full (see GameScene.computeOvernightTransfer).
+   * The overnight coffin transfer's rate — also a real 1-for-1 spend against
+   * the night's whole blood pool (bloodTargetForNight). This is a genuine
+   * cost: if the pool is smaller than the HP actually missing, the Count
+   * wakes up still hurt rather than always topping off to full (see
+   * GameScene.computeOvernightTransfer).
    */
   overnightHealPerBlood: 1,
   /**
