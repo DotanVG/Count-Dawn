@@ -43,10 +43,12 @@ export class SpawnSystem {
    * — a boss lineup member, say — walked in through the same three doors
    * and the same occupancy/queue as everything else, uncapped by maxAlive
    * (a boss night's roster is small and deliberate, not subject to the
-   * regular spawn budget).
+   * regular spawn budget). Ignores the too-close-to-player proximity gate:
+   * unlike a hunter, this call never gets a second try from a timer, so a
+   * proximity skip would drop it silently — see EntranceController.spawnAt.
    */
   spawnEntrance(spawnEntrant: SpawnEntrant): void {
-    this.entranceController.spawnAt(spawnEntrant);
+    this.entranceController.spawnAt(spawnEntrant, true);
   }
 
   private trySpawn(): void {

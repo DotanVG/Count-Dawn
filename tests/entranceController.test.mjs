@@ -86,6 +86,66 @@ test('a door too close to the player is skipped without spawning or queueing', (
   assert.equal(controller.queuedCount, 0);
 });
 
+test('ignoreProximity=true spawns even when the player is too close to every door — the night-10 boss-soft-lock regression', () => {
+  // Reproduces the exact bug: a one-off arrival (a boss) gets exactly one
+  // spawnAt() call, with nothing to retry it if a plain proximity check
+  // silently drops it — GameScene.spawnBoss() calls flow.notifyBossSpawned()
+  // regardless, leaving the "defeat the boss" objective permanently
+  // unsatisfiable with zero actual bosses on the field.
+  const anyPlayerPosition = { x: 640, y: 410 }; // doesn't matter where — the radius below covers the whole map
+  const spawnCalls = [];
+  const controller = new EntranceController(
+    () => anyPlayerPosition,
+    999999, // an absurdly large radius: every door is "too close" by this metric
+    () => {
+      const entrant = { onEntranceArrived: null };
+      spawnCalls.push(entrant);
+      return entrant;
+    },
+  );
+
+  // A regular hunter spawn (no override) still respects proximity and is
+  // correctly skipped — this must NOT regress.
+  controller.spawnAt();
+  assert.equal(spawnCalls.length, 0, 'a regular spawn must still honor the proximity gate');
+  assert.equal(controller.queuedCount, 0, 'a proximity skip must not queue — the timer retries it, not the queue');
+
+  // A boss-style spawn with ignoreProximity=true must succeed anyway.
+  controller.spawnAt(undefined, true);
+  assert.equal(spawnCalls.length, 1, 'a one-off arrival must not be silently dropped by player proximity');
+});
+
+test('a queued boss request replays with ignoreProximity still true once its door frees', () => {
+  const farPlayer = { x: -10000, y: -10000 };
+  const spawnedBy = [];
+  const controller = new EntranceController(
+    () => farPlayer,
+    0,
+    () => {
+      const entrant = { onEntranceArrived: null };
+      spawnedBy.push({ who: 'default', entrant });
+      return entrant;
+    },
+  );
+  const bossFactory = () => {
+    const entrant = { onEntranceArrived: null };
+    spawnedBy.push({ who: 'boss', entrant });
+    return entrant;
+  };
+
+  withFixedRandom(0, () => {
+    controller.spawnAt(); // door 1
+    controller.spawnAt(); // door 2
+    controller.spawnAt(); // door 3 — all full
+    controller.spawnAt(bossFactory, true); // queues (occupancy, not proximity)
+  });
+  assert.equal(controller.queuedCount, 1);
+
+  spawnedBy[0].entrant.onEntranceArrived();
+  assert.equal(spawnedBy.length, 4);
+  assert.equal(spawnedBy[3].who, 'boss');
+});
+
 test('spawnAt accepts a per-call factory override without disturbing the default', () => {
   const defaultSpawned = [];
   const overrideSpawned = [];

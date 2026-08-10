@@ -83,15 +83,22 @@ const DEFAULT_WEIGHTS: Readonly<Record<EntranceId, number>> = { left: 1, right: 
  * first — and the queue drains itself the instant a door frees up, chained
  * off each entrant's own onEntranceArrived hook.
  */
+/** A blocked spawnAt() request waiting for a door — remembers not just WHO but how to retry. */
+interface QueuedRequest {
+  readonly spawnEntrant: SpawnEntrant;
+  readonly ignoreProximity: boolean;
+}
+
 export class EntranceController {
   private readonly occupied = new Set<EntranceId>();
   /**
-   * FIFO of entrant factories waiting for a door, not just a count — a
-   * queued request (a boss lineup member, say) needs its OWN factory
-   * remembered and replayed once a door frees, not whichever factory
-   * happens to be the default (see spawnAt's override parameter).
+   * FIFO of blocked requests waiting for a door, not just a count — a
+   * queued request (a boss lineup member, say) needs its OWN factory AND
+   * its own ignoreProximity flag remembered and replayed once a door
+   * frees, not whichever factory/flag happens to be the default (see
+   * spawnAt's parameters).
    */
-  private readonly queue: SpawnEntrant[] = [];
+  private readonly queue: QueuedRequest[] = [];
   private lastDoor: EntranceId | null = null;
 
   constructor(
@@ -123,24 +130,36 @@ export class EntranceController {
    * uses the same factory), while a one-off arrival like a boss lineup
    * member hands in its own so it shares the same three doors and occupancy
    * as everything else instead of getting its own separate arrival math.
+   *
+   * `ignoreProximity`, if true, skips the too-close-to-player filter for
+   * this call. A regular hunter relies on the timer calling spawnAt() again
+   * every tick, so a proximity skip today just tries again in a second — but
+   * a one-off arrival (a boss) gets exactly one spawnAt() call ever, with no
+   * such retry loop of its own, so a plain proximity skip there would drop
+   * it silently: `flow.notifyBossSpawned()` still fires regardless, and
+   * with zero Captains actually on the field the "defeat the boss" objective
+   * can never complete — this is the mechanism behind the night-10 bug where
+   * bosses failed to spawn and the run could only end by running out the
+   * clock. Only the occupied-door path still queues-and-waits, which is
+   * fine: that one genuinely does self-heal the moment any door frees.
    */
-  spawnAt(spawnEntrant: SpawnEntrant = this.spawnEntrant): void {
-    const def = this.claimDoor();
+  spawnAt(spawnEntrant: SpawnEntrant = this.spawnEntrant, ignoreProximity = false): void {
+    const def = this.claimDoor(ignoreProximity);
     if (def) {
       this.enter(def, spawnEntrant);
       return;
     }
     if (this.occupied.size >= ENTRANCE_DEFS.length) {
-      this.queue.push(spawnEntrant);
+      this.queue.push({ spawnEntrant, ignoreProximity });
     }
   }
 
-  private claimDoor(): EntranceDef | null {
+  private claimDoor(ignoreProximity: boolean): EntranceDef | null {
     const player = this.getPlayerPosition();
     const free = ENTRANCE_DEFS.filter(
       (def) =>
         !this.occupied.has(def.id) &&
-        distance(def.spawnPoint, player) >= this.minSpawnDistanceFromPlayer,
+        (ignoreProximity || distance(def.spawnPoint, player) >= this.minSpawnDistanceFromPlayer),
     );
     if (free.length === 0) return null;
 
@@ -178,7 +197,7 @@ export class EntranceController {
       chained?.();
       this.occupied.delete(def.id);
       const next = this.queue.shift();
-      if (next) this.spawnAt(next);
+      if (next) this.spawnAt(next.spawnEntrant, next.ignoreProximity);
     };
   }
 }
