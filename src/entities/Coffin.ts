@@ -21,6 +21,16 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
   /** Current lid sound; the opposite transition waits until this finishes. */
   private transitionSound: Phaser.Sound.BaseSound | null = null;
   private queuedOpenState: boolean | null = null;
+  /**
+   * Safety net for transitionSound: if its COMPLETE event is ever dropped
+   * (pause/resume mid-transition, a backgrounded tab suspending the audio
+   * context, a flaky mobile audio backend), nothing would otherwise ever
+   * clear transitionSound again — every future setOpen() call would see it
+   * still set and silently queue forever, permanently jamming the lid for
+   * the rest of the session. This timer forces the same cleanup finish()
+   * does if COMPLETE hasn't shown up on its own by then.
+   */
+  private transitionFallback: Phaser.Time.TimerEvent | null = null;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, TEXTURES.coffinClosed);
@@ -109,6 +119,8 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
     const finish = (): void => {
       if (this.transitionSound !== sound) return;
       this.transitionSound = null;
+      this.transitionFallback?.remove();
+      this.transitionFallback = null;
       sound.destroy();
 
       const queued = this.queuedOpenState;
@@ -119,6 +131,15 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
     };
 
     sound.once(Phaser.Sound.Events.COMPLETE, finish);
+    // `duration` is only known once the AudioBuffer is decoded — it always
+    // is by this point (PreloadScene loads every SFX up front), but 0 is a
+    // defensive fallback rather than a real expectation. The +400ms margin
+    // is slack for the fade/settle a browser's own audio backend adds after
+    // the last audible sample, so this never races a COMPLETE that's simply
+    // running a little late.
+    const fallbackMs = (sound.duration > 0 ? sound.duration * 1000 : 1200) + 400;
+    this.transitionFallback = this.scene.time.delayedCall(fallbackMs, finish);
+
     if (!sound.play()) finish();
   }
 
@@ -173,6 +194,12 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
    * without this, `activated` stayed permanently true after the first
    * victory, so the glow never turned back off and `showRequirementHint`
    * (which bails out early while activated) stopped working for round 2+.
+   *
+   * Also force-clears any stuck transition state as a second line of
+   * defense alongside playTransitionSound's own fallback timer above: even
+   * if something got the lid jammed mid-transition, the very next night
+   * starts from a guaranteed-clean slate rather than carrying a stuck
+   * transitionSound forward indefinitely.
    */
   resetForNewRound(): void {
     this.activated = false;
@@ -180,6 +207,12 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
     this.pulseTween = null;
     this.stopBreathing();
     this.glow.setVisible(false).setAlpha(0.22).setScale(1);
+
+    this.transitionFallback?.remove();
+    this.transitionFallback = null;
+    this.transitionSound?.destroy();
+    this.transitionSound = null;
+    this.queuedOpenState = null;
   }
 
   /** Shown when the player touches the coffin before requirements are met. */
@@ -214,6 +247,8 @@ export class Coffin extends Phaser.Physics.Arcade.Image {
 
   override destroy(fromScene?: boolean): void {
     this.queuedOpenState = null;
+    this.transitionFallback?.remove();
+    this.transitionFallback = null;
     this.transitionSound?.destroy();
     this.transitionSound = null;
     this.breathTween?.stop();
