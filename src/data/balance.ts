@@ -400,19 +400,21 @@ export function bossBloodDropletsForNight(base: number, night: number): number {
  * `target` is a first estimate, not a measured one: a Captain only ever dies
  * once the blood meter is already full (bosses do not spawn before then), so
  * BOSS.bloodDroplets/PRIEST.bloodDroplets landing as overflow is the main way
- * this fills. At a 1-for-1 bloodPerPoint and ~25-30 blood per mini-boss,
- * roughly four Captain kills (or a bit over three Priest nights' worth)
- * earns a charge — tune this once real run totals are in.
+ * this fills. At a 2-for-1 bloodPerPoint and ~25-30 blood per mini-boss,
+ * roughly seven or eight Captain kills earns a charge — tune this once real
+ * run totals are in.
  */
 export const WRATH = {
   /** Raised from 60 and slowed down (see bloodPerPoint) — the first pass filled too easily. */
   target: 100,
   /**
-   * Blood spent per point of Wrath gained — a straight 1-for-1, matching
-   * BLOOD.overflowHealPerBlood and BLOOD.overnightHealPerBlood so every
-   * blood conversion in the game reads the same.
+   * Blood spent per point of Wrath gained. 2, not a straight 1-for-1 like
+   * BLOOD.overflowHealPerBlood/overnightHealPerBlood — the 1:1 pass made
+   * Wrath fill too easily in testing, so this reverts to the original
+   * asymmetry: Wrath is meant to feel earned across several mini-boss
+   * kills, not handed over by the first one.
    */
-  bloodPerPoint: 1,
+  bloodPerPoint: 2,
   /** Bats spawned for the Ultimate's swarm. */
   batCount: 30,
   /** How long the lightning + bat swarm hold the screen. */
