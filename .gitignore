@@ -46,3 +46,4 @@ coverage/
 
 # Playtest checklist — kept local, deliberately not shipped or deployed.
 docs/QA_CHECKLIST.md
+docs/qa_checklist_phase2.md
