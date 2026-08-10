@@ -64,7 +64,6 @@ export const DEPTHS = {
   /** Hunters walking in from off-screen: hidden behind the wall layer, above the floor. */
   enteringHunter: -4,
   wall: -2,
-  torch: 2,
   coffinGlow: 3,
   coffin: 4,
   pickup: 5,
@@ -74,6 +73,14 @@ export const DEPTHS = {
   hunter: 8,
   boss: 9,
   player: 10,
+  /**
+   * The wall sconces sit well above the walkable arena (y ~150 vs
+   * ARENA.top 200), so this never actually competes with a hunter or the
+   * Count for the same pixel — it's set above them anyway so a torch's
+   * flame sheet can never be mistakenly clipped behind an entrant standing
+   * near the wall band.
+   */
+  torch: 11,
   attackFx: 12,
   dawnOverlay: 50,
   /** Screen-space blood splatter on a big kill burst — over everything in the hall, under the HUD. */

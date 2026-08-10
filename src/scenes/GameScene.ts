@@ -1462,7 +1462,11 @@ export class GameScene extends Phaser.Scene {
       pressure.maxAlive,
       () => this.hunters.countActive(true),
       () => ({ x: this.player.x, y: this.player.y }),
-      (sx, sy, ax, ay) => this.hunters.add(this.createHunter(sx, sy, ax, ay)),
+      (sx, sy, ax, ay) => {
+        const hunter = this.createHunter(sx, sy, ax, ay);
+        this.hunters.add(hunter);
+        return hunter;
+      },
     );
 
     this.hud?.setNight(this.night);
@@ -1620,7 +1624,7 @@ export class GameScene extends Phaser.Scene {
       // scripted low HP, even if a slow frame briefly overlaps the safe ring.
       if (this.phase !== 'playing') return;
       const hunter = hunterObj as Hunter;
-      if (hunter.isAlive) this.player.takeDamage(hunter.contactDamage);
+      if (hunter.isAlive && !hunter.isEntering) this.player.takeDamage(hunter.contactDamage);
     });
 
     this.physics.add.overlap(this.player, this.pickups, (_player, pickupObj) => {

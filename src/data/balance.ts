@@ -195,6 +195,10 @@ export const HUNTER = {
   spawnIntervalDecreasePerNightMs: 75,
   /** Prevents later nights from turning the spawner into a solid stream. */
   minimumSpawnIntervalMs: 650,
+  /** How long a freshly spawned hunter holds in the doorway's shadow before walking in. */
+  entranceSpawnHoldMs: 150,
+  /** How long the fade-in from that shadow takes, once the walk-in starts. */
+  entranceFadeMs: 260,
 } as const;
 
 /**

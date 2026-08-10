@@ -11,6 +11,9 @@ export interface HunterStats {
   moveSpeed: number;
 }
 
+/** The doorway-shadow tint a hunter wears for the whole entrance, cleared the moment it arrives. */
+const ENTRANCE_SHADOW_TINT = 0x1c1c28;
+
 /**
  * Which of Romi's humans a hunter is. Passed through the constructor (not a
  * subclass field) because the base constructor already plays an animation —
@@ -81,7 +84,13 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   protected readonly look: HunterLook;
   private nextSwingAt = 0;
   private lastTargetDist = Infinity;
-  private entering = false;
+  /**
+   * spawning: holding still in the doorway's shadow, fading in.
+   * entering: walking the straight line from the door to its release point.
+   * active: normal AI — pursue() steers, combat and contact damage apply.
+   */
+  private entryState: 'spawning' | 'entering' | 'active' = 'active';
+  private spawnHoldUntil = 0;
   private arrivalPoint: { x: number; y: number } | null = null;
   /**
    * Optional scenery-only steering used by the opening cinematic. It keeps an
@@ -135,9 +144,13 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     return this.health > 0;
   }
 
-  /** True while walking in from off-screen — used to skip the coffin collider until arrival. */
+  /**
+   * True while spawning or walking in from a door — used to skip the coffin
+   * collider, exempt this hunter from the player's sword and contact
+   * damage, and keep pursue() from steering, until arrival.
+   */
   get isEntering(): boolean {
-    return this.entering;
+    return this.entryState !== 'active';
   }
 
   /** True while being shoved by a landed strike; subclasses must not steer then. */
@@ -154,7 +167,7 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
    * entrance path can't be knocked off course.
    */
   applyKnockback(sourceX: number, sourceY: number): void {
-    if (!this.active || !this.isAlive || this.entering) return;
+    if (!this.active || !this.isAlive || this.isEntering) return;
 
     // A committed attack is not interrupted, only shoved. This is the line
     // between a hunter and a boss: pressuring a hunter stops him hitting you,
@@ -193,17 +206,33 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
 
   /**
    * Start a walk-in entrance: this hunter is expected to already be
-   * positioned off-screen (see entrance.ts's offCanvasSpawnPoint). Until it
-   * reaches `(arrivalX, arrivalY)`, pursue() ignores the player and beelines
-   * there instead, hidden behind the wall layer the whole way in.
+   * positioned at (or off) the edge of the hall. Two beats before pursue()
+   * takes over: he holds in place for HUNTER.entranceSpawnHoldMs, tinted
+   * dark and fading in from alpha 0 as if stepping out of the doorway's own
+   * shadow, then walks the straight line to `(arrivalX, arrivalY)` — see
+   * updateForcedMovement(). Combat, contact damage and knockback are all
+   * suppressed for both beats via isEntering.
    */
   beginEntrance(arrivalX: number, arrivalY: number): void {
     this.arrivalPoint = { x: arrivalX, y: arrivalY };
-    this.entering = true;
+    this.entryState = 'spawning';
+    this.spawnHoldUntil = this.scene.time.now + HUNTER.entranceSpawnHoldMs;
     this.setDepth(DEPTHS.enteringHunter);
     // He starts outside the hall by definition, so the bounds have to be off
     // until he is in - they go back on the moment he arrives.
     this.setCollideWorldBounds(false);
+    this.setVelocity(0, 0);
+    this.play(animKey(this.look.charKey, 'idle', this.facing), true);
+
+    this.setAlpha(0);
+    this.setTint(ENTRANCE_SHADOW_TINT);
+    this.setTintMode(Phaser.TintModes.FILL);
+    this.scene.tweens.add({
+      targets: this,
+      alpha: 1,
+      duration: HUNTER.entranceFadeMs,
+      ease: 'Quad.easeOut',
+    });
   }
 
   /**
@@ -307,16 +336,29 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
       return true;
     }
 
-    if (this.entering && this.arrivalPoint) {
+    if (this.entryState === 'spawning') {
+      // Hold dead still in the doorway while the fade-in plays; walking
+      // starts only once the shadow beat has actually elapsed.
+      this.setVelocity(0, 0);
+      if (this.scene.time.now >= this.spawnHoldUntil) {
+        this.entryState = 'entering';
+      }
+      return true;
+    }
+
+    if (this.entryState === 'entering' && this.arrivalPoint) {
       this.walkToward(this.arrivalPoint.x, this.arrivalPoint.y);
       if (Phaser.Math.Distance.Between(this.x, this.y, this.arrivalPoint.x, this.arrivalPoint.y) < 10) {
-        this.entering = false;
+        this.entryState = 'active';
         this.arrivalPoint = null;
         this.setDepth(this.normalDepth);
         // He is inside the hall now, so the hall's walls apply to him. Without
         // this a knockback near a wall punts him into the wall band, where he
         // stands stuck and drops his blood outside the playfield.
         this.setCollideWorldBounds(true);
+        this.clearTint();
+        this.setTintMode(Phaser.TintModes.MULTIPLY);
+        this.applyBaseTint();
         this.onEntranceArrived?.();
       }
       return true;
@@ -407,7 +449,7 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     coffinHalfHeight: number,
     targetX: number,
   ): void {
-    if (this.entering || this.coffinDetour) return;
+    if (this.isEntering || this.coffinDetour) return;
     const body = this.body as Phaser.Physics.Arcade.Body;
     const waypoints = coffinDetourWaypoints(
       { x: this.x, y: this.y },
@@ -440,7 +482,7 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
    */
   refreshPursuit(): void {
     this.coffinDetour = null;
-    if (!this.entering) this.cutsceneTarget = null;
+    if (!this.isEntering) this.cutsceneTarget = null;
   }
 
   protected walkToward(targetX: number, targetY: number, speed = this.moveSpeed): void {
