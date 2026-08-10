@@ -24,26 +24,34 @@ export const WINDOW_X_CENTERS = [253, 640, 1026] as const;
 export const WINDOW_Y = 119;
 
 /**
- * Romi's four painted wall-sconce torches, one on each blank pillar between
- * a window and a portrait frame — NOT the two outer wall sections, which
- * carry a similar-looking but unrelated corner bracket, not a torch cone
- * (an earlier pass here mistook those for two more torches; testing caught
- * it — only these four are real).
+ * All six of Romi's painted wall-sconce torches: the four between each
+ * window/portrait pair, plus the two on the outer wall sections flanking
+ * the end pillars (an earlier pass here dropped those two as a mistaken
+ * bracket shape — they're real torches after all; testing caught it).
  *
- * Each point is the exact top-center of the pillar's cone-shaped torch
- * holder — the flat top edge where the holder opens to cradle the flame —
- * found by scanning room_bg.jpeg pixel-by-pixel for the holder's dark
- * outline (thresholded against the flat grey pillar face and the pillar's
- * own border dashes on either side) and taking the top row's midpoint. A
- * fire sprite centered here sits with its base in the cup and its flame
- * rising above it, matching where Romi actually drew the holder rather than
- * an eyeballed guess at the shape's overall middle.
+ * Each point starts from the exact top-center of the pillar's cone-shaped
+ * torch holder — the flat top edge where the holder opens to cradle the
+ * flame — found by scanning room_bg.jpeg pixel-by-pixel for the holder's
+ * dark outline (thresholded against the flat grey pillar face and the
+ * pillar's own border dashes on either side) and taking the top row's
+ * midpoint, then nudged +4 right / -5 up from that raw measurement per
+ * testing feedback ("more up and right").
+ *
+ * CAVEAT: that nudge is this pass's best-effort read of "more up and right"
+ * without a direct pixel comparison against Romi's marked-up screenshot
+ * (red vs. pink circles) — the raw top-center alone is solid (verified by
+ * rendering markers over it and eyeballing the overlay), but the offset is
+ * a judgment call. If it's still off once the screenshot itself is
+ * available, adjust these six against it directly rather than re-deriving
+ * from the image again.
  */
 export const TORCH_POSITIONS = [
-  { x: 364, y: 131 },
-  { x: 536, y: 130 },
-  { x: 743, y: 130 },
-  { x: 915, y: 131 },
+  { x: 124, y: 128 }, // outer left
+  { x: 368, y: 126 }, // between window 1 and portrait 1
+  { x: 540, y: 125 }, // between portrait 1 and window 2
+  { x: 747, y: 125 }, // between window 2 and portrait 2
+  { x: 919, y: 126 }, // between portrait 2 and window 3
+  { x: 1163, y: 128 }, // outer right
 ] as const;
 
 export class CastleMap {
