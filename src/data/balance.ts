@@ -425,6 +425,17 @@ export const WRATH = {
   durationMs: 2600,
   /** Screen darkens by this much for the duration — noticeably dimmer, nowhere near the pause menu's black. */
   screenDarkenAlpha: 0.18,
+  /**
+   * Fraction of a Captain's MAX health the Ultimate's lightning costs him —
+   * not a one-shot the way it is for regular hunters. A Captain near full
+   * health survives (worn down and hit-flashed, same as any other landed
+   * hit); one already low can still die to it. Applied against maxHealth,
+   * not current health, so the cost is the same fixed bite regardless of
+   * how much of a beating he's already taken.
+   */
+  captainDamageFraction: 0.75,
+  /** Same idea as captainDamageFraction, tuned lower — the Priest is meant to be the tougher fight. */
+  priestDamageFraction: 0.5,
 } as const;
 
 /**

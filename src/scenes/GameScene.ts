@@ -2039,9 +2039,10 @@ export class GameScene extends Phaser.Scene {
 
   /**
    * The lightning: a camera flash and shake, a jagged bolt down onto every
-   * living thing in the hall, and then every one of them dies where it
-   * stands — the same kill pipeline a melee hit uses (corpse, blood, decal,
-   * stats), just fired for the whole roster at once rather than one target.
+   * living thing in the hall. A regular hunter dies where it stands — the
+   * same kill pipeline a melee hit uses (corpse, blood, decal, stats), just
+   * fired for the whole roster at once rather than one target. A mini-boss
+   * or the Priest is too tough for that: see applyUltimateDamage.
    */
   private lightningKillAll(): void {
     // The arrival flash already fired in fireUltimate — this is the impact,
@@ -2052,11 +2053,31 @@ export class GameScene extends Phaser.Scene {
     const chainTargets = targets.map((target) => ({ x: target.x, y: target.y }));
     for (const target of targets) {
       this.spawnLightningBolt(target.x, target.y);
-      this.onHunterKilled(target);
+      if (this.applyUltimateDamage(target)) this.onHunterKilled(target);
     }
     this.time.delayedCall(COLD_OPEN.chainLeadMs, () => {
       this.playChainLightning(chainTargets);
     });
+  }
+
+  /**
+   * True if this Ultimate hit killed `target` — the caller then runs the
+   * normal kill pipeline. A regular hunter always dies outright, matching
+   * how the Ultimate has always worked. A mini-boss (Captain) or the Priest
+   * is too tough to one-shot: the bolt instead costs a fixed fraction of
+   * their MAX health (WRATH.captainDamageFraction / priestDamageFraction),
+   * so one near full health survives — hit-flashed by takeDamage's own
+   * feedback, same as any other landed hit — while one already worn down
+   * can still die to it.
+   */
+  private applyUltimateDamage(target: Hunter): boolean {
+    if (target instanceof Priest) {
+      return target.takeDamage(target.maxHealth * WRATH.priestDamageFraction);
+    }
+    if (target instanceof HunterCaptain || target instanceof GarlicCaptain || target instanceof CrossCaptain) {
+      return target.takeDamage(target.maxHealth * WRATH.captainDamageFraction);
+    }
+    return true; // regular hunters die outright, as the Ultimate always has
   }
 
   /**
