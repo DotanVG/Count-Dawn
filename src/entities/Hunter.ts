@@ -11,8 +11,23 @@ export interface HunterStats {
   moveSpeed: number;
 }
 
-/** The doorway-shadow tint a hunter wears for the whole entrance, cleared the moment it arrives. */
+/** The doorway-shadow tint a hunter wears while still inside the door frame. */
 const ENTRANCE_SHADOW_TINT = 0x1c1c28;
+
+/** Channel-wise lerp between two 0xRRGGBB colors, t clamped 0 (from) - 1 (to). */
+function lerpTint(from: number, to: number, t: number): number {
+  const clamped = Phaser.Math.Clamp(t, 0, 1);
+  const fr = (from >> 16) & 0xff;
+  const fg = (from >> 8) & 0xff;
+  const fb = from & 0xff;
+  const tr = (to >> 16) & 0xff;
+  const tg = (to >> 8) & 0xff;
+  const tb = to & 0xff;
+  const r = Math.round(fr + (tr - fr) * clamped);
+  const g = Math.round(fg + (tg - fg) * clamped);
+  const b = Math.round(fb + (tb - fb) * clamped);
+  return (r << 16) | (g << 8) | b;
+}
 
 /**
  * Which of Romi's humans a hunter is. Passed through the constructor (not a
@@ -92,6 +107,15 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   private entryState: 'spawning' | 'entering' | 'active' = 'active';
   private spawnHoldUntil = 0;
   private arrivalPoint: { x: number; y: number } | null = null;
+  /** Where this walk-in started — the far end of the entrance tint gradient below. */
+  private entranceSpawnPoint: { x: number; y: number } | null = null;
+  /**
+   * The door-frame/room boundary along the walk, if this entrance has one
+   * (only door spawns do — see EntranceController). Defaults to the spawn
+   * point itself, which collapses the "stay dark inside the frame" hold to
+   * zero distance so the brighten gradient just runs the whole walk instead.
+   */
+  private entranceThreshold: { x: number; y: number } | null = null;
   /**
    * Optional scenery-only steering used by the opening cinematic. It keeps an
    * actor walking/standing without ever entering the melee state, so closing
@@ -212,9 +236,19 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
    * shadow, then walks the straight line to `(arrivalX, arrivalY)` — see
    * updateForcedMovement(). Combat, contact damage and knockback are all
    * suppressed for both beats via isEntering.
+   *
+   * `thresholdX`/`thresholdY` mark where the door frame ends and the lit
+   * room floor begins (see EntranceController's `threshold`). The shadow
+   * tint holds at full strength from the spawn point to there, then eases
+   * out smoothly the rest of the way to `(arrivalX, arrivalY)` — see
+   * updateEntranceTint(). Callers with no real door frame (the cold open,
+   * boss arrivals) can omit them: with no distance between spawn and
+   * threshold, the ease just starts immediately and runs the whole walk.
    */
-  beginEntrance(arrivalX: number, arrivalY: number): void {
+  beginEntrance(arrivalX: number, arrivalY: number, thresholdX?: number, thresholdY?: number): void {
     this.arrivalPoint = { x: arrivalX, y: arrivalY };
+    this.entranceSpawnPoint = { x: this.x, y: this.y };
+    this.entranceThreshold = { x: thresholdX ?? this.x, y: thresholdY ?? this.y };
     this.entryState = 'spawning';
     this.spawnHoldUntil = this.scene.time.now + HUNTER.entranceSpawnHoldMs;
     this.setDepth(DEPTHS.enteringHunter);
@@ -225,14 +259,50 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     this.play(animKey(this.look.charKey, 'idle', this.facing), true);
 
     this.setAlpha(0);
+    // MULTIPLY throughout (not FILL): a FILL tint eased toward white would
+    // paint a flat white silhouette instead of restoring his real colors, so
+    // MULTIPLY is the only mode where "fully brightened" and "no tint at
+    // all" are the same state — see updateEntranceTint().
+    this.setTintMode(Phaser.TintModes.MULTIPLY);
     this.setTint(ENTRANCE_SHADOW_TINT);
-    this.setTintMode(Phaser.TintModes.FILL);
     this.scene.tweens.add({
       targets: this,
       alpha: 1,
       duration: HUNTER.entranceFadeMs,
       ease: 'Quad.easeOut',
     });
+  }
+
+  /**
+   * Holds full shadow tint from the spawn point to the door threshold, then
+   * eases it out linearly by walked distance from there to the arrival
+   * point — dark inside the door frame, gradually brightening across the
+   * room floor, fully lit by the time pursue() takes over. Distance-based
+   * rather than time-based so it always matches the actual walk, whatever
+   * its length or this hunter's speed.
+   */
+  private updateEntranceTint(): void {
+    if (!this.entranceSpawnPoint || !this.arrivalPoint) return;
+    const spawn = this.entranceSpawnPoint;
+    const arrival = this.arrivalPoint;
+    const threshold = this.entranceThreshold ?? spawn;
+
+    const totalDist = Phaser.Math.Distance.Between(spawn.x, spawn.y, arrival.x, arrival.y);
+    if (totalDist <= 0) {
+      this.setTint(0xffffff);
+      return;
+    }
+    const traveled = Phaser.Math.Distance.Between(spawn.x, spawn.y, this.x, this.y);
+    const progress = Phaser.Math.Clamp(traveled / totalDist, 0, 1);
+
+    const doorFrameDist = Phaser.Math.Distance.Between(spawn.x, spawn.y, threshold.x, threshold.y);
+    const doorFrameFraction = Phaser.Math.Clamp(doorFrameDist / totalDist, 0, 1);
+
+    const brighten =
+      doorFrameFraction >= 1
+        ? 0
+        : Phaser.Math.Clamp((progress - doorFrameFraction) / (1 - doorFrameFraction), 0, 1);
+    this.setTint(lerpTint(ENTRANCE_SHADOW_TINT, 0xffffff, brighten));
   }
 
   /**
@@ -348,16 +418,18 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
 
     if (this.entryState === 'entering' && this.arrivalPoint) {
       this.walkToward(this.arrivalPoint.x, this.arrivalPoint.y);
+      this.updateEntranceTint();
       if (Phaser.Math.Distance.Between(this.x, this.y, this.arrivalPoint.x, this.arrivalPoint.y) < 10) {
         this.entryState = 'active';
         this.arrivalPoint = null;
+        this.entranceSpawnPoint = null;
+        this.entranceThreshold = null;
         this.setDepth(this.normalDepth);
         // He is inside the hall now, so the hall's walls apply to him. Without
         // this a knockback near a wall punts him into the wall band, where he
         // stands stuck and drops his blood outside the playfield.
         this.setCollideWorldBounds(true);
         this.clearTint();
-        this.setTintMode(Phaser.TintModes.MULTIPLY);
         this.applyBaseTint();
         this.onEntranceArrived?.();
       }

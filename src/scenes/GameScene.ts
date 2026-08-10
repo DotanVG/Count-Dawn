@@ -1462,8 +1462,8 @@ export class GameScene extends Phaser.Scene {
       pressure.maxAlive,
       () => this.hunters.countActive(true),
       () => ({ x: this.player.x, y: this.player.y }),
-      (sx, sy, ax, ay) => {
-        const hunter = this.createHunter(sx, sy, ax, ay);
+      (sx, sy, ax, ay, tx, ty) => {
+        const hunter = this.createHunter(sx, sy, ax, ay, tx, ty);
         this.hunters.add(hunter);
         return hunter;
       },
@@ -1478,11 +1478,18 @@ export class GameScene extends Phaser.Scene {
    * entrance, completely different threat — and everything else walks in
    * carrying one of Romi's weapons.
    */
-  private createHunter(spawnX: number, spawnY: number, arrivalX: number, arrivalY: number): Hunter {
+  private createHunter(
+    spawnX: number,
+    spawnY: number,
+    arrivalX: number,
+    arrivalY: number,
+    thresholdX?: number,
+    thresholdY?: number,
+  ): Hunter {
     const hunter = this.canSpawnThrower()
       ? this.createThrower(spawnX, spawnY)
       : this.createMeleeHunter(spawnX, spawnY);
-    hunter.beginEntrance(arrivalX, arrivalY);
+    hunter.beginEntrance(arrivalX, arrivalY, thresholdX, thresholdY);
     hunter.onStrikeHit = () => {
       if (this.phase === 'playing') this.player.takeDamage(hunter.contactDamage);
     };

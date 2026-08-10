@@ -70,6 +70,8 @@ export type SpawnEntrant = (
   spawnY: number,
   releaseX: number,
   releaseY: number,
+  thresholdX: number,
+  thresholdY: number,
 ) => Entrant;
 
 const DEFAULT_WEIGHTS: Readonly<Record<EntranceId, number>> = { left: 1, right: 1, down: 1 };
@@ -155,6 +157,8 @@ export class EntranceController {
       def.spawnPoint.y,
       def.releasePoint.x,
       def.releasePoint.y,
+      def.threshold.x,
+      def.threshold.y,
     );
     // Compose rather than overwrite: some entrants (bosses) already hang
     // their own post-arrival hook off this callback.

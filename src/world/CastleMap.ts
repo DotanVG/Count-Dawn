@@ -24,15 +24,27 @@ export const WINDOW_X_CENTERS = [253, 640, 1026] as const;
 export const WINDOW_Y = 119;
 
 /**
- * World-x centers of Romi's six painted wall-sconce torches: the four
- * between each window/portrait pair, plus the two on the outer wall
- * sections flanking the end pillars. Measured directly off room_bg.jpeg —
- * each is the small grey bracket-and-drip shape at TORCH_Y, centered on the
- * blank pillar between two window/portrait frames (or, for the outer two,
- * between the corner and the nearest window).
+ * Romi's four painted wall-sconce torches, one on each blank pillar between
+ * a window and a portrait frame — NOT the two outer wall sections, which
+ * carry a similar-looking but unrelated corner bracket, not a torch cone
+ * (an earlier pass here mistook those for two more torches; testing caught
+ * it — only these four are real).
+ *
+ * Each point is the exact top-center of the pillar's cone-shaped torch
+ * holder — the flat top edge where the holder opens to cradle the flame —
+ * found by scanning room_bg.jpeg pixel-by-pixel for the holder's dark
+ * outline (thresholded against the flat grey pillar face and the pillar's
+ * own border dashes on either side) and taking the top row's midpoint. A
+ * fire sprite centered here sits with its base in the cup and its flame
+ * rising above it, matching where Romi actually drew the holder rather than
+ * an eyeballed guess at the shape's overall middle.
  */
-export const TORCH_X_CENTERS = [118, 360, 535, 740, 908, 1160] as const;
-export const TORCH_Y = 150;
+export const TORCH_POSITIONS = [
+  { x: 364, y: 131 },
+  { x: 536, y: 130 },
+  { x: 743, y: 130 },
+  { x: 915, y: 131 },
+] as const;
 
 export class CastleMap {
   constructor(scene: Phaser.Scene) {
@@ -42,9 +54,9 @@ export class CastleMap {
       .setDepth(DEPTHS.floor);
 
     // Torch sconces on the wall face, flickering through the night.
-    for (const x of TORCH_X_CENTERS) {
+    for (const { x, y } of TORCH_POSITIONS) {
       const torch = scene.add
-        .sprite(x, TORCH_Y, TEXTURES.fire, 1)
+        .sprite(x, y, TEXTURES.fire, 1)
         .setScale(1.6)
         .setDepth(DEPTHS.torch);
       torch.play({ key: ANIMS.torch, startFrame: Phaser.Math.Between(0, 5) });
