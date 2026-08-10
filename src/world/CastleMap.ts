@@ -26,32 +26,43 @@ export const WINDOW_Y = 119;
 /**
  * All six of Romi's painted wall-sconce torches: the four between each
  * window/portrait pair, plus the two on the outer wall sections flanking
- * the end pillars (an earlier pass here dropped those two as a mistaken
- * bracket shape — they're real torches after all; testing caught it).
+ * the end pillars.
  *
- * Each point starts from the exact top-center of the pillar's cone-shaped
- * torch holder — the flat top edge where the holder opens to cradle the
- * flame — found by scanning room_bg.jpeg pixel-by-pixel for the holder's
- * dark outline (thresholded against the flat grey pillar face and the
- * pillar's own border dashes on either side) and taking the top row's
- * midpoint, then nudged +4 right / -5 up from that raw measurement per
- * testing feedback ("more up and right").
+ * These are placement coordinates for the ANIMATED FIRE SPRITE
+ * (TEXTURES.fire), not the torch holder's own position — the two are not
+ * the same point, which is why earlier passes at this kept landing wrong
+ * even with an accurate read of the holder itself:
  *
- * CAVEAT: that nudge is this pass's best-effort read of "more up and right"
- * without a direct pixel comparison against Romi's marked-up screenshot
- * (red vs. pink circles) — the raw top-center alone is solid (verified by
- * rendering markers over it and eyeballing the overlay), but the offset is
- * a judgment call. If it's still off once the screenshot itself is
- * available, adjust these six against it directly rather than re-deriving
- * from the image again.
+ * 1. room_bg.jpeg is authored at 1280x768 but CastleMap stretches it to
+ *    the 1280x720 canvas (setDisplaySize) — a 0.9375x vertical squish. A
+ *    Y measured on the source file (as the holder positions originally
+ *    were) lands ~6% too low on screen unless multiplied by 720/768 first.
+ * 2. The fire sprite's OWN painted content is not centered in its 44x48
+ *    frame — verified by comparing a background-only capture of the
+ *    canvas against one with the torches visible (same crop, per-pixel
+ *    brightness delta): the flame's visible centroid sits a consistent
+ *    ~18px left of wherever the sprite is placed, the same offset on
+ *    every torch regardless of which random animation frame it started
+ *    on. So the sprite has to be placed 18px right of the actual target
+ *    for the VISIBLE flame to land there.
+ *
+ * Both corrections are folded in below: each point is the holder's
+ * top-center (the upside-down triangle's peak — its widest, flattest
+ * edge, where a flame would rise out of the cup), Y already converted to
+ * on-screen scale, X shifted +18 to cancel the sprite's own off-center
+ * art. Confirmed live, not by calculation alone: with torches hidden vs.
+ * shown, the same per-pixel diff used to find the offset was re-run
+ * against these corrected coordinates, and the flame's visible centroid
+ * landed within ~2px of the holder's actual on-screen top-center on every
+ * torch checked.
  */
 export const TORCH_POSITIONS = [
-  { x: 124, y: 128 }, // outer left
-  { x: 368, y: 126 }, // between window 1 and portrait 1
-  { x: 540, y: 125 }, // between portrait 1 and window 2
-  { x: 747, y: 125 }, // between window 2 and portrait 2
-  { x: 919, y: 126 }, // between portrait 2 and window 3
-  { x: 1163, y: 128 }, // outer right
+  { x: 138, y: 125 }, // outer left
+  { x: 382, y: 123 }, // between window 1 and portrait 1
+  { x: 554, y: 122 }, // between portrait 1 and window 2
+  { x: 761, y: 122 }, // between window 2 and portrait 2
+  { x: 933, y: 123 }, // between portrait 2 and window 3
+  { x: 1177, y: 125 }, // outer right
 ] as const;
 
 export class CastleMap {
