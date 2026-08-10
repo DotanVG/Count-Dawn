@@ -30,6 +30,36 @@ test('every threshold sits exactly on the arena bounds', () => {
   }
 });
 
+test('the left door releases a hunter clear of the coffin — regression for the coffin-collision softlock', () => {
+  // Mirrors GameScene's COFFIN_POS (150, 430) and Coffin.ts's own static
+  // body (160x230 art at 0.55 scale), expanded by the largest actor on the
+  // field (a Captain, ~27px collision radius at BOSS.spriteScale) plus the
+  // same 8px clearance coffinDetourWaypoints itself uses. A release point
+  // inside this box is exactly the bug: collision re-arms already
+  // overlapping the coffin, and Arcade's separation fights the AI's own
+  // steering instead of resolving.
+  const coffin = { x: 150, y: 430, halfWidth: (160 * 0.55) / 2, halfHeight: (230 * 0.55) / 2 };
+  const actorRadius = 27;
+  const clearance = 8;
+  const box = {
+    left: coffin.x - coffin.halfWidth - actorRadius - clearance,
+    right: coffin.x + coffin.halfWidth + actorRadius + clearance,
+    top: coffin.y - coffin.halfHeight - actorRadius - clearance,
+    bottom: coffin.y + coffin.halfHeight + actorRadius + clearance,
+  };
+
+  const left = ENTRANCE_DEFS.find((d) => d.id === 'left');
+  const inside =
+    left.releasePoint.x >= box.left &&
+    left.releasePoint.x <= box.right &&
+    left.releasePoint.y >= box.top &&
+    left.releasePoint.y <= box.bottom;
+  assert.ok(
+    !inside,
+    `left door releasePoint ${JSON.stringify(left.releasePoint)} lands inside the coffin's expanded box ${JSON.stringify(box)}`,
+  );
+});
+
 test('a door stays occupied until its entrant arrives, then frees up', () => {
   const farAway = { x: -10000, y: -10000 };
   const spawned = [];

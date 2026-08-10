@@ -35,12 +35,47 @@ export const ENTRANCES: Readonly<Record<EntranceId, Point>> = {
 /** How far past the wall threshold a hunter walks before being handed back to normal AI. */
 const RELEASE_INSET = 56;
 
-function defineEntrance(id: EntranceId, spawnPoint: Point, threshold: Point, dir: Point): EntranceDef {
+/**
+ * The left door's own release inset, overriding the shared one above.
+ *
+ * The coffin (GameScene's COFFIN_POS, (150, 430)) sits close enough to the
+ * left wall that its static collision box — expanded to the coffin's own
+ * half-extents (~44w/~63h) — spans world x 106-194 at the left door's walk
+ * height (y 383, itself inside the coffin's y-range of ~367-493). The
+ * default 56px inset lands the release point at x=120: INSIDE that box. An
+ * entrant becomes "active" (collision re-enabled) already overlapping a
+ * static body, and Arcade's separation impulse fights the AI's own
+ * steering every physics step instead of resolving — the coffin-collision
+ * softlock this exists to prevent.
+ *
+ * There's no inset that clears the coffin on the near (wall) side without
+ * shrinking the walk to a couple of pixels — the box's near edge (106) is
+ * only 42px past the threshold (64), well inside even a base hunter's
+ * collision radius, let alone the ~27px-radius a Captain carries at
+ * BOSS.spriteScale. Clearing the FAR side instead needs release.x past the
+ * box's right edge (194), plus a Captain's radius (27) plus the same 8px
+ * clearance coffinDetourWaypoints itself routes around the coffin with
+ * (enemyNavigation.ts's DETOUR_CLEARANCE) — 194 + 27 + 8 = 229 — so this
+ * inset (176 -> release.x 240) adds a real margin past that, not just past
+ * the coffin's bare edge. The walk takes longer than the other two doors'
+ * as a result (~1.6s instead of ~0.6s at HUNTER.moveSpeed) — a real cost,
+ * but a visibly-working slower entrance beats a fast one that gets
+ * physically wedged in the coffin every single time.
+ */
+const LEFT_RELEASE_INSET = 176;
+
+function defineEntrance(
+  id: EntranceId,
+  spawnPoint: Point,
+  threshold: Point,
+  dir: Point,
+  releaseInset: number = RELEASE_INSET,
+): EntranceDef {
   return {
     id,
     spawnPoint,
     threshold,
-    releasePoint: { x: threshold.x + dir.x * RELEASE_INSET, y: threshold.y + dir.y * RELEASE_INSET },
+    releasePoint: { x: threshold.x + dir.x * releaseInset, y: threshold.y + dir.y * releaseInset },
   };
 }
 
@@ -51,7 +86,13 @@ function defineEntrance(id: EntranceId, spawnPoint: Point, threshold: Point, dir
  * corner on the way in.
  */
 export const ENTRANCE_DEFS: readonly EntranceDef[] = [
-  defineEntrance('left', ENTRANCES.left, { x: ARENA.left, y: ENTRANCES.left.y }, { x: 1, y: 0 }),
+  defineEntrance(
+    'left',
+    ENTRANCES.left,
+    { x: ARENA.left, y: ENTRANCES.left.y },
+    { x: 1, y: 0 },
+    LEFT_RELEASE_INSET,
+  ),
   defineEntrance('right', ENTRANCES.right, { x: ARENA.right, y: ENTRANCES.right.y }, { x: -1, y: 0 }),
   defineEntrance('down', ENTRANCES.down, { x: ENTRANCES.down.x, y: ARENA.bottom }, { x: 0, y: -1 }),
 ];

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { HUNTER, KNOCKBACK } from '../data/balance';
+import { COFFIN_COLLISION, HUNTER, KNOCKBACK } from '../data/balance';
 import { ARENA, DEPTHS } from '../game/constants';
 import { TEXTURES, animKey, type CharacterKey, type Dir4 } from '../utils/assetKeys';
 import { angleToDir4 } from '../utils/direction';
@@ -13,6 +13,9 @@ export interface HunterStats {
 
 /** The doorway-shadow tint a hunter wears while still inside the door frame. */
 const ENTRANCE_SHADOW_TINT = 0x404060;
+
+/** How long since the last reported coffin contact counts as "actually cleared" — see noteCoffinContact(). */
+const COFFIN_CONTACT_GAP_MS = 100;
 
 /** Channel-wise lerp between two 0xRRGGBB colors, t clamped 0 (from) - 1 (to). */
 function lerpTint(from: number, to: number, t: number): number {
@@ -133,6 +136,10 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
     lastDistance: number;
     lastProgressAt: number;
   } | null = null;
+  /** When continuous coffin contact began, if any is ongoing — see noteCoffinContact(). */
+  private coffinContactStartAt: number | null = null;
+  /** Most recent frame contact was actually reported; a gap this long means it's cleared. */
+  private lastCoffinContactAt = 0;
   private knockbackUntil = 0;
   private readonly knockbackVelocity = new Phaser.Math.Vector2();
   /** Bumped whenever a swing is started or interrupted; a stale token can't land a hit. */
@@ -401,6 +408,20 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
    * (GarlicThrower) can defer to it exactly like pursue() does.
    */
   protected updateForcedMovement(): boolean {
+    // The collider's process callback only ever tells us contact is
+    // HAPPENING (see noteCoffinContact); nothing calls in to say it's
+    // stopped. This runs every frame regardless of state, so a gap this
+    // long since the last reported contact is what "actually cleared the
+    // coffin" looks like — reset the timer so the next approach starts
+    // counting fresh instead of inheriting time from a previous, unrelated
+    // brush against it.
+    if (
+      this.coffinContactStartAt !== null &&
+      this.scene.time.now - this.lastCoffinContactAt > COFFIN_CONTACT_GAP_MS
+    ) {
+      this.coffinContactStartAt = null;
+    }
+
     if (this.isKnockedBack) {
       this.updateKnockback();
       return true;
@@ -545,6 +566,25 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
       lastDistance: Phaser.Math.Distance.Between(this.x, this.y, first.x, first.y),
       lastProgressAt: this.scene.time.now,
     };
+  }
+
+  /**
+   * Called from the coffin collider's process callback in GameScene every
+   * physics step this hunter's body is actually overlapping the coffin's —
+   * returning false there skips separation for that step, letting the
+   * hunter pass straight through instead of colliding. Normal routing
+   * (avoidCoffin/coffinDetour) assumes a route starting from OUTSIDE the
+   * coffin; if a hunter's body ever ends up already inside it, Arcade's own
+   * separation impulse fights that steering every step instead of
+   * resolving it, and this is the only way out. Contact under
+   * COFFIN_COLLISION.stuckTimeoutMs collides completely normally — this is
+   * a last resort, not a routine substitute for the detour.
+   */
+  noteCoffinContact(): boolean {
+    const now = this.scene.time.now;
+    if (this.coffinContactStartAt === null) this.coffinContactStartAt = now;
+    this.lastCoffinContactAt = now;
+    return now - this.coffinContactStartAt < COFFIN_COLLISION.stuckTimeoutMs;
   }
 
   /**

@@ -1668,7 +1668,14 @@ export class GameScene extends Phaser.Scene {
     // off-screen, since an entrance path (esp. from the left, where the
     // coffin sits) can run right through its footprint; colliding then just
     // wedges them against it, stuck and invisible (still at the hidden
-    // "entering" depth) forever.
+    // "entering" depth) forever. And except past noteCoffinContact's own
+    // stuck timeout: normal routing (avoidCoffin) assumes a route starting
+    // from outside the coffin's box, so if a hunter's body ever does end up
+    // already inside it — the left door's release point used to land there
+    // directly; other sources are conceivable even with that fixed —
+    // Arcade's separation impulse fights the detour's steering forever
+    // instead of resolving. A hunter stuck on continuous contact that long
+    // passes straight through instead.
     this.physics.add.collider(
       this.hunters,
       this.coffin,
@@ -1689,7 +1696,8 @@ export class GameScene extends Phaser.Scene {
       (object1, object2) => {
         const hunter =
           object1 instanceof Hunter ? object1 : object2 instanceof Hunter ? object2 : null;
-        return hunter !== null && !hunter.isEntering;
+        if (!hunter || hunter.isEntering) return false;
+        return hunter.noteCoffinContact();
       },
       this,
     );

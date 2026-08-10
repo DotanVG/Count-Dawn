@@ -80,6 +80,23 @@ export const KNOCKBACK = {
 } as const;
 
 /**
+ * Safety net for the coffin's solid body: normal navigation is
+ * coffinDetourWaypoints routing a hunter around it (see enemyNavigation.ts),
+ * but that assumes a route starting from OUTSIDE the coffin's box. If
+ * something ever lands a hunter's body already overlapping it (an entrance
+ * release point too close, a knockback shoved into a corner), Arcade's own
+ * separation impulse fights the detour's steering every physics step
+ * instead of resolving, and the hunter sits there indefinitely. Rather than
+ * trust every current and future source of hunter positioning to keep the
+ * coffin's box perfectly clear, continuous unresolved contact past this
+ * long is just let through — collision re-arms itself automatically the
+ * moment the hunter actually clears the coffin (see Hunter.noteCoffinContact).
+ */
+export const COFFIN_COLLISION = {
+  stuckTimeoutMs: 5000,
+} as const;
+
+/**
  * The garlic thrower: an unarmed hunter that keeps his distance, paints a
  * glowing target that crawls from his feet onto the Count, and once it holds
  * a lock, lobs garlic at where the lock landed.
