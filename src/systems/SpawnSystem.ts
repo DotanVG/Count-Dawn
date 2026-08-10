@@ -38,6 +38,17 @@ export class SpawnSystem {
     this.timer.remove();
   }
 
+  /**
+   * One-off entrance for something that isn't a regular timed hunter spawn
+   * — a boss lineup member, say — walked in through the same three doors
+   * and the same occupancy/queue as everything else, uncapped by maxAlive
+   * (a boss night's roster is small and deliberate, not subject to the
+   * regular spawn budget).
+   */
+  spawnEntrance(spawnEntrant: SpawnEntrant): void {
+    this.entranceController.spawnAt(spawnEntrant);
+  }
+
   private trySpawn(): void {
     if (this.countAlive() >= this.maxAlive) return;
     this.entranceController.spawnAt();

@@ -85,7 +85,13 @@ const DEFAULT_WEIGHTS: Readonly<Record<EntranceId, number>> = { left: 1, right: 
  */
 export class EntranceController {
   private readonly occupied = new Set<EntranceId>();
-  private queued = 0;
+  /**
+   * FIFO of entrant factories waiting for a door, not just a count — a
+   * queued request (a boss lineup member, say) needs its OWN factory
+   * remembered and replayed once a door frees, not whichever factory
+   * happens to be the default (see spawnAt's override parameter).
+   */
+  private readonly queue: SpawnEntrant[] = [];
   private lastDoor: EntranceId | null = null;
 
   constructor(
@@ -97,7 +103,7 @@ export class EntranceController {
 
   /** Requests waiting for a door to free up. */
   get queuedCount(): number {
-    return this.queued;
+    return this.queue.length;
   }
 
   /** True while a hunter is still mid walk-in through this door. */
@@ -106,21 +112,26 @@ export class EntranceController {
   }
 
   /**
-   * Called once per spawn tick. Claims a free, weighted, non-repeating door
-   * far enough from the player and walks an entrant in through it. If every
-   * door is mid-entrance, the request queues and fires off whichever door
-   * frees first; if doors are free but all too close to the player, the tick
-   * is simply skipped — same fallback the old random-edge picker used, the
-   * next timer tick tries again.
+   * Claims a free, weighted, non-repeating door far enough from the player
+   * and walks an entrant in through it. If every door is mid-entrance, the
+   * request queues and fires off whichever door frees first; if doors are
+   * free but all too close to the player, the tick is simply skipped — same
+   * fallback the old random-edge picker used, the next call tries again.
+   *
+   * `spawnEntrant`, if given, overrides the constructor's default for this
+   * one call — the regular hunter spawner never passes it (every hunter
+   * uses the same factory), while a one-off arrival like a boss lineup
+   * member hands in its own so it shares the same three doors and occupancy
+   * as everything else instead of getting its own separate arrival math.
    */
-  spawnAt(): void {
+  spawnAt(spawnEntrant: SpawnEntrant = this.spawnEntrant): void {
     const def = this.claimDoor();
     if (def) {
-      this.enter(def);
+      this.enter(def, spawnEntrant);
       return;
     }
     if (this.occupied.size >= ENTRANCE_DEFS.length) {
-      this.queued++;
+      this.queue.push(spawnEntrant);
     }
   }
 
@@ -149,10 +160,10 @@ export class EntranceController {
     return pool[pool.length - 1];
   }
 
-  private enter(def: EntranceDef): void {
+  private enter(def: EntranceDef, spawnEntrant: SpawnEntrant): void {
     this.occupied.add(def.id);
     this.lastDoor = def.id;
-    const entrant = this.spawnEntrant(
+    const entrant = spawnEntrant(
       def.spawnPoint.x,
       def.spawnPoint.y,
       def.releasePoint.x,
@@ -166,10 +177,8 @@ export class EntranceController {
     entrant.onEntranceArrived = () => {
       chained?.();
       this.occupied.delete(def.id);
-      if (this.queued > 0) {
-        this.queued--;
-        this.spawnAt();
-      }
+      const next = this.queue.shift();
+      if (next) this.spawnAt(next);
     };
   }
 }

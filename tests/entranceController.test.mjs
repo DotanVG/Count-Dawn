@@ -86,6 +86,70 @@ test('a door too close to the player is skipped without spawning or queueing', (
   assert.equal(controller.queuedCount, 0);
 });
 
+test('spawnAt accepts a per-call factory override without disturbing the default', () => {
+  const defaultSpawned = [];
+  const overrideSpawned = [];
+  const controller = new EntranceController(
+    () => ({ x: -10000, y: -10000 }),
+    0,
+    (spawnX, spawnY, releaseX, releaseY) => {
+      const entrant = { onEntranceArrived: null, kind: 'default' };
+      defaultSpawned.push(entrant);
+      return entrant;
+    },
+  );
+
+  const bossFactory = (spawnX, spawnY, releaseX, releaseY) => {
+    const entrant = { onEntranceArrived: null, kind: 'boss' };
+    overrideSpawned.push(entrant);
+    return entrant;
+  };
+
+  withFixedRandom(0, () => {
+    controller.spawnAt(bossFactory);
+    controller.spawnAt(); // default, must land on a different door
+  });
+
+  assert.equal(overrideSpawned.length, 1);
+  assert.equal(defaultSpawned.length, 1);
+});
+
+test('a queued request replays with its OWN factory once a door frees, not the default one', () => {
+  const spawnedBy = [];
+  const controller = new EntranceController(
+    () => ({ x: -10000, y: -10000 }),
+    0,
+    () => {
+      const entrant = { onEntranceArrived: null };
+      spawnedBy.push({ who: 'default', entrant });
+      return entrant;
+    },
+  );
+
+  const bossFactory = () => {
+    const entrant = { onEntranceArrived: null };
+    spawnedBy.push({ who: 'boss', entrant });
+    return entrant;
+  };
+
+  withFixedRandom(0, () => {
+    controller.spawnAt(); // occupies door 1
+    controller.spawnAt(); // occupies door 2
+    controller.spawnAt(); // occupies door 3 — all three now full
+    controller.spawnAt(bossFactory); // every door busy: queues WITH its own factory
+  });
+
+  assert.equal(spawnedBy.length, 3);
+  assert.equal(controller.queuedCount, 1);
+
+  // Free one door — the queued request should drain using bossFactory, not the default.
+  spawnedBy[0].entrant.onEntranceArrived();
+
+  assert.equal(spawnedBy.length, 4);
+  assert.equal(spawnedBy[3].who, 'boss');
+  assert.equal(controller.queuedCount, 0);
+});
+
 test('chained onEntranceArrived callbacks are composed, not overwritten', () => {
   let originalCalled = false;
   let entrant;

@@ -46,7 +46,6 @@ import { Coffin } from '../entities/Coffin';
 import { InputController } from '../systems/InputController';
 import { CombatSystem } from '../systems/CombatSystem';
 import { SpawnSystem } from '../systems/SpawnSystem';
-import { offCanvasSpawnPoint } from '../systems/entrance';
 import { CountdownSystem } from '../systems/CountdownSystem';
 import {
   COLD_OPEN,
@@ -2252,29 +2251,37 @@ export class GameScene extends Phaser.Scene {
     this.input.keyboard?.on('keydown-P', this.requestPause, this);
   }
 
+  /**
+   * Bosses walk in through the same three doors as regular hunters now
+   * (EntranceController), not a separate off-canvas-edge system — so a
+   * Captain or Priest gets the identical door-frame-hold-then-brighten
+   * entrance a hunter does instead of a bare instant fade over a long walk
+   * in from off-canvas. The Priests lead the lineup, so on a night that
+   * sends one he's first through a door; the rest follow as HunterCaptain
+   * or a random Captain flavour. A lineup bigger than three (night 15) just
+   * queues the extras — see EntranceController — the same as an ordinary
+   * spawn tick would.
+   */
   private spawnBoss(): void {
     if (this.captains.size > 0) return;
     const lineup = bossLineupForNight(this.night);
-    const arrivals = this.bossArrivalPositions(lineup.priests + lineup.captains);
+    const total = lineup.priests + lineup.captains;
 
-    for (const [index, arrival] of arrivals.entries()) {
-      const spawn = offCanvasSpawnPoint(arrival);
-      // The Priests lead the lineup, so on a night that sends one he is the
-      // boss who arrives at the spot farthest from the Count.
-      const captain: Captain =
-        index < lineup.priests
-          ? this.createPriest(spawn.x, spawn.y)
-          : this.createCaptain(spawn.x, spawn.y);
-
-      captain.beginEntrance(arrival.x, arrival.y);
-      captain.onEntranceArrived = () => captain.playEntrance();
-      captain.onStrikeHit = () => {
-        if (this.phase === 'playing' && captain.active) {
-          this.player.takeDamage(captain.contactDamage);
-        }
-      };
-      this.captains.add(captain);
-      this.hunters.add(captain);
+    for (let index = 0; index < total; index++) {
+      const isPriest = index < lineup.priests;
+      this.spawner?.spawnEntrance((sx, sy, ax, ay, tx, ty) => {
+        const captain: Captain = isPriest ? this.createPriest(sx, sy) : this.createCaptain(sx, sy);
+        captain.beginEntrance(ax, ay, tx, ty);
+        captain.onEntranceArrived = () => captain.playEntrance();
+        captain.onStrikeHit = () => {
+          if (this.phase === 'playing' && captain.active) {
+            this.player.takeDamage(captain.contactDamage);
+          }
+        };
+        this.captains.add(captain);
+        this.hunters.add(captain);
+        return captain;
+      });
     }
 
     // Order matters: the HUD has to know WHO arrived before the objective flips,
@@ -2319,36 +2326,6 @@ export class GameScene extends Phaser.Scene {
       if (this.phase === 'playing') this.player.takeDamage(PRIEST.wardDamage);
     };
     return priest;
-  }
-
-  /**
-   * Arena-edge midpoint farthest from the player — where the Captain
-   * arrives. Bottom/left/right only, matching SpawnSystem: never the north
-   * wall behind the player's spawn point.
-   */
-  private bossArrivalPositions(count: number): { x: number; y: number }[] {
-    const cx = (ARENA.left + ARENA.right) / 2;
-    const cy = (ARENA.top + ARENA.bottom) / 2;
-    const inset = 70;
-    const spacing = 105;
-    const candidates: { x: number; y: number }[] = [];
-
-    for (let x = ARENA.left + inset; x <= ARENA.right - inset; x += spacing) {
-      candidates.push({ x, y: ARENA.bottom - inset });
-    }
-    for (let y = ARENA.top + inset; y <= ARENA.bottom - inset; y += spacing) {
-      candidates.push({ x: ARENA.left + inset, y });
-      candidates.push({ x: ARENA.right - inset, y });
-    }
-
-    candidates.sort((a, b) => {
-      const da = Phaser.Math.Distance.Between(a.x, a.y, this.player.x, this.player.y);
-      const db = Phaser.Math.Distance.Between(b.x, b.y, this.player.x, this.player.y);
-      return db - da;
-    });
-
-    if (candidates.length === 0) return [{ x: cx, y: cy }];
-    return Array.from({ length: count }, (_, i) => candidates[i % candidates.length]);
   }
 
   private onHunterKilled(hunter: Hunter): void {
