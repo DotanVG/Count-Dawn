@@ -2465,9 +2465,10 @@ export class GameScene extends Phaser.Scene {
    */
   private scatterBloodlets(x: number, y: number, night: number, bossBase?: number): void {
     const isBossFlood = bossBase !== undefined;
+    const range = getBloodDropletRange(night);
     const count = isBossFlood
       ? bossBloodDropletsForNight(bossBase, night)
-      : Phaser.Math.Between(getBloodDropletRange(night).min, getBloodDropletRange(night).max);
+      : Math.round(Phaser.Math.FloatBetween(range.min, range.max));
 
     // The corpse itself can be outside the hall (killed mid-entrance, or shoved
     // against a wall), so the spawn point is clamped as well as the landing

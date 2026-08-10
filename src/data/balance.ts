@@ -217,14 +217,18 @@ export const ARMED = {
 
 /**
  * How many bloodlets a regular hunter kill scatters — base, Armed, and
- * Thrower alike, none of them carries a bonus of its own. Scales with the
- * night so the flood keeps pace with how much blood later nights demand
- * (see bloodTargetForNight): night N drops a random N..N+4, so night 1 is
- * 1-5 and night 5 is 5-9.
+ * Thrower alike, none of them carries a bonus of its own. Night 1 rolls
+ * 3-5; every night after nudges both ends up by 0.5 on average (a fixed
+ * width-2 band that slides, not widens) rather than the whole point a
+ * night the first pass used — night 2 is 3.5-5.5, night 5 is 5-7. The
+ * bounds are fractional on purpose: the roll itself is a float
+ * (Phaser.Math.FloatBetween) rounded to the actual drop count at the call
+ * site (see GameScene.scatterBloodlets), so the half-point still lands
+ * somewhere real instead of getting truncated away by an integer range.
  */
 export function getBloodDropletRange(night: number): { min: number; max: number } {
-  const min = Math.max(1, night);
-  return { min, max: min + 4 };
+  const growth = Math.max(0, night - 1) * 0.5;
+  return { min: 3 + growth, max: 5 + growth };
 }
 
 /**
