@@ -11,6 +11,21 @@
     build. So every size here has to survive being squeezed into an embed of
     ANY shape — itch scales the embed to the page column on desktop and to the
     device width on mobile — which is why nothing below is a fixed pixel size.
+
+    Tablets are the awkward middle case: itch's "Mobile friendly" toggle (see
+    itch/README.md) only actually re-flows the embed to the real device size
+    on PHONES, by itch's own UA detection. A tablet instead gets the same
+    treatment as desktop — the declared 1280x720 box scaled down to fit the
+    page column's WIDTH, aspect ratio preserved — which on a tablet-width
+    column (roughly 600-1000px) works out to something like a 400-560px-tall
+    16:9 iframe. That's short enough to overflow the column layout below
+    (image + tagline + button, stacked), and since `overflow: hidden` on
+    <body> was clipping instead of scrolling, the button — last in the stack —
+    could end up pushed below the visible area: present in the DOM, invisible,
+    unclickable. Two independent fixes below cover it: the row layout now
+    kicks in across that whole height band, not just phone-landscape, and
+    #welcome scrolls as a last resort if a still-shorter embed ever overflows
+    it anyway, so the button is never truly unreachable.
   */
   :root {
     color-scheme: dark;
@@ -33,12 +48,23 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    /* `safe center` falls back to start-alignment the moment content is
+       taller than the box, instead of centering it and clipping the top AND
+       bottom equally — a well-known flexbox trap that would otherwise leave
+       the button (last in the stack) permanently scrolled past the bottom
+       edge with no way to reach it. */
+    justify-content: safe center;
     gap: clamp(0.6rem, 2.5vh, 1.4rem);
     width: 100%;
     height: 100%;
     padding: clamp(0.75rem, 3vmin, 2rem);
     text-align: center;
+    /* Belt-and-suspenders: on top of the sizing/breakpoint work below, this
+       guarantees the button can always be scrolled into view rather than
+       silently clipped by <body>'s overflow: hidden, no matter how short a
+       shape a given embed context turns out to hand us. */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   #cover {
     /* Shrinks against BOTH axes, so a wide-and-short embed can't push the
@@ -58,6 +84,16 @@
     max-width: 32ch;
   }
   #playBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    /* Never smaller than the 44px touch-target floor, no matter how far the
+       font clamp above shrinks on a cramped embed — a visible button a
+       tablet's finger can't reliably land on is barely better than no
+       button at all. */
+    min-height: 44px;
+    min-width: 44px;
+    flex-shrink: 0;
     font-size: clamp(1rem, 3.2vmin, 1.4rem);
     font-weight: bold;
     padding: 0.7em 2em;
@@ -76,13 +112,23 @@
     box-shadow: 0 2px 0 #7a1220, 0 4px 8px rgba(0, 0, 0, 0.4);
   }
   #playBtn[disabled] { opacity: 0.65; cursor: progress; transform: none; }
-  /* Short and wide (a squashed itch embed, or a phone in landscape): put the
-     cover beside the text instead of stacking, so nothing gets clipped. */
-  @media (max-height: 420px) and (min-aspect-ratio: 1/1) {
+  /*
+    Short and wide (a squashed itch embed, or a phone in landscape): put the
+    cover beside the text instead of stacking, so nothing gets clipped.
+
+    600px, not 420px: a tablet gets the same fixed-1280x720-scaled-to-the-
+    page-column embed desktop does (see the note above the :root block), and
+    scaling that declared 16:9 box down to a typical tablet-width column
+    lands well inside 420-600px tall — squarely between "phone landscape" and
+    "generously tall desktop embed", and squarely where the old threshold
+    missed it.
+  */
+  @media (max-height: 600px) and (min-aspect-ratio: 1/1) {
     #welcome {
       flex-direction: row;
       flex-wrap: wrap;
       gap: clamp(1rem, 4vw, 2.5rem);
+      min-height: 0;
     }
     #cover { width: min(70vh, 30vw, 220px); }
     #copy {
@@ -90,6 +136,7 @@
       flex-direction: column;
       align-items: center;
       gap: clamp(0.6rem, 3vh, 1.2rem);
+      min-height: 0;
     }
   }
   #gameFrame {
