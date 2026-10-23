@@ -1,9 +1,19 @@
 import Phaser from 'phaser';
+import { inject } from '@vercel/analytics';
+import { injectSpeedInsights } from '@vercel/speed-insights';
 import { gameConfig } from './config';
 import { installFullscreenButton } from './fullscreen';
 import { installOrientationGate } from './orientation';
 import { installVampireCursor } from './vampireCursor';
 import { gameSettings } from '../data/gameSettings';
+
+if (location.hostname === 'count-dawn.vercel.app') {
+  const beforeSend = <T extends { url: string }>(event: T): T => ({
+    ...event, url: location.origin + location.pathname,
+  });
+  inject({ beforeSend });
+  injectSpeedInsights({ beforeSend });
+}
 
 /** Entry point. The HTML boot loader is removed in BootScene. */
 const game = new Phaser.Game(gameConfig);
