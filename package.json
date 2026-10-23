@@ -24,6 +24,8 @@
   "author": "Dotan, Romi, Noam, Abed",
   "license": "MIT",
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
+    "@vercel/speed-insights": "^2.0.0",
     "phaser": "^4.2.1"
   },
   "devDependencies": {
