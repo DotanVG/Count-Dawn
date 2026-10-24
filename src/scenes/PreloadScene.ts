@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { SCENES } from '../game/constants';
-import { TEXTURES } from '../utils/assetKeys';
+import { AUDIO, TEXTURES } from '../utils/assetKeys';
 import { AUDIO_MANIFEST } from '../data/audioManifest';
 import { createCharacterAnimations } from '../utils/animations';
 import { createPlaceholderTextures } from '../utils/placeholderTextures';
@@ -54,7 +54,8 @@ export class PreloadScene extends Phaser.Scene {
     // key. Phaser downloads only the first format the browser can decode, so
     // the OGG/MP3 pair costs one request, not two. See data/audioManifest.ts.
     for (const asset of AUDIO_MANIFEST) {
-      if (asset.files.length === 0) continue;
+      // The level track is loaded in the background once GameScene is ready.
+      if (asset.files.length === 0 || asset.key === AUDIO.levelMusic) continue;
       this.load.audio(asset.key, [...asset.files]);
     }
 

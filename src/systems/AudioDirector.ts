@@ -114,6 +114,7 @@ export class AudioDirector {
     // Autoplay lock: whatever the game asked for gets started for real the
     // moment the browser lets us, without ever producing a second copy.
     this.sound.once(Phaser.Sound.Events.UNLOCKED, this.onUnlocked, this);
+    this.game.cache.audio.events.on(Phaser.Cache.Events.ADD, this.onAudioAdded, this);
     this.game.events.once(Phaser.Core.Events.DESTROY, this.destroy, this);
   }
 
@@ -280,6 +281,13 @@ export class AudioDirector {
     const key = this.currentKey;
     if (!key) return;
     if (!this.currentSound) this.startMusic(key);
+  }
+
+  private onAudioAdded(_cache: Phaser.Cache.BaseCache, key: string): void {
+    // A fast intro skip or slow connection can reach the gameplay cue before
+    // the background decode finishes. Start only the still-requested track;
+    // startMusic retains the unlock guard and applies the latest balance.
+    if (key === this.currentKey) this.onUnlocked();
   }
 
   // ── SFX ─────────────────────────────────────────────────────────────────
@@ -631,6 +639,7 @@ export class AudioDirector {
     this.destroyed = true;
     this.game.events.off(Phaser.Core.Events.PRE_STEP, this.step, this);
     this.sound.off(Phaser.Sound.Events.UNLOCKED, this.onUnlocked, this);
+    this.game.cache.audio.events.off(Phaser.Cache.Events.ADD, this.onAudioAdded, this);
     for (const fade of this.fades.splice(0)) this.discard(fade.sound);
     if (this.currentSound) this.discard(this.currentSound);
     this.currentSound = null;
