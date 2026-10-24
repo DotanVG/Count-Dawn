@@ -13,7 +13,15 @@
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
         {
           "key": "Content-Security-Policy",
-          "value": "frame-ancestors 'self' https://*.itch.io https://itch.io https://html-classic.itch.zone https://html.itch.zone"
+          "value": "frame-ancestors 'self' https://*.itch.io https://itch.io https://html-classic.itch.zone https://html.itch.zone https://*.itch.zone https://*.hwcdn.net"
+        },
+        {
+          "key": "Content-Security-Policy-Report-Only",
+          "value": "default-src 'self'; script-src 'self' https://www.googletagmanager.com https://va.vercel-scripts.com; style-src 'self' 'unsafe-inline'; img-src 'self' https://*.google-analytics.com https://www.googletagmanager.com data: blob:; media-src 'self' data: blob:; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com https://*.vercel-insights.com; font-src 'self' data:; worker-src 'self' blob:; frame-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'self' https://*.itch.io https://itch.io https://html-classic.itch.zone https://html.itch.zone https://*.itch.zone https://*.hwcdn.net"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
         }
       ]
     }
