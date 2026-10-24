@@ -67,8 +67,8 @@ export const COLD_OPEN = {
 
   /** The whole roster, one of every kind — see COLD_OPEN_ROSTER. */
   hunterCount: 16,
-  /** How far out the ring surrounding him sits. */
-  ringRadius: 220,
+  /** Leave room for painted bodies and hitboxes within the hall's 210px half-height. */
+  ringRadius: 160,
   /** The closest the cinematic ring gets: dramatic, but safely outside contact. */
   closingRadius: 138,
   /** How far the formation rotates while it closes, in radians. */
