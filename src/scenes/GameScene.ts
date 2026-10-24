@@ -65,6 +65,7 @@ import { playPurpleChainLightning } from '../systems/ChainLightningEffect';
 import { orderChainTargets, type ChainPoint } from '../systems/chainLightning';
 import { GameFlowSystem } from '../systems/GameFlowSystem';
 import { AudioDirector, getAudioDirector } from '../systems/AudioDirector';
+import { audioAsset } from '../data/audioManifest';
 import { CastleMap, WINDOW_X_CENTERS, WINDOW_Y } from '../world/CastleMap';
 import { DawnSky } from '../world/DawnSky';
 import { HUD } from '../ui/HUD';
@@ -318,6 +319,15 @@ export class GameScene extends Phaser.Scene {
       this.playCinematic = true;
       this.buildMenu();
     }
+
+    // Let the title become interactive before fetching/decoding the large
+    // level track. A scene timer is cancelled automatically on shutdown.
+    this.time.delayedCall(0, () => {
+      const asset = audioAsset(AUDIO.levelMusic);
+      if (!asset?.files.length || this.cache.audio.exists(asset.key)) return;
+      this.load.audio(asset.key, [...asset.files]);
+      this.load.start();
+    });
   }
 
   update(_time: number, delta: number): void {

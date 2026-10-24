@@ -215,6 +215,14 @@ The Main Title therefore plays continuously from the menu, through START,
 through the entire cold open, through the coffin opening and the fly-in — and
 stops only at the exact frame the night starts.
 
+The Level Music is excluded from initial preload and fetched/decoded in the
+background after the title is interactive. Its playback cue is unchanged.
+If a slow connection or a fast intro skip reaches that cue before decoding
+finishes, the director starts the track when it becomes ready, provided the
+run still wants it and browser audio has unlocked. Returning to the menu or
+ending the run before loading finishes cannot start a stale gameplay track.
+Failed audio remains a silent no-op; it never blocks the game.
+
 ### The exact gameplay cue
 
 **`GameScene.startPlaying()` → `this.audio.playLevelMusic()`**
