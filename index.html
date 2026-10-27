@@ -88,9 +88,8 @@
         document.getElementById('start-night').disabled = true;
       }
       window.addEventListener('error', (event) => {
-        if (event.target === window || event.target instanceof HTMLScriptElement) showLandingError();
+        if (event.target instanceof HTMLScriptElement && event.target === document.querySelector('script[type="module"][src]')) showLandingError();
       }, true);
-      window.addEventListener('unhandledrejection', showLandingError);
     </script>
     <style>
       :root {
