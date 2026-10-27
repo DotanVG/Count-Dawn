@@ -52,7 +52,7 @@
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
-        "@type": "VideoGame",
+        "@type": ["VideoGame", "WebApplication"],
         "name": "Count Dawn",
         "description": "Count Dawn — a reverse horde survival game: a vampire hunts waves of human hunters, collects blood, defeats their leader, and races back to his coffin before sunrise.",
         "url": "https://count-dawn.vercel.app/",
@@ -69,8 +69,9 @@
         },
         "genre": "Reverse horde survival",
         "gamePlatform": "Web browser",
-        "applicationCategory": "Game",
+        "applicationCategory": "GameApplication",
         "operatingSystem": "Any",
+        "browserRequirements": "Requires JavaScript and HTML5 canvas support",
         "offers": {
           "@type": "Offer",
           "price": 0,
@@ -127,6 +128,9 @@
       #landing-shell h1 { color: #c9a7ff; font-size: clamp(2.5rem, 9vw, 4rem); line-height: 1.1; }
       #landing-shell h2 { color: #c9a7ff; font-size: 1.25rem; margin-top: 1.25rem; }
       #landing-shell p { margin-top: 0.75rem; }
+      #landing-shell details { margin-top: 1.25rem; }
+      #landing-shell summary { cursor: pointer; }
+      #landing-gameplay { display: block; width: 100%; height: auto; margin-top: 0.75rem; }
       #landing-shell a { color: #c9a7ff; text-underline-offset: 0.2em; }
       #start-night {
         margin-top: 1.5rem;
@@ -363,6 +367,10 @@
       <h2>Created by</h2>
       <p><a href="https://dotanv.vercel.app">Dotan Veretzky</a>, Romi Elbom, <a href="https://soundcloud.com/ouzana">Noam Ouzana (music)</a>, and Abed Kadry.</p>
       <p><a href="https://dotanv.itch.io/count-dawn">Count Dawn on itch.io</a> · <a href="https://github.com/DotanVG/Count-Dawn">Source on GitHub</a></p>
+      <details>
+        <summary>See gameplay</summary>
+        <img id="landing-gameplay" src="./landing-gameplay.webp" width="800" height="450" loading="lazy" decoding="async" alt="The vampire fights hunters in a tiled castle hall, with his coffin on the left and a sunrise countdown overhead." />
+      </details>
       <noscript><p>JavaScript is required to play Count Dawn. Enable it and reload to start a night. The instructions and creator links above remain available without JavaScript.</p></noscript>
     </main>
     <div id="game-root" role="region" aria-label="Count Dawn game" tabindex="-1">
