@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { SCENES } from './constants';
+import { SCENES } from './constants.ts';
 
 /**
  * Landscape-only gate for touch devices. The visible "rotate your device"
@@ -15,13 +15,11 @@ import { SCENES } from './constants';
  */
 export function installOrientationGate(game: Phaser.Game): void {
   const coarsePointerQuery = window.matchMedia('(pointer: coarse)');
-  let gateActive = false;
   let autoPausedGame = false;
 
   const sync = (): void => {
-    const active = coarsePointerQuery.matches && window.innerHeight > window.innerWidth;
-    if (active === gateActive) return;
-    gateActive = active;
+    const active = document.documentElement.classList.contains('game-active')
+      && coarsePointerQuery.matches && window.innerHeight > window.innerWidth;
 
     if (active) {
       if (game.scene.isActive(SCENES.game) && !game.scene.isPaused(SCENES.game)) {
@@ -47,6 +45,8 @@ export function installOrientationGate(game: Phaser.Game): void {
     }, 40);
   };
 
+  // Entry refreshes the scale even when the phone was already in portrait.
+  game.scale.on('resize', sync);
   coarsePointerQuery.addEventListener('change', queueSync);
   window.addEventListener('resize', queueSync);
   window.addEventListener('orientationchange', queueSync);
