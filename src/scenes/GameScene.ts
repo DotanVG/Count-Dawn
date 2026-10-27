@@ -30,6 +30,7 @@ import {
 } from '../game/constants';
 import { EVENTS } from '../game/events';
 import { isTouchDevice } from '../game/device';
+import { enterGameShell, prepareLandingStart } from '../game/landing';
 import { setVampireCursorVisible } from '../game/vampireCursor';
 import { Player } from '../entities/Player';
 import { Hunter, BASIC_LOOKS, PILGRIM_LOOK, HUNTRESS_LOOK } from '../entities/Hunter';
@@ -536,6 +537,7 @@ export class GameScene extends Phaser.Scene {
     this.menuUi = this.add.container(0, 0, [dim, cover, tagline, controls, start]).setDepth(DEPTHS.menu);
 
     this.input.keyboard?.once('keydown-ENTER', () => this.startIntro());
+    prepareLandingStart(this.game, () => this.startIntro());
 
     // The Main Title (Noam) owns everything that is not an active night: the
     // menu, the cold open, and every game-over screen. Asking for it while it
@@ -580,6 +582,7 @@ export class GameScene extends Phaser.Scene {
 
   private startIntro(): void {
     if (this.phase !== 'menu') return;
+    enterGameShell(this.game);
     this.phase = 'intro';
     this.audio.exitMenuMode();
     // The cold open and the coffin flight are watched, not played — teeth
