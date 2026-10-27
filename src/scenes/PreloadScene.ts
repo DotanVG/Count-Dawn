@@ -11,11 +11,18 @@ const ROOM_BG_RAW = 'castle-room-bg-raw';
 
 /** Loads all real assets and registers the shared animations. */
 export class PreloadScene extends Phaser.Scene {
+  private loadFailed = false;
   constructor() {
     super(SCENES.preload);
   }
 
   preload(): void {
+    this.loadFailed = false;
+    this.load.on('progress', (value: number) => this.game.events.emit('landing-progress', value));
+    this.load.once('loaderror', () => {
+      this.loadFailed = true;
+      this.game.events.emit('landing-load-error');
+    });
     // The Count (player) — Romi's art, built by tools/build_count_sheets.py.
     this.load.spritesheet(TEXTURES.vampireIdle, 'assets/characters/vampire/vampire_idle.png', CHAR_FRAME);
     this.load.spritesheet(TEXTURES.vampireRun, 'assets/characters/vampire/vampire_run.png', CHAR_FRAME);
@@ -102,6 +109,7 @@ export class PreloadScene extends Phaser.Scene {
   }
 
   create(): void {
+    if (this.loadFailed) return;
     this.createChromaKeyedRoomBg();
     // After loading: generated textures only fill keys no real asset claimed.
     createPlaceholderTextures(this);

@@ -355,7 +355,7 @@
       <p>A free vampire survival browser game. You are the monster: hunt the waves of human hunters who came to kill you.</p>
       <p>Collect enough blood to summon the night's leaders, defeat them, and return to your coffin before sunrise. Survive to face a harder night.</p>
       <button id="start-night" type="button" aria-describedby="landing-status" disabled>Start Night</button>
-      <p id="landing-status" role="status">Waking the Count. If loading fails, reload this page to try again.</p>
+      <p id="landing-status" role="status" aria-live="polite">Preparing Start Night. If loading fails, reload this page to try again.</p>
       <h2>How to play</h2>
       <p><strong>Desktop:</strong> Move with WASD or arrow keys. Aim with the mouse and click to strike. Shift is a bat dash; Space unleashes the Ultimate when Wrath is full. Esc or P pauses.</p>
       <p><strong>Touch:</strong> Move with the joystick. Tap toward a target to strike, or use the sword button to strike the nearest hunter. Use the bat button to dash, the lightning button for a charged Ultimate, and the pause button to pause.</p>
@@ -366,7 +366,7 @@
       <noscript><p>JavaScript is required to play Count Dawn. Enable it and reload to start a night. The instructions and creator links above remain available without JavaScript.</p></noscript>
     </main>
     <div id="game-root" role="region" aria-label="Count Dawn game" tabindex="-1">
-      <div id="boot-loader">Waking the Count…</div>
+      <div id="boot-loader">Start Night to wake the Count.</div>
     </div>
     <button id="fullscreen-btn" type="button" aria-label="Enter fullscreen" title="Enter fullscreen" hidden>
       <span class="fs-corner tl" aria-hidden="true"></span>
@@ -408,6 +408,6 @@
       <h2>Rotate your device</h2>
       <p>Count Dawn plays best in landscape 🦇</p>
     </div>
-    <script type="module" src="/src/game/main.ts"></script>
+    <script type="module" src="/src/game/entry.ts"></script>
   </body>
 </html>

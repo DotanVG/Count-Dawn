@@ -8,7 +8,7 @@ const handler = html.match(/<script>([\s\S]*?)<\/script>/)[1];
 
 function landing() {
   const listeners = new Map();
-  const button = { disabled: false };
+  const button = { disabled: false, textContent: 'Start Night', onclick() {} };
   const status = { textContent: 'Ready.' };
   const classes = new Set();
   const window = { addEventListener: (name, callback) => listeners.set(name, callback) };
@@ -30,11 +30,14 @@ function landing() {
 
 test('optional scripts and unrelated runtime failures leave the ready Start button usable', () => {
   const page = landing();
+  const start = page.button.onclick;
   for (const id of ['analytics', 'speed-insights', 'third-party']) page.error(page.script(id));
   page.error(page.window);
   page.rejection();
   assert.equal(page.button.disabled, false);
   assert.equal(page.status.textContent, 'Ready.');
+  assert.equal(page.button.textContent, 'Start Night');
+  assert.equal(page.button.onclick, start, 'optional failures cannot replace Start with reload');
 });
 
 test('game entry load failure disables Start and reports the failure', () => {

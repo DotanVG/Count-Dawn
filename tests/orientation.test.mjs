@@ -2,14 +2,18 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { EventEmitter } from 'node:events';
 import { installOrientationGate } from '../src/game/orientation.ts';
-import { enterGameShell, prepareLandingStart } from '../src/game/landing.ts';
+import { enterGameShell, installDeferredStart, prepareLandingStart } from '../src/game/landing.ts';
 import { CountdownSystem } from '../src/systems/CountdownSystem.ts';
 
-function withGate(coarse, run) {
+async function withGate(coarse, run) {
   const originalDocument = globalThis.document;
   const originalWindow = globalThis.window;
   const classes = new Set();
-  const elements = { 'landing-shell': {}, 'start-night': { disabled: true }, 'landing-status': {} };
+  const elements = {
+    'landing-shell': {},
+    'start-night': { disabled: true, setAttribute() {}, removeAttribute() {} },
+    'landing-status': {},
+  };
   const callbacks = new Map();
   let timer;
   globalThis.document = {
@@ -32,7 +36,7 @@ function withGate(coarse, run) {
     pause() { this.paused = true; this.pauses++; },
     resume() { this.paused = false; this.resumes++; },
   };
-  const game = { scene, scale, input: { keyboard: {} } };
+  const game = { scene, scale, events: new EventEmitter(), input: { keyboard: {} } };
   const rotate = portrait => {
     window.innerWidth = portrait ? 390 : 844;
     window.innerHeight = portrait ? 844 : 390;
@@ -44,15 +48,15 @@ function withGate(coarse, run) {
     timer(); // Initial portrait check happens before GameScene exists.
     scene.active = true;
     prepareLandingStart(game, () => enterGameShell(game));
-    run({ game, scene, elements, rotate });
+    await run({ game, scene, elements, rotate });
   } finally {
     globalThis.document = originalDocument;
     globalThis.window = originalWindow;
   }
 }
 
-test('portrait-first Start pauses without a rotation and resumes the same night in landscape', () => {
-  withGate(true, ({ game, scene, elements, rotate }) => {
+test('portrait-first Start pauses without a rotation and resumes the same night in landscape', async () => {
+  await withGate(true, ({ game, scene, elements, rotate }) => {
     game.scale.refresh();
     assert.equal(scene.paused, false, 'landing menu stays usable before entry');
     assert.equal(elements['start-night'].disabled, false);
@@ -73,8 +77,8 @@ test('portrait-first Start pauses without a rotation and resumes the same night 
   });
 });
 
-test('orientation changes preserve a user-opened pause', () => {
-  withGate(true, ({ game, scene, rotate }) => {
+test('orientation changes preserve a user-opened pause', async () => {
+  await withGate(true, ({ game, scene, rotate }) => {
     rotate(false);
     enterGameShell(game);
     scene.paused = true;
@@ -85,9 +89,26 @@ test('orientation changes preserve a user-opened pause', () => {
   });
 });
 
-test('fine-pointer portrait entry stays active', () => {
-  withGate(false, ({ game, scene }) => {
+test('fine-pointer portrait entry stays active', async () => {
+  await withGate(false, ({ game, scene }) => {
     enterGameShell(game);
     assert.equal(scene.paused, false);
+  });
+});
+
+test('deferred portrait entry pauses the intro after loading, before any rotation', async () => {
+  await withGate(true, async ({ game, scene, elements, rotate }) => {
+    scene.active = false;
+    installDeferredStart(() => new Promise(resolve => game.events.once('landing-ready', resolve)));
+    const loading = elements['start-night'].onclick();
+    game.scale.refresh();
+    assert.equal(scene.paused, false, 'preloading does not consume the portrait pause');
+    scene.active = true;
+    prepareLandingStart(game, () => enterGameShell(game));
+    await loading;
+    assert.equal(scene.paused, true);
+    rotate(false);
+    assert.equal(scene.paused, false);
+    assert.equal(scene.resumes, 1);
   });
 });
