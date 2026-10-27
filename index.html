@@ -13,7 +13,7 @@
       content="Count Dawn — a reverse horde survival game: a vampire hunts waves of human hunters, collects blood, defeats their leader, and races back to his coffin before sunrise."
     />
     <meta name="author" content="Dotan Veretzky, Romi Elbom, Noam Ouzana, Abed Kadry" />
-    <meta name="date" content="2026-10-27T16:03:54.7461522+02:00" />
+    <meta name="date" content="2026-08-19T02:56:31+03:00" />
     <meta name="theme-color" content="#0d0716" />
     <meta
       name="keywords"
@@ -85,16 +85,11 @@
       function showLandingError() {
         if (document.documentElement.classList.contains('game-active')) return;
         document.getElementById('landing-status').textContent = 'The game could not load. Reload this page to try again.';
-        const button = document.getElementById('start-night');
-        button.disabled = false;
-        button.removeAttribute('aria-busy');
-        button.textContent = 'Retry loading';
-        button.onclick = () => location.reload();
+        document.getElementById('start-night').disabled = true;
       }
       window.addEventListener('error', (event) => {
-        if (event.target === window || event.target instanceof HTMLScriptElement) showLandingError();
+        if (event.target instanceof HTMLScriptElement && event.target === document.querySelector('script[type="module"][src]')) showLandingError();
       }, true);
-      window.addEventListener('unhandledrejection', showLandingError);
     </script>
     <style>
       :root {

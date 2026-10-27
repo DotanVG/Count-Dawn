@@ -582,7 +582,6 @@ export class GameScene extends Phaser.Scene {
 
   private startIntro(): void {
     if (this.phase !== 'menu') return;
-    enterGameShell(this.game);
     this.phase = 'intro';
     this.audio.exitMenuMode();
     // The cold open and the coffin flight are watched, not played — teeth
@@ -610,6 +609,7 @@ export class GameScene extends Phaser.Scene {
     } else {
       this.riseFromCoffin(() => this.startPlaying());
     }
+    enterGameShell(this.game);
   }
 
   /**
