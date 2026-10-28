@@ -13,7 +13,7 @@
       content="Count Dawn — a reverse horde survival game: a vampire hunts waves of human hunters, collects blood, defeats their leader, and races back to his coffin before sunrise."
     />
     <meta name="author" content="Dotan Veretzky, Romi Elbom, Noam Ouzana, Abed Kadry" />
-    <meta name="date" content="2026-08-19T02:56:31+03:00" />
+    <meta name="date" content="2026-10-28T08:55:38+02:00" />
     <meta name="theme-color" content="#0d0716" />
     <meta
       name="keywords"
@@ -266,7 +266,7 @@
         border-radius: 50%;
         background: rgba(13, 7, 22, 0.5);
         cursor: pointer;
-        z-index: 9000;
+        z-index: 9600;
         transition: transform 160ms ease, background 160ms ease;
       }
       #fullscreen-btn:hover {
@@ -274,6 +274,7 @@
         transform: scale(1.06);
       }
       #fullscreen-btn .fs-corner {
+        pointer-events: none;
         position: absolute;
         width: 12px;
         height: 12px;
@@ -284,6 +285,11 @@
       #fullscreen-btn .tr { top: 12px; right: 12px; border-width: 3px 3px 0 0; }
       #fullscreen-btn .bl { bottom: 12px; left: 12px; border-width: 0 0 3px 3px; }
       #fullscreen-btn .br { bottom: 12px; right: 12px; border-width: 0 3px 3px 0; }
+      #fullscreen-btn[data-fullscreen="true"] .fs-corner {
+        width: 8px;
+        height: 8px;
+        transform: rotate(180deg);
+      }
 
       /* Rotate-to-landscape overlay: a real DOM layer sized to the whole
          viewport, so it is large and crisp even though the Phaser canvas is

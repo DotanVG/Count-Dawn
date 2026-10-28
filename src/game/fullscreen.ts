@@ -1,19 +1,5 @@
 import type Phaser from 'phaser';
-
-type FullscreenDocument = Document & {
-  webkitExitFullscreen?: () => Promise<void> | void;
-  webkitFullscreenElement?: Element | null;
-  webkitFullscreenEnabled?: boolean;
-};
-
-type FullscreenElement = HTMLElement & {
-  webkitRequestFullscreen?: () => Promise<void> | void;
-};
-
-function isFullscreen(): boolean {
-  const doc = document as FullscreenDocument;
-  return Boolean(doc.fullscreenElement || doc.webkitFullscreenElement);
-}
+import { createFullscreenController } from './fullscreenController.ts';
 
 let installed = false;
 
@@ -28,36 +14,17 @@ export function installFullscreenButton(game: Phaser.Game): void {
   if (!button) return;
   installed = true;
 
-  const doc = document as FullscreenDocument;
-  const target = (document.getElementById('game-root') ?? document.documentElement) as FullscreenElement;
-  const supported = Boolean(
-    (doc.fullscreenEnabled ?? doc.webkitFullscreenEnabled ?? false) &&
-      (target.requestFullscreen || target.webkitRequestFullscreen),
-  );
-
-  const sync = (): void => {
+  // Include the sibling fullscreen button and portrait overlay in the fullscreen tree.
+  const controller = createFullscreenController(document, document.documentElement, (supported, fullscreen) => {
     button.hidden = !supported;
-    const label = isFullscreen() ? 'Exit fullscreen' : 'Enter fullscreen';
+    const label = fullscreen ? 'Exit fullscreen' : 'Enter fullscreen';
     button.setAttribute('aria-label', label);
+    button.setAttribute('aria-pressed', String(fullscreen));
+    button.dataset.fullscreen = String(fullscreen);
     button.title = label;
     game.scale.refresh();
-  };
-
-  button.addEventListener('click', async () => {
-    try {
-      if (isFullscreen()) {
-        await Promise.resolve(doc.exitFullscreen?.() ?? doc.webkitExitFullscreen?.());
-      } else {
-        await Promise.resolve(target.requestFullscreen?.() ?? target.webkitRequestFullscreen?.());
-      }
-    } finally {
-      sync();
-    }
   });
 
-  document.addEventListener('fullscreenchange', sync);
-  document.addEventListener('webkitfullscreenchange', sync as EventListener);
+  button.addEventListener('click', () => { void controller.toggle(); });
   window.addEventListener('resize', () => game.scale.refresh());
-
-  sync();
 }
