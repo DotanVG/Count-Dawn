@@ -374,11 +374,18 @@ export class AudioDirector {
       return key;
     }
 
-    const reversed = new AudioBuffer({
-      length: source.length,
-      numberOfChannels: source.numberOfChannels,
-      sampleRate: source.sampleRate,
-    });
+    let reversed: AudioBuffer;
+    try {
+      reversed = new AudioBuffer({
+        length: source.length,
+        numberOfChannels: source.numberOfChannels,
+        sampleRate: source.sampleRate,
+      });
+    } catch {
+      // Older Safari exposes AudioBuffer but does not support its constructor.
+      this.unreversible.add(key);
+      return key;
+    }
     for (let channel = 0; channel < source.numberOfChannels; channel++) {
       const from = source.getChannelData(channel);
       const to = reversed.getChannelData(channel);
