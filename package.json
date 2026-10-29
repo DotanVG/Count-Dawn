@@ -24,7 +24,7 @@
   "author": "Dotan, Romi, Noam, Abed",
   "license": "MIT",
   "engines": {
-    "node": ">=22.12"
+    "node": "^22.13.0 || >=24.0.0"
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",

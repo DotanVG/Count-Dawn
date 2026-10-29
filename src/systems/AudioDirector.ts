@@ -376,13 +376,16 @@ export class AudioDirector {
 
     let reversed: AudioBuffer;
     try {
-      reversed = new AudioBuffer({
-        length: source.length,
-        numberOfChannels: source.numberOfChannels,
-        sampleRate: source.sampleRate,
-      });
+      // The context factory also works on Safari without an AudioBuffer constructor.
+      const context = (this.sound as ResumableSoundManager).context;
+      reversed = context
+        ? context.createBuffer(source.numberOfChannels, source.length, source.sampleRate)
+        : new AudioBuffer({
+          length: source.length,
+          numberOfChannels: source.numberOfChannels,
+          sampleRate: source.sampleRate,
+        });
     } catch {
-      // Older Safari exposes AudioBuffer but does not support its constructor.
       this.unreversible.add(key);
       return key;
     }
