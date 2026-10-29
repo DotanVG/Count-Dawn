@@ -240,6 +240,129 @@ test('a queued request replays with its OWN factory once a door frees, not the d
   assert.equal(controller.queuedCount, 0);
 });
 
+function entrantFactory(spawned) {
+  return (spawnX, spawnY, releaseX, releaseY) => {
+    let notify = null;
+    const entrant = {
+      onEntranceArrived: null,
+      spawnX,
+      spawnY,
+      releaseX,
+      releaseY,
+      onceDestroyed(cb) {
+        notify = cb;
+      },
+      destroy() {
+        notify?.();
+      },
+    };
+    spawned.push(entrant);
+    return entrant;
+  };
+}
+
+test('an entrant destroyed before arrival frees its door', () => {
+  const spawned = [];
+  const controller = new EntranceController(
+    () => ({ x: -10000, y: -10000 }),
+    0,
+    entrantFactory(spawned),
+  );
+
+  withFixedRandom(0, () => {
+    controller.spawnAt();
+    controller.spawnAt();
+    controller.spawnAt();
+  });
+  assert.equal(spawned.length, 3);
+  for (const id of ENTRANCE_DEFS.map((d) => d.id)) {
+    assert.equal(controller.isOccupied(id), true);
+  }
+
+  spawned[0].destroy();
+  const freed = ENTRANCE_DEFS.find(
+    (d) => d.spawnPoint.x === spawned[0].spawnX && d.spawnPoint.y === spawned[0].spawnY,
+  );
+  assert.equal(controller.isOccupied(freed.id), false);
+
+  controller.spawnAt();
+  assert.equal(spawned.length, 4, 'a freed door must accept a spawn instead of queueing');
+  assert.equal(controller.queuedCount, 0);
+  assert.equal(spawned[3].spawnX, spawned[0].spawnX);
+  assert.equal(spawned[3].spawnY, spawned[0].spawnY);
+});
+
+test('destroying an entrant drains a queued request through that door', () => {
+  const spawned = [];
+  const controller = new EntranceController(
+    () => ({ x: -10000, y: -10000 }),
+    0,
+    entrantFactory(spawned),
+  );
+
+  withFixedRandom(0, () => {
+    controller.spawnAt();
+    controller.spawnAt();
+    controller.spawnAt();
+    controller.spawnAt();
+  });
+  assert.equal(spawned.length, 3);
+  assert.equal(controller.queuedCount, 1);
+
+  spawned[0].destroy();
+  assert.equal(spawned.length, 4);
+  assert.equal(controller.queuedCount, 0);
+  assert.equal(spawned[3].spawnX, spawned[0].spawnX);
+  assert.equal(spawned[3].spawnY, spawned[0].spawnY);
+});
+
+test('arrival and a later destroy free the door only once', () => {
+  const spawned = [];
+  const controller = new EntranceController(
+    () => ({ x: -10000, y: -10000 }),
+    0,
+    entrantFactory(spawned),
+  );
+
+  withFixedRandom(0, () => {
+    controller.spawnAt();
+    controller.spawnAt();
+    controller.spawnAt();
+    controller.spawnAt();
+  });
+
+  spawned[0].onEntranceArrived();
+  assert.equal(spawned.length, 4);
+  assert.equal(controller.queuedCount, 0);
+
+  spawned[0].destroy();
+  assert.equal(spawned.length, 4, 'a second release must not spawn again');
+  assert.equal(controller.queuedCount, 0);
+});
+
+test('stop() drops the queue so a late destroy does not spawn', () => {
+  const spawned = [];
+  const controller = new EntranceController(
+    () => ({ x: -10000, y: -10000 }),
+    0,
+    entrantFactory(spawned),
+  );
+
+  withFixedRandom(0, () => {
+    controller.spawnAt();
+    controller.spawnAt();
+    controller.spawnAt();
+    controller.spawnAt();
+  });
+  assert.equal(controller.queuedCount, 1);
+
+  controller.stop();
+  assert.equal(controller.queuedCount, 0);
+  spawned[0].destroy();
+  controller.spawnAt();
+  assert.equal(spawned.length, 3, 'teardown must not walk a new hunter in');
+});
+
 test('chained onEntranceArrived callbacks are composed, not overwritten', () => {
   let originalCalled = false;
   let entrant;
