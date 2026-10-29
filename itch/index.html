@@ -222,6 +222,7 @@
        blocker, a dead deploy — still fires `load` for its own error page, so
        the game itself says hello instead (see src/game/main.ts). */
     window.addEventListener('message', function (event) {
+      if (event.origin !== 'https://count-dawn.vercel.app') return;
       if (event.data !== 'count-dawn:ready') return;
       ready = true;
       escapeBox.classList.remove('is-shown');
