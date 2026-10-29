@@ -142,6 +142,47 @@ test('supported AudioBuffer playback reverses each channel once and reuses the c
   director.destroy();
 });
 
+test('the audio context is preferred when the AudioBuffer constructor also works', () => {
+  let constructorCalls = 0;
+  class FakeAudioBuffer {
+    constructor({ length, numberOfChannels, sampleRate }) {
+      constructorCalls++;
+      Object.assign(this, { length, numberOfChannels, sampleRate });
+      this.channels = Array.from({ length: numberOfChannels }, () => new Float32Array(length));
+    }
+    getChannelData(channel) { return this.channels[channel]; }
+  }
+  const source = new FakeAudioBuffer({ length: 3, numberOfChannels: 2, sampleRate: 48000 });
+  source.channels[0].set([1, 2, 3]);
+  source.channels[1].set([4, 5, 6]);
+  const { director, sound, buffers } = setup({ AudioBuffer: FakeAudioBuffer }, [
+    [AUDIO.playerAttackWhoosh, source],
+  ]);
+  let allocations = 0;
+  sound.context = {
+    createBuffer(numberOfChannels, length, sampleRate) {
+      assert.equal(this, sound.context, 'the factory keeps its AudioContext receiver');
+      assert.deepEqual([numberOfChannels, length, sampleRate], [2, 3, 48000]);
+      allocations++;
+      return Object.assign(Object.create(FakeAudioBuffer.prototype), {
+        length, numberOfChannels, sampleRate,
+        channels: Array.from({ length: numberOfChannels }, () => new Float32Array(length)),
+      });
+    },
+  };
+  director.playSfx(AUDIO.playerAttackWhoosh);
+  director.playSfx(AUDIO.playerAttackWhoosh);
+  const key = `${AUDIO.playerAttackWhoosh}--reversed`;
+  assert.deepEqual(sound.getAll().map(s => s.key), [key, key]);
+  const reversed = buffers.get(key);
+  assert.deepEqual(Array.from(reversed.getChannelData(0)), [3, 2, 1]);
+  assert.deepEqual(Array.from(reversed.getChannelData(1)), [6, 5, 4]);
+  assert.deepEqual(source.channels.map(channel => Array.from(channel)), [[1, 2, 3], [4, 5, 6]]);
+  assert.equal(allocations, 1, 'the context allocates only one cached reverse');
+  assert.equal(constructorCalls, 1, 'only source setup uses the working constructor');
+  director.destroy();
+});
+
 test('the audio context preserves reversal, variance and caching with a legacy AudioBuffer', () => {
   class LegacyAudioBuffer {
     constructor() { throw new TypeError('Illegal constructor'); }
