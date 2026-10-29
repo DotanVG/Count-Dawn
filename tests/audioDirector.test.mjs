@@ -141,3 +141,66 @@ test('supported AudioBuffer playback reverses each channel once and reuses the c
   assert.equal(copies, 2, 'one source and one cached reverse');
   director.destroy();
 });
+
+test('the audio context preserves reversal, variance and caching with a legacy AudioBuffer', () => {
+  class LegacyAudioBuffer {
+    constructor() { throw new TypeError('Illegal constructor'); }
+  }
+  const channels = [new Float32Array([1, 2, 3]), new Float32Array([4, 5, 6])];
+  const source = Object.assign(Object.create(LegacyAudioBuffer.prototype), {
+    length: 3, numberOfChannels: 2, sampleRate: 44100,
+    getChannelData: channel => channels[channel],
+  });
+  const rolls = [0, 1, 0, 1, 0, 0];
+  const { director, sound, buffers } = setup({
+    AudioBuffer: LegacyAudioBuffer,
+    Math: Object.assign(Object.create(Math), { random: () => rolls.shift() }),
+  }, [[AUDIO.playerAttackWhoosh, source]]);
+  let allocations = 0;
+  sound.context = {
+    createBuffer(numberOfChannels, length, sampleRate) {
+      assert.equal(this, sound.context, 'the factory keeps its AudioContext receiver');
+      assert.deepEqual([numberOfChannels, length, sampleRate], [2, 3, 44100]);
+      allocations++;
+      const reversed = Array.from({ length: numberOfChannels }, () => new Float32Array(length));
+      return { getChannelData: channel => reversed[channel] };
+    },
+  };
+  director.playSfx(AUDIO.playerAttackWhoosh);
+  director.playSfx(AUDIO.playerAttackWhoosh);
+  const key = `${AUDIO.playerAttackWhoosh}--reversed`;
+  assert.deepEqual(sound.getAll().map(s => s.key), [key, key]);
+  const reversed = buffers.get(key);
+  assert.deepEqual(Array.from(reversed.getChannelData(0)), [3, 2, 1]);
+  assert.deepEqual(Array.from(reversed.getChannelData(1)), [6, 5, 4]);
+  assert.deepEqual(channels.map(channel => Array.from(channel)), [[1, 2, 3], [4, 5, 6]]);
+  assert.equal(allocations, 1, 'the reversed buffer is cached across plays');
+  const volume = balance.effectiveSfxVolume(director.getBalance(), AUDIO.playerAttackWhoosh);
+  assert.deepEqual(sound.getAll().map(s => s.detune), [220, -220]);
+  assert.ok(sound.getAll()[0].volume < volume);
+  assert.ok(sound.getAll()[1].volume > volume);
+  director.destroy();
+});
+
+test('a failed context allocation falls back once without interrupting playback', () => {
+  class LegacyAudioBuffer {
+    constructor() { throw new TypeError('Illegal constructor'); }
+  }
+  const source = Object.assign(Object.create(LegacyAudioBuffer.prototype), {
+    length: 3, numberOfChannels: 1, sampleRate: 44100,
+    getChannelData: () => new Float32Array([1, 2, 3]),
+  });
+  const { director, sound, buffers } = setup({ AudioBuffer: LegacyAudioBuffer }, [
+    [AUDIO.playerAttackWhoosh, source],
+  ]);
+  let attempts = 0;
+  sound.context = { createBuffer() { attempts++; throw new RangeError('Allocation failed'); } };
+  assert.doesNotThrow(() => {
+    director.playSfx(AUDIO.playerAttackWhoosh);
+    director.playSfx(AUDIO.playerAttackWhoosh);
+  });
+  assert.equal(attempts, 1, 'failed allocations must not be retried on every attack');
+  assert.deepEqual(sound.getAll().map(s => s.key), [AUDIO.playerAttackWhoosh, AUDIO.playerAttackWhoosh]);
+  assert.equal(buffers.has(`${AUDIO.playerAttackWhoosh}--reversed`), false);
+  director.destroy();
+});
