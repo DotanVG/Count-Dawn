@@ -431,10 +431,17 @@ export class AudioDirector {
     sound.play('segment');
   }
 
-  /** Stops every playing instance of an SFX key (e.g. the bat-form loop). */
+  /**
+   * Stops and destroys every instance of an SFX key (the bat-form loop).
+   * `sound.play` only auto-destroys on COMPLETE, and a loop never completes,
+   * so stopping it without removing it leaks one sound per flight.
+   */
   stopSfx(key: string): void {
     if (this.destroyed || !this.exists(key)) return;
-    this.sound.stopByKey(key);
+    for (const sound of this.pausedSfx) {
+      if (sound.key === key) this.pausedSfx.delete(sound);
+    }
+    this.sound.removeByKey(key);
   }
 
   // ── Balance ─────────────────────────────────────────────────────────────

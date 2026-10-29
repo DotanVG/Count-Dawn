@@ -19,7 +19,14 @@ export class PreloadScene extends Phaser.Scene {
   preload(): void {
     this.loadFailed = false;
     this.load.on('progress', (value: number) => this.game.events.emit('landing-progress', value));
-    this.load.once('loaderror', () => {
+    // A missing SFX must not brick boot. AudioDirector already no-ops a key
+    // that never landed in the cache; images and sheets still fail the load.
+    this.load.on('loaderror', (file: Phaser.Loader.File) => {
+      if (file.type === 'audio') {
+        console.warn(`Audio failed to load (${file.key}); continuing without that sound.`);
+        return;
+      }
+      if (this.loadFailed) return;
       this.loadFailed = true;
       this.game.events.emit('landing-load-error');
     });

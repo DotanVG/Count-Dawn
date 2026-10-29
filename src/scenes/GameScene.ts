@@ -65,6 +65,7 @@ import {
 import { playPurpleChainLightning } from '../systems/ChainLightningEffect';
 import { orderChainTargets, type ChainPoint } from '../systems/chainLightning';
 import { GameFlowSystem } from '../systems/GameFlowSystem';
+import { PendingBossLineup, bossRosterNames } from '../systems/pendingBosses';
 import { AudioDirector, getAudioDirector } from '../systems/AudioDirector';
 import { audioAsset } from '../data/audioManifest';
 import { CastleMap, WINDOW_X_CENTERS, WINDOW_Y } from '../world/CastleMap';
@@ -159,6 +160,12 @@ export class GameScene extends Phaser.Scene {
   private player!: Player;
   private coffin!: Coffin;
   private captains = new Set<Captain>();
+  /**
+   * Bosses booked for this night, including ones still queued at a busy
+   * door. `captains` only holds whoever has already claimed a door, so it
+   * cannot decide the lineup is dead.
+   */
+  private pendingBosses = new PendingBossLineup();
   private hunters!: Phaser.Physics.Arcade.Group;
   private pickups!: Phaser.Physics.Arcade.Group;
   private garlics!: Phaser.Physics.Arcade.Group;
@@ -249,6 +256,7 @@ export class GameScene extends Phaser.Scene {
     this.introSkipPointerId = -1;
     this.introSkipTriggered = false;
     this.captains.clear();
+    this.pendingBosses.reset();
     this.countdown = null;
     this.spawner = null;
     this.hud = null;
@@ -1449,6 +1457,7 @@ export class GameScene extends Phaser.Scene {
   /** (Re)creates the per-round simulation: flow, countdown, spawner. Reused every night. */
   private beginRoundSystems(): void {
     this.captains.clear();
+    this.pendingBosses.reset();
     // The Player and Coffin entities persist across rounds (unlike flow and
     // countdown, which are recreated below) — without resetting them
     // explicitly, HP stayed wherever it was left and the coffin stayed
@@ -2070,6 +2079,8 @@ export class GameScene extends Phaser.Scene {
     // a beat later and heavier: the strike itself, not the lightning showing up.
     this.cameras.main.shake(420, 0.01);
 
+    // Entering hunters are included. Destroying one frees its door
+    // (EntranceController listens for destroy, not only arrival).
     const targets = this.getAttackTargets().filter((t) => t.active && t.isAlive);
     const chainTargets = targets.map((target) => ({ x: target.x, y: target.y }));
     for (const target of targets) {
@@ -2272,6 +2283,9 @@ export class GameScene extends Phaser.Scene {
         this.audio.stopSfx(AUDIO.batDashSound);
         this.audio.playSfxSegment(AUDIO.batDashSound, 0.5, 1);
       } else if (active) {
+        // One loop per flight. The previous instance is removed first so a
+        // second start cannot stack another copy of the same loop.
+        this.audio.stopSfx(AUDIO.batSound1);
         this.audio.playSfx(AUDIO.batSound1, { loop: true });
       } else if (cause === 'flight') {
         this.audio.stopSfx(AUDIO.batSound1);
@@ -2305,9 +2319,12 @@ export class GameScene extends Phaser.Scene {
    * spawn tick would.
    */
   private spawnBoss(): void {
-    if (this.captains.size > 0) return;
     const lineup = bossLineupForNight(this.night);
     const total = lineup.priests + lineup.captains;
+    // Book the whole lineup before anyone enters. A busy door queues the
+    // factory, so `captains` does not yet hold those bosses — counting only
+    // the set would declare them defeated while one is still waiting.
+    if (!this.pendingBosses.begin(total)) return;
 
     for (let index = 0; index < total; index++) {
       const isPriest = index < lineup.priests;
@@ -2327,8 +2344,18 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Order matters: the HUD has to know WHO arrived before the objective flips,
-    // because notifyBossSpawned is what triggers the banner.
-    this.hud?.setBossRoster([...this.captains].map((captain) => captain.bossName));
+    // because notifyBossSpawned is what triggers the banner. Queued bosses
+    // have no sprite yet; their slots are still named so the count is the
+    // whole lineup, not only whoever found a free door.
+    this.hud?.setBossRoster(
+      bossRosterNames(
+        [...this.captains].map((captain) => ({
+          name: captain.bossName,
+          priest: captain instanceof Priest,
+        })),
+        lineup,
+      ),
+    );
     this.flow.notifyBossSpawned();
     this.audio.playSfx(AUDIO.bossAppear);
   }
@@ -2382,7 +2409,7 @@ export class GameScene extends Phaser.Scene {
     if (isBoss) {
       this.runStats.bosses[this.bossKindOf(hunter)]++;
       this.captains.delete(hunter);
-      if (this.captains.size === 0) this.flow.notifyBossDefeated();
+      if (this.pendingBosses.defeat()) this.flow.notifyBossDefeated();
       // A mini-boss only ever dies once the blood meter is already full (see
       // BOSS_SPAWN_REQUESTED), so this flood is guaranteed overflow — it tops
       // off HP, or once that is full too, fills Wrath (see hopBloodToHealth).
