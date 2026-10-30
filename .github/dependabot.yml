@@ -5,6 +5,7 @@ updates:
     schedule:
       interval: weekly
     target-branch: staging
+    open-pull-requests-limit: 3
     groups:
       npm-minor-and-patch:
         update-types:
@@ -16,6 +17,7 @@ updates:
     schedule:
       interval: weekly
     target-branch: staging
+    open-pull-requests-limit: 3
     groups:
       actions-minor-and-patch:
         update-types:
