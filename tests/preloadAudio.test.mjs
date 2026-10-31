@@ -24,7 +24,7 @@ function setup() {
   scene.createChromaKeyedRoomBg = () => {};
   scene.preload();
   let errors = 0;
-  scene.game.events.on('landing-load-error', () => errors++);
+  scene.game.events.on('boot-load-error', () => errors++);
   return { scene, warnings, started: () => started, errors: () => errors };
 }
 

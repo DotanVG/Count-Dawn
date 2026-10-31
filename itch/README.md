@@ -1,6 +1,6 @@
 # Itch.io Upload Notes
 
-Zip the **contents** of this `itch/` directory (`index.html` + `COUNT_DAWN.jpeg`), not the directory itself, and upload the zip to the itch.io project. The page shows the cover art and a PLAY button, then loads the live Vercel build in a nested fullscreen iframe.
+Zip the **contents** of this `itch/` directory (`index.html` + `COUNT_DAWN.jpeg`), not the directory itself, and upload the zip to the itch.io project. The page immediately loads the live Vercel build into a nested iframe, opening the original game menu without a wrapper PLAY gate. The game supplies its own fullscreen button.
 
 ## Upload settings
 
@@ -22,7 +22,7 @@ Three things have to line up for that to load, so check all three if the embed c
 2. The itch embed must be marked playable in the browser (above).
 3. The Vercel deploy has to be live — the page falls back to an "open in a new tab" link after 12s if the frame never loads, so a blank embed means the fallback timer has not fired yet.
 
-Fullscreen is requested on click but is never required: browsers that refuse it (iOS Safari has no element fullscreen) still launch the game windowed.
+Fullscreen is requested only through the game's fullscreen button and is never required. Browsers that refuse it still show the menu and run the game windowed.
 
 ## Alternative (no iframe)
 
