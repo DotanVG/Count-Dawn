@@ -30,7 +30,6 @@ import {
 } from '../game/constants';
 import { EVENTS } from '../game/events';
 import { isTouchDevice } from '../game/device';
-import { enterGameShell, prepareLandingStart } from '../game/landing';
 import { setVampireCursorVisible } from '../game/vampireCursor';
 import { Player } from '../entities/Player';
 import { Hunter, BASIC_LOOKS, PILGRIM_LOOK, HUNTRESS_LOOK } from '../entities/Hunter';
@@ -545,7 +544,6 @@ export class GameScene extends Phaser.Scene {
     this.menuUi = this.add.container(0, 0, [dim, cover, tagline, controls, start]).setDepth(DEPTHS.menu);
 
     this.input.keyboard?.once('keydown-ENTER', () => this.startIntro());
-    prepareLandingStart(this.game, () => this.startIntro());
 
     // The Main Title (Noam) owns everything that is not an active night: the
     // menu, the cold open, and every game-over screen. Asking for it while it
@@ -553,6 +551,7 @@ export class GameScene extends Phaser.Scene {
     // neither restarts it nor stacks a second copy.
     this.audio.playMainTitle();
     this.audio.enterMenuMode();
+    this.game.events.emit('menu-ready');
   }
 
   /** Write-stream / reverse-stream the three tagline sentences, forever. */
@@ -617,7 +616,6 @@ export class GameScene extends Phaser.Scene {
     } else {
       this.riseFromCoffin(() => this.startPlaying());
     }
-    enterGameShell(this.game);
   }
 
   /**

@@ -18,8 +18,7 @@ export function installOrientationGate(game: Phaser.Game): void {
   let autoPausedGame = false;
 
   const sync = (): void => {
-    const active = document.documentElement.classList.contains('game-active')
-      && coarsePointerQuery.matches && window.innerHeight > window.innerWidth;
+    const active = coarsePointerQuery.matches && window.innerHeight > window.innerWidth;
 
     if (active) {
       if (game.scene.isActive(SCENES.game) && !game.scene.isPaused(SCENES.game)) {
@@ -45,7 +44,11 @@ export function installOrientationGate(game: Phaser.Game): void {
     }, 40);
   };
 
-  // Entry refreshes the scale even when the phone was already in portrait.
+  // Also check after scene creation: a cold preload may outlast the initial timer.
+  game.events.once('ready', () => {
+    game.scene.getScene(SCENES.game).events.on('create', sync);
+    sync();
+  });
   game.scale.on('resize', sync);
   coarsePointerQuery.addEventListener('change', queueSync);
   window.addEventListener('resize', queueSync);

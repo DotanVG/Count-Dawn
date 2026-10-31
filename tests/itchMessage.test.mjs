@@ -13,7 +13,7 @@ function page() {
     remove: name => classes.delete(name), add: name => classes.add(name),
   } };
   const context = {
-    window: { addEventListener: (event, callback) => listeners.set(event, callback) },
+    window: { addEventListener: (event, callback) => listeners.set(event, callback), setTimeout() {} },
     document: { getElementById: () => element },
   };
   runInNewContext(script, context);
@@ -38,4 +38,11 @@ test('itch only accepts the ready payload from the exact game origin', () => {
   frame.message({ origin, data: 'count-dawn:ready' });
   assert.equal(frame.context.ready, true);
   assert.equal(frame.classes.has('is-shown'), false);
+});
+
+test('itch wrapper launches the live game without a cover or PLAY gate', () => {
+  const frame = page();
+  assert.equal(frame.context.frame.src, 'https://count-dawn.vercel.app/?embed=1');
+  assert.doesNotMatch(html, /id="welcome"|id="playBtn"|requestFullscreen/);
+  assert.match(html, /#gameFrame\s*{\s*display: block/);
 });

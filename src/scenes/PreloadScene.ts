@@ -18,7 +18,6 @@ export class PreloadScene extends Phaser.Scene {
 
   preload(): void {
     this.loadFailed = false;
-    this.load.on('progress', (value: number) => this.game.events.emit('landing-progress', value));
     // A missing SFX must not brick boot. AudioDirector already no-ops a key
     // that never landed in the cache; images and sheets still fail the load.
     this.load.on('loaderror', (file: Phaser.Loader.File) => {
@@ -28,7 +27,7 @@ export class PreloadScene extends Phaser.Scene {
       }
       if (this.loadFailed) return;
       this.loadFailed = true;
-      this.game.events.emit('landing-load-error');
+      this.game.events.emit('boot-load-error');
     });
     // The Count (player) — Romi's art, built by tools/build_count_sheets.py.
     this.load.spritesheet(TEXTURES.vampireIdle, 'assets/characters/vampire/vampire_idle.png', CHAR_FRAME);
