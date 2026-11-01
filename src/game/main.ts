@@ -15,26 +15,33 @@ if (location.hostname === 'count-dawn.vercel.app') {
   injectSpeedInsights({ beforeSend });
 }
 
-/** Entry point. The HTML boot loader is removed in BootScene. */
-const game = new Phaser.Game(gameConfig);
+// Boot immediately into the original menu. Phaser and AudioDirector retain
+// their normal gesture-based audio unlock; there is no HTML entry gate.
+const game = new Phaser.Game({
+  ...gameConfig,
+  callbacks: {
+    preBoot: (game) => {
+      // Signal a working menu, rather than just a constructed engine. Failed
+      // preload must leave the itch wrapper's recovery timeout available.
+      game.events.once('menu-ready', () => {
+        if (window.parent !== window) window.parent.postMessage('count-dawn:ready', '*');
+      });
+      game.events.once('boot-load-error', () => {
+        const message = document.createElement('div');
+        message.id = 'boot-loader';
+        message.setAttribute('role', 'alert');
+        message.textContent = 'The game could not load. Reload this page to try again.';
+        document.getElementById('game-root')?.append(message);
+      });
+    },
+  },
+});
 
 installFullscreenButton(game);
 gameSettings.install();
 installVampireCursor();
-// Landscape-only gate: pauses gameplay + audio while a phone is in portrait.
 installOrientationGate(game);
 
-/**
- * Tell an embedding page (itch/index.html) that the game really did come up.
- * A frame that gets refused — CSP, an ad blocker, an offline deploy — still
- * fires `load` for its error page, so the wrapper cannot tell "running" from
- * "blocked" without hearing from us directly.
- */
-if (window.parent !== window) {
-  window.parent.postMessage('count-dawn:ready', '*');
-}
-
-// Expose the instance for debugging during development only.
 if (import.meta.env.DEV) {
   (window as unknown as { game: Phaser.Game }).game = game;
 }

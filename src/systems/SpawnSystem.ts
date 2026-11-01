@@ -36,6 +36,8 @@ export class SpawnSystem {
 
   stop(): void {
     this.timer.remove();
+    // Seals the doors before the scene destroys whoever is still walking in.
+    this.entranceController.stop();
   }
 
   /**

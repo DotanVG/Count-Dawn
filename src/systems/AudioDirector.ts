@@ -374,11 +374,21 @@ export class AudioDirector {
       return key;
     }
 
-    const reversed = new AudioBuffer({
-      length: source.length,
-      numberOfChannels: source.numberOfChannels,
-      sampleRate: source.sampleRate,
-    });
+    let reversed: AudioBuffer;
+    try {
+      // The context factory also works on Safari without an AudioBuffer constructor.
+      const context = (this.sound as ResumableSoundManager).context;
+      reversed = context
+        ? context.createBuffer(source.numberOfChannels, source.length, source.sampleRate)
+        : new AudioBuffer({
+          length: source.length,
+          numberOfChannels: source.numberOfChannels,
+          sampleRate: source.sampleRate,
+        });
+    } catch {
+      this.unreversible.add(key);
+      return key;
+    }
     for (let channel = 0; channel < source.numberOfChannels; channel++) {
       const from = source.getChannelData(channel);
       const to = reversed.getChannelData(channel);
@@ -431,10 +441,17 @@ export class AudioDirector {
     sound.play('segment');
   }
 
-  /** Stops every playing instance of an SFX key (e.g. the bat-form loop). */
+  /**
+   * Stops and destroys every instance of an SFX key (the bat-form loop).
+   * `sound.play` only auto-destroys on COMPLETE, and a loop never completes,
+   * so stopping it without removing it leaks one sound per flight.
+   */
   stopSfx(key: string): void {
     if (this.destroyed || !this.exists(key)) return;
-    this.sound.stopByKey(key);
+    for (const sound of this.pausedSfx) {
+      if (sound.key === key) this.pausedSfx.delete(sound);
+    }
+    this.sound.removeByKey(key);
   }
 
   // ── Balance ─────────────────────────────────────────────────────────────

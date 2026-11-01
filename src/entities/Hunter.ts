@@ -87,6 +87,15 @@ export class Hunter extends Phaser.Physics.Arcade.Sprite {
   onStrikeHit: (() => void) | null = null;
   /** Set by GameScene for the boss: called once the walk-in entrance finishes. */
   onEntranceArrived: (() => void) | null = null;
+
+  /**
+   * EntranceController subscribes so the door frees if this hunter is
+   * destroyed before the walk-in finishes. One-shot, same as arrival.
+   */
+  onceDestroyed(notify: () => void): void {
+    this.once(Phaser.GameObjects.Events.DESTROY, notify);
+  }
+
   /** Depth once the entrance finishes (below the wall band while entering). */
   protected normalDepth: number = DEPTHS.hunter;
   /** Multiplier on incoming knockback — the Captain plants his feet harder. */

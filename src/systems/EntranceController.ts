@@ -101,9 +101,14 @@ function distance(a: Point, b: Point): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-/** Anything spawnAt() can hand a walk-in through — just needs somewhere to hang the arrival hook. */
+/**
+ * Anything spawnAt() can hand a walk-in through. Arrival frees the door.
+ * `onceDestroyed`, when present, frees it too — a hunter killed or torn
+ * down mid walk-in never reaches the arrival hook.
+ */
 export interface Entrant {
   onEntranceArrived: (() => void) | null;
+  onceDestroyed?(notify: () => void): void;
 }
 
 export type SpawnEntrant = (
@@ -122,7 +127,7 @@ const DEFAULT_WEIGHTS: Readonly<Record<EntranceId, number>> = { left: 1, right: 
  * random arena edge. One entrant walks in per door at a time — a second
  * request for a busy door queues instead of stacking a sprite on top of the
  * first — and the queue drains itself the instant a door frees up, chained
- * off each entrant's own onEntranceArrived hook.
+ * off each entrant's arrival or, if they die first, their destruction.
  */
 /** A blocked spawnAt() request waiting for a door — remembers not just WHO but how to retry. */
 interface QueuedRequest {
@@ -141,6 +146,8 @@ export class EntranceController {
    */
   private readonly queue: QueuedRequest[] = [];
   private lastDoor: EntranceId | null = null;
+  /** Set by stop(): the night is over, so a late destroy must not spawn. */
+  private closed = false;
 
   constructor(
     private readonly getPlayerPosition: () => Point,
@@ -157,6 +164,16 @@ export class EntranceController {
   /** True while a hunter is still mid walk-in through this door. */
   isOccupied(id: EntranceId): boolean {
     return this.occupied.has(id);
+  }
+
+  /**
+   * The night is over. Drop anyone still waiting and ignore later door
+   * releases: scene teardown destroys every entrant, and that must not
+   * walk a fresh hunter in through the door they just died in.
+   */
+  stop(): void {
+    this.closed = true;
+    this.queue.length = 0;
   }
 
   /**
@@ -185,6 +202,7 @@ export class EntranceController {
    * fine: that one genuinely does self-heal the moment any door frees.
    */
   spawnAt(spawnEntrant: SpawnEntrant = this.spawnEntrant, ignoreProximity = false): void {
+    if (this.closed) return;
     const def = this.claimDoor(ignoreProximity);
     if (def) {
       this.enter(def, spawnEntrant);
@@ -231,14 +249,27 @@ export class EntranceController {
       def.threshold.x,
       def.threshold.y,
     );
+    // Arrival and destruction both free the door, and either one is enough.
+    // A hunter killed mid walk-in (the Ultimate, or any other destroy)
+    // never reaches onEntranceArrived; without this hook that door stays
+    // occupied for the rest of the night and, once all three are stuck,
+    // nothing else can enter.
+    let released = false;
+    const releaseDoor = (): void => {
+      if (released) return;
+      released = true;
+      this.occupied.delete(def.id);
+      if (this.closed) return;
+      const next = this.queue.shift();
+      if (next) this.spawnAt(next.spawnEntrant, next.ignoreProximity);
+    };
     // Compose rather than overwrite: some entrants (bosses) already hang
     // their own post-arrival hook off this callback.
     const chained = entrant.onEntranceArrived;
     entrant.onEntranceArrived = () => {
       chained?.();
-      this.occupied.delete(def.id);
-      const next = this.queue.shift();
-      if (next) this.spawnAt(next.spawnEntrant, next.ignoreProximity);
+      releaseDoor();
     };
+    entrant.onceDestroyed?.(releaseDoor);
   }
 }

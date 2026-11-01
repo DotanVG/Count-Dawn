@@ -125,6 +125,19 @@ Open the printed localhost URL.
 
 Set `FAST_DEV_MODE = true` in [`src/data/balance.ts`](src/data/balance.ts) for a 25-second night — every balance number the game uses lives in that one file.
 
+### CI checks
+
+The `ci` workflow runs on pull requests (including those targeting `staging`)
+and pushes to `staging` and `main`. The exact check names for branch protection are:
+
+- `check (22.13.0)`
+- `check (24)`
+
+Each check runs `npm ci`, `npm audit --omit=dev --audit-level=high`, lint,
+typecheck, tests and build. New commits cancel older CI runs for the same PR;
+push runs have unique concurrency groups and are never canceled by newer pushes.
+Updating branch protection is a separate repository settings action.
+
 ### Development tools
 
 - **Audio Balance Editor:** use `?audioEditor=1`, then **F8**, to preview and tune every manifest audio asset. Copy Configuration produces values ready for `src/data/audioBalance.ts`; full operation and browser-storage details are in [docs/AUDIO.md](docs/AUDIO.md).
