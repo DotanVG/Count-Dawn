@@ -18,7 +18,7 @@ Zip the **contents** of this `itch/` directory (`index.html` + `COUNT_DAWN.jpeg`
 
 Three things have to line up for that to load, so check all three if the embed comes up blank:
 
-1. `vercel.json` must list the itch hosts in `frame-ancestors` (`itch.io`, `*.itch.io`, `html-classic.itch.zone`, `html.itch.zone`) and must **not** send `X-Frame-Options`, which has no "allow this specific host" form and would veto the frame regardless.
+1. `vercel.json` must list the itch hosts in `frame-ancestors` (`itch.io`, `*.itch.io`, `html-classic.itch.zone`, `html.itch.zone`) plus the Kamario embeds (`https://kamario.games`, `https://*.kamario.games`) and must **not** send `X-Frame-Options`, which has no "allow this specific host" form and would veto the frame regardless.
 2. The itch embed must be marked playable in the browser (above).
 3. The Vercel deploy has to be live — the page falls back to an "open in a new tab" link after 12s if the frame never loads, so a blank embed means the fallback timer has not fired yet.
 
