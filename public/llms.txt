@@ -1,0 +1,24 @@
+# Count Dawn
+
+> Count Dawn is a free reverse horde survival browser game, built for GMTK Game Jam 2026: a vampire hunts waves of human hunters, collects blood, defeats their leader, and races back to his coffin before sunrise.
+
+## About
+
+- [Dotan Veretzky](https://dotanv.vercel.app/): software engineer, game developer, web and AI developer. Author of Count Dawn.
+- [LinkedIn](https://www.linkedin.com/in/dotan-v/)
+- [GitHub](https://github.com/DotanVG)
+- [Personal site](https://dotanv.vercel.app/)
+
+## Play
+
+- [Play Count Dawn](https://count-dawn.vercel.app/): browser game, no install required.
+- [itch.io](https://dotanv.itch.io/count-dawn)
+
+## Source
+
+- [GitHub repository](https://github.com/DotanVG/Count-Dawn)
+
+## Docs
+
+- [README](https://github.com/DotanVG/Count-Dawn/blob/main/README.md): gameplay, the night loop, and local setup.
+- [Game loop](https://github.com/DotanVG/Count-Dawn/blob/main/docs/GAME_LOOP.md): nights, blood, bosses, and dawn.
