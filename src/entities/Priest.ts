@@ -7,7 +7,7 @@ import { TEXTURES, animKey } from '../utils/assetKeys';
 import { angleToDir4 } from '../utils/direction';
 import { BossCharge } from './BossCharge';
 import { Hunter, type HunterLook, type HunterStats } from './Hunter';
-import { captainTookDamage, type CaptainTraits } from './HunterCaptain';
+import { bossTookDamage, playBossEntrance, type BossTraits } from './bossSupport';
 
 const PRIEST_LOOK: HunterLook = {
   charKey: 'priest',
@@ -66,7 +66,7 @@ const PAINTED_TOP_OFFSET = -19;
  * circle is up he sees it through no matter how hard he is hit (see
  * isCommitted), which is exactly why the telegraph is as loud as it is.
  */
-export class Priest extends Hunter implements CaptainTraits {
+export class Priest extends Hunter implements BossTraits {
   readonly maxHealth = PRIEST.health;
   readonly healthBar: BossHealthBar;
   readonly bossName = 'Priest';
@@ -152,7 +152,7 @@ export class Priest extends Hunter implements CaptainTraits {
 
   override takeDamage(amount: number): boolean {
     const killed = super.takeDamage(amount);
-    captainTookDamage(this, this.emitter);
+    bossTookDamage(this, this.emitter);
     return killed;
   }
 
@@ -205,14 +205,7 @@ export class Priest extends Hunter implements CaptainTraits {
    * the hall knows which of them just walked in.
    */
   playEntrance(): void {
-    const targetScale = this.scaleX;
-    this.scene.tweens.add({
-      targets: this,
-      scale: { from: targetScale * 1.18, to: targetScale },
-      duration: 260,
-      ease: 'Back.easeOut',
-    });
-    this.scene.cameras.main.shake(250, 0.006);
+    playBossEntrance(this);
   }
 
   /**

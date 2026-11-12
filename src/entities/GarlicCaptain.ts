@@ -10,12 +10,11 @@ import {
   CAPTAIN_NAMES,
   CAPTAIN_TINT,
   GARLIC_CHARGE_COLOR,
-  captainTookDamage,
-  type CaptainTraits,
-} from './HunterCaptain';
+} from '../data/bossPresentation';
+import { bossTookDamage, playBossEntrance, type BossTraits } from './bossSupport';
 
 /** A Captain drawn from the ranged hunter type, armed with one bulb per hand. */
-export class GarlicCaptain extends GarlicThrower implements CaptainTraits {
+export class GarlicCaptain extends GarlicThrower implements BossTraits {
   readonly maxHealth = BOSS.health;
   readonly healthBar: BossHealthBar;
   readonly bossName = CAPTAIN_NAMES.farmer ?? 'Garlic Captain';
@@ -88,7 +87,7 @@ export class GarlicCaptain extends GarlicThrower implements CaptainTraits {
 
   override takeDamage(amount: number): boolean {
     const killed = super.takeDamage(amount);
-    captainTookDamage(this, this.emitter);
+    bossTookDamage(this, this.emitter);
     return killed;
   }
 
@@ -101,13 +100,6 @@ export class GarlicCaptain extends GarlicThrower implements CaptainTraits {
   }
 
   playEntrance(): void {
-    const targetScale = this.scaleX;
-    this.scene.tweens.add({
-      targets: this,
-      scale: { from: targetScale * 1.18, to: targetScale },
-      duration: 260,
-      ease: 'Back.easeOut',
-    });
-    this.scene.cameras.main.shake(250, 0.006);
+    playBossEntrance(this);
   }
 }
