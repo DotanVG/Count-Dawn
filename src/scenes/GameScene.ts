@@ -34,7 +34,8 @@ import { setVampireCursorVisible } from '../game/vampireCursor';
 import { Player } from '../entities/Player';
 import { Hunter, BASIC_LOOKS, PILGRIM_LOOK, HUNTRESS_LOOK } from '../entities/Hunter';
 import { ArmedHunter } from '../entities/ArmedHunter';
-import { HunterCaptain, pluralBossName } from '../entities/HunterCaptain';
+import { HunterCaptain } from '../entities/HunterCaptain';
+import { formatBossNames } from '../data/bossPresentation';
 import { GarlicCaptain } from '../entities/GarlicCaptain';
 import { CrossCaptain } from '../entities/CrossCaptain';
 import { GoldCross } from '../entities/GoldCross';
@@ -2242,20 +2243,10 @@ export class GameScene extends Phaser.Scene {
     // is exactly when the Count is most likely to be at the coffin asking.
     const alive = [...this.captains].filter((captain) => captain.isAlive);
     if (alive.length > 0) {
-      const counts = new Map<string, number>();
-      for (const captain of alive) {
-        counts.set(captain.bossName, (counts.get(captain.bossName) ?? 0) + 1);
-      }
-      const parts = [...counts].map(([name, n]) =>
-        n > 1 ? `the ${n} ${pluralBossName(name)}` : `the ${name}`,
-      );
-      const listed =
-        parts.length === 1
-          ? parts[0]
-          : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+      const listed = formatBossNames(alive.map((captain) => captain.bossName));
       const stillLives =
         alive.length === 1
-          ? `${parts[0][0].toUpperCase()}${parts[0].slice(1)} still lives`
+          ? `${listed[0].toUpperCase()}${listed.slice(1)} still lives`
           : `${listed[0].toUpperCase()}${listed.slice(1)} still live`;
       return { name: listed, plural: stillLives };
     }
