@@ -28,7 +28,7 @@
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
-    "@vercel/speed-insights": "^2.0.0",
+    "@vercel/speed-insights": "^2.1.0",
     "phaser": "^4.2.1"
   },
   "devDependencies": {
@@ -37,6 +37,6 @@
     "@typescript-eslint/parser": "^8.18.0",
     "eslint": "^10.14.0",
     "typescript": "^6.0.3",
-    "vite": "^8.1.5"
+    "vite": "^8.3.6"
   }
 }

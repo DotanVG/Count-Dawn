@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { BLOOD as BLOOD_BALANCE, THROWER } from '../data/balance';
 import { TEXTURES, animKey } from '../utils/assetKeys';
-import { CAPTAIN_TINT } from '../entities/HunterCaptain';
+import { CAPTAIN_TINT } from '../data/bossPresentation';
 import type { BossKind, HunterKind, RunStats } from '../types/game';
 
 const FONT = 'Trebuchet MS, sans-serif';

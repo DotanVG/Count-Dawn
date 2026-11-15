@@ -3,7 +3,7 @@ import { BLOOD, NIGHT, PLAYER, WRATH, bossLineupForNight } from '../data/balance
 import { DEPTHS, GAME_WIDTH, GAME_HEIGHT } from '../game/constants';
 import { EVENTS } from '../game/events';
 import { TEXTURES } from '../utils/assetKeys';
-import { pluralBossName } from '../entities/HunterCaptain';
+import { formatBossNames } from '../data/bossPresentation';
 import type { Objective } from '../types/game';
 import { countdownUrgencyCue, wrathOrbitParticleCount } from './hudUrgency';
 
@@ -30,17 +30,7 @@ const OBJECTIVE_TEXT: Record<Objective, string> = {
 function defeatBossText(roster: readonly string[], night: number): string {
   if (roster.length === 0) return countedBossText(night);
 
-  const counts = new Map<string, number>();
-  for (const name of roster) counts.set(name, (counts.get(name) ?? 0) + 1);
-
-  const parts = [...counts].map(([name, n]) =>
-    n > 1 ? `the ${n} ${pluralBossName(name)}` : `the ${name}`,
-  );
-  const listed =
-    parts.length === 1
-      ? parts[0]
-      : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
-  return `Defeat ${listed}`;
+  return `Defeat ${formatBossNames(roster)}`;
 }
 
 /**

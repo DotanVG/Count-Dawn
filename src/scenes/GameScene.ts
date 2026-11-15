@@ -34,7 +34,8 @@ import { setVampireCursorVisible } from '../game/vampireCursor';
 import { Player } from '../entities/Player';
 import { Hunter, BASIC_LOOKS, PILGRIM_LOOK, HUNTRESS_LOOK } from '../entities/Hunter';
 import { ArmedHunter } from '../entities/ArmedHunter';
-import { HunterCaptain, pluralBossName } from '../entities/HunterCaptain';
+import { HunterCaptain } from '../entities/HunterCaptain';
+import { formatBossNames } from '../data/bossPresentation';
 import { GarlicCaptain } from '../entities/GarlicCaptain';
 import { CrossCaptain } from '../entities/CrossCaptain';
 import { GoldCross } from '../entities/GoldCross';
@@ -2242,20 +2243,10 @@ export class GameScene extends Phaser.Scene {
     // is exactly when the Count is most likely to be at the coffin asking.
     const alive = [...this.captains].filter((captain) => captain.isAlive);
     if (alive.length > 0) {
-      const counts = new Map<string, number>();
-      for (const captain of alive) {
-        counts.set(captain.bossName, (counts.get(captain.bossName) ?? 0) + 1);
-      }
-      const parts = [...counts].map(([name, n]) =>
-        n > 1 ? `the ${n} ${pluralBossName(name)}` : `the ${name}`,
-      );
-      const listed =
-        parts.length === 1
-          ? parts[0]
-          : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+      const listed = formatBossNames(alive.map((captain) => captain.bossName));
       const stillLives =
         alive.length === 1
-          ? `${parts[0][0].toUpperCase()}${parts[0].slice(1)} still lives`
+          ? `${listed[0].toUpperCase()}${listed.slice(1)} still lives`
           : `${listed[0].toUpperCase()}${listed.slice(1)} still live`;
       return { name: listed, plural: stillLives };
     }
@@ -2801,22 +2792,33 @@ export class GameScene extends Phaser.Scene {
   private cleanup(): void {
     // Whatever comes next (game over, victory, the menu again) is clickable.
     setVampireCursorVisible(true);
-    // Only this scene's own effects are silenced. The music is deliberately
-    // left alone: it belongs to the game, not to the scene, and has to carry
+    // This runs on SHUTDOWN as scene.start(GameOver) tears us down. A throw
+    // here aborts that transition, which is why mid-dash deaths never showed
+    // GameOver (DOT-143). SFX teardown is non-critical; keep going even if
+    // Phaser's WebAudio node is already gone. The music is deliberately left
+    // alone: it belongs to the game, not to the scene, and has to carry
     // across game over, the menu and the next run without a gap.
-    this.audio.stopSfx(AUDIO.batSound1);
-    this.audio.stopSfx(AUDIO.batDashSound);
-    this.emitter.removeAllListeners();
-    this.hud?.destroy();
-    this.spawner?.stop();
-    this.taglineTimer?.remove();
-    this.menuLightning?.destroy();
-    this.menuLightning = null;
-    this.coldOpenClock?.remove();
-    this.destroyIntroControls();
-    this.events.off(Phaser.Scenes.Events.PAUSE, this.onScenePaused, this);
-    this.events.off(Phaser.Scenes.Events.RESUME, this.onSceneResumed, this);
-    this.input.keyboard?.off('keydown-ESC', this.requestPause, this);
-    this.input.keyboard?.off('keydown-P', this.requestPause, this);
+    try {
+      this.audio?.stopSfx(AUDIO.batSound1);
+      this.audio?.stopSfx(AUDIO.batDashSound);
+    } catch {
+      // AudioDirector.stopSfx is itself defensive; this is a last resort.
+    }
+    try {
+      this.emitter.removeAllListeners();
+      this.hud?.destroy();
+      this.spawner?.stop();
+      this.taglineTimer?.remove();
+      this.menuLightning?.destroy();
+      this.menuLightning = null;
+      this.coldOpenClock?.remove();
+      this.destroyIntroControls();
+      this.events.off(Phaser.Scenes.Events.PAUSE, this.onScenePaused, this);
+      this.events.off(Phaser.Scenes.Events.RESUME, this.onSceneResumed, this);
+      this.input.keyboard?.off('keydown-ESC', this.requestPause, this);
+      this.input.keyboard?.off('keydown-P', this.requestPause, this);
+    } catch {
+      // Remaining teardown must not block GameOver from appearing.
+    }
   }
 }

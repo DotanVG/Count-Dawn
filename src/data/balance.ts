@@ -48,6 +48,35 @@ export const DASH = {
   afterimages: 5,
 } as const;
 
+/** Cosmetic dash feedback only: milliseconds, world pixels, pixels/second. */
+export const DASH_FX = {
+  rngSeed: 142,
+  ghost: { intervalMs: 25, lifeMs: 280, limit: 12, alpha: 0.42, tint: 0x9d6bff },
+  lines: {
+    count: 9, lifeMs: 300, length: [12, 30], width: 1.5,
+    spread: 20, rear: 16, travel: 60, speed: 260, alpha: 0.65, tint: 0xe8ddff,
+  },
+  dust: {
+    count: 5, lifeMs: 380, size: [5, 9], speed: [45, 125], lift: [15, 50],
+    gravity: 150, growth: 1.8, alpha: 0.48, tint: 0x6b4d8f,
+  },
+  stones: {
+    count: 4, lifeMs: 320, size: [2, 3], speed: [65, 160], lift: [70, 130],
+    gravity: 600, growth: 1, alpha: 0.75, tint: 0xaaa1b8,
+  },
+  stretch: { width: 1.45, height: 0.85, squash: 0.8, recoverMs: 200 },
+  smear: {
+    lifeMs: 80, length: 60, height: 22, taper: 0.12, bandLengthStep: 0.13,
+    alpha: 0.65, colors: [0xe8ddff, 0x9d6bff, 0x6b4d8f, 0x241830],
+  },
+  skid: {
+    angleDeg: 12, lifeMs: 200, count: 12, size: [2, 3], speed: [65, 180],
+    lift: [30, 95], gravity: 420, growth: 0.35, alpha: 0.8, tint: 0xe8ddff,
+  },
+  /** One player owns the scene's dash pool; every burst shares this ceiling. */
+  particles: { limit: 192, footOffsetY: 28, rear: 12, spread: 8 },
+} as const;
+
 /**
  * Bat form — the shape the Count wears for the dash and the coffin flights,
  * and (later) for the summonable minions. Romi's frames are drawn nearly

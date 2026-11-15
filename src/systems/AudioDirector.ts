@@ -445,13 +445,39 @@ export class AudioDirector {
    * Stops and destroys every instance of an SFX key (the bat-form loop).
    * `sound.play` only auto-destroys on COMPLETE, and a loop never completes,
    * so stopping it without removing it leaks one sound per flight.
+   *
+   * Must never throw: GameScene.cleanup runs this during shutdown, and a
+   * throw here aborts the transition to GameOver (DOT-143). Phaser's
+   * WebAudioSound.destroy can hit `null.disconnect` when a playSfxSegment
+   * instance was already torn down by its COMPLETE/STOP handler.
    */
   stopSfx(key: string): void {
-    if (this.destroyed || !this.exists(key)) return;
-    for (const sound of this.pausedSfx) {
-      if (sound.key === key) this.pausedSfx.delete(sound);
+    if (this.destroyed || !this.sound || !this.exists(key)) return;
+
+    try {
+      for (const sound of [...this.pausedSfx]) {
+        if (sound.key === key) this.pausedSfx.delete(sound);
+      }
+    } catch {
+      // pausedSfx bookkeeping must not block teardown.
     }
-    this.sound.removeByKey(key);
+
+    try {
+      const sounds = this.sound.getAll(key);
+      for (const sound of sounds) {
+        try {
+          const manager = (sound as { manager?: Phaser.Sound.BaseSoundManager | null }).manager;
+          if (!sound || manager == null) continue;
+          sound.stop();
+        } catch {
+          // A half-destroyed WebAudio node is safe to skip.
+        }
+      }
+      this.sound.removeByKey(key);
+    } catch {
+      // Already-destroyed segment SFX can throw
+      // `TypeError: Cannot read properties of null (reading 'disconnect')`.
+    }
   }
 
   // ── Balance ─────────────────────────────────────────────────────────────

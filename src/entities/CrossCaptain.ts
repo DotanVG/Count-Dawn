@@ -6,12 +6,8 @@ import { BossHealthBar } from '../ui/BossHealthBar';
 import { BossCharge } from './BossCharge';
 import { GarlicThrower } from './GarlicThrower';
 import { HUNTRESS_LOOK, type HunterStats } from './Hunter';
-import {
-  CAPTAIN_NAMES,
-  CAPTAIN_TINT,
-  captainTookDamage,
-  type CaptainTraits,
-} from './HunterCaptain';
+import { CAPTAIN_NAMES, CAPTAIN_TINT } from '../data/bossPresentation';
+import { bossTookDamage, playBossEntrance, type BossTraits } from './bossSupport';
 
 /** Gold, matching the crosses she throws and the Priest's light. */
 export const CROSS_CHARGE_COLOR = 0xffd76b;
@@ -28,7 +24,7 @@ export const CROSS_CHARGE_COLOR = 0xffd76b;
  * lock gave her and keep going (see GoldCross), so the answer is to step
  * sideways rather than to back off, and a fan of three punishes standing still.
  */
-export class CrossCaptain extends GarlicThrower implements CaptainTraits {
+export class CrossCaptain extends GarlicThrower implements BossTraits {
   readonly maxHealth = BOSS.health;
   readonly healthBar: BossHealthBar;
   readonly bossName = CAPTAIN_NAMES.huntress ?? 'Huntress Captain';
@@ -103,7 +99,7 @@ export class CrossCaptain extends GarlicThrower implements CaptainTraits {
 
   override takeDamage(amount: number): boolean {
     const killed = super.takeDamage(amount);
-    captainTookDamage(this, this.emitter);
+    bossTookDamage(this, this.emitter);
     return killed;
   }
 
@@ -116,13 +112,6 @@ export class CrossCaptain extends GarlicThrower implements CaptainTraits {
   }
 
   playEntrance(): void {
-    const targetScale = this.scaleX;
-    this.scene.tweens.add({
-      targets: this,
-      scale: { from: targetScale * 1.18, to: targetScale },
-      duration: 260,
-      ease: 'Back.easeOut',
-    });
-    this.scene.cameras.main.shake(250, 0.006);
+    playBossEntrance(this);
   }
 }
