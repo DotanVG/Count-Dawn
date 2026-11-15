@@ -2792,22 +2792,33 @@ export class GameScene extends Phaser.Scene {
   private cleanup(): void {
     // Whatever comes next (game over, victory, the menu again) is clickable.
     setVampireCursorVisible(true);
-    // Only this scene's own effects are silenced. The music is deliberately
-    // left alone: it belongs to the game, not to the scene, and has to carry
+    // This runs on SHUTDOWN as scene.start(GameOver) tears us down. A throw
+    // here aborts that transition, which is why mid-dash deaths never showed
+    // GameOver (DOT-143). SFX teardown is non-critical; keep going even if
+    // Phaser's WebAudio node is already gone. The music is deliberately left
+    // alone: it belongs to the game, not to the scene, and has to carry
     // across game over, the menu and the next run without a gap.
-    this.audio.stopSfx(AUDIO.batSound1);
-    this.audio.stopSfx(AUDIO.batDashSound);
-    this.emitter.removeAllListeners();
-    this.hud?.destroy();
-    this.spawner?.stop();
-    this.taglineTimer?.remove();
-    this.menuLightning?.destroy();
-    this.menuLightning = null;
-    this.coldOpenClock?.remove();
-    this.destroyIntroControls();
-    this.events.off(Phaser.Scenes.Events.PAUSE, this.onScenePaused, this);
-    this.events.off(Phaser.Scenes.Events.RESUME, this.onSceneResumed, this);
-    this.input.keyboard?.off('keydown-ESC', this.requestPause, this);
-    this.input.keyboard?.off('keydown-P', this.requestPause, this);
+    try {
+      this.audio?.stopSfx(AUDIO.batSound1);
+      this.audio?.stopSfx(AUDIO.batDashSound);
+    } catch {
+      // AudioDirector.stopSfx is itself defensive; this is a last resort.
+    }
+    try {
+      this.emitter.removeAllListeners();
+      this.hud?.destroy();
+      this.spawner?.stop();
+      this.taglineTimer?.remove();
+      this.menuLightning?.destroy();
+      this.menuLightning = null;
+      this.coldOpenClock?.remove();
+      this.destroyIntroControls();
+      this.events.off(Phaser.Scenes.Events.PAUSE, this.onScenePaused, this);
+      this.events.off(Phaser.Scenes.Events.RESUME, this.onSceneResumed, this);
+      this.input.keyboard?.off('keydown-ESC', this.requestPause, this);
+      this.input.keyboard?.off('keydown-P', this.requestPause, this);
+    } catch {
+      // Remaining teardown must not block GameOver from appearing.
+    }
   }
 }
