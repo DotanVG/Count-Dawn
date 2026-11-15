@@ -5,6 +5,7 @@ import { EVENTS, type GameEventEmitter } from '../game/events';
 import { ANIMS, TEXTURES, animKey, type Dir4 } from '../utils/assetKeys';
 import { angleToDir4, deathRenderDirection } from '../utils/direction';
 import { VAMPIRE_ATTACK_DURATION_MS } from '../utils/animations';
+import { DashEffects } from '../systems/DashEffects';
 
 /** The charge-and-burst stretch of the magic layer, used as his cast. */
 const CAST_FLARE_FRAMES = [3, 4, 5, 6, 7, 8];
@@ -49,6 +50,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * would keep driving the sprite back up to full vampire size.
    */
   private attackPopTween?: Phaser.Tweens.Tween;
+  private readonly dashFx: DashEffects;
 
   constructor(
     scene: Phaser.Scene,
@@ -70,6 +72,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setCollideWorldBounds(true);
     this.setDepth(DEPTHS.player);
     this.play(animKey('vampire', 'idle', 'down'));
+    this.dashFx = new DashEffects(scene, this);
   }
 
   get isAlive(): boolean {
@@ -120,7 +123,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     this.setVelocity(dir.x * DASH.speed, dir.y * DASH.speed);
     this.setBatForm(true, 'dash');
-    this.spawnDashTrail();
+    this.spawnDashTrail(dir.x, dir.y);
 
     this.dashRestore = this.scene.time.delayedCall(DASH.durationMs, () => {
       this.dashRestore = undefined;
@@ -133,6 +136,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       if (this.batFormCause !== 'dash') return;
       this.setVelocity(0, 0);
       this.setBatForm(false, 'dash');
+      this.dashFx.finish();
     });
 
     return true;
@@ -149,6 +153,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * flipX and up/down keep whatever mirroring the last horizontal facing set.
    */
   setBatForm(active: boolean, cause: 'flight' | 'dash' = 'flight'): void {
+    // A coffin can claim an already transformed bat. Release the dash's
+    // render double before flight code starts animating scale/visibility.
+    if (cause === 'flight') this.dashFx.cancel();
     if (this.batForm === active) {
       // Already the right shape, but the OWNER may be changing hands — which
       // matters. Dash into an open coffin and the flight claims a bat the dash
@@ -229,27 +236,9 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.scene.time.delayedCall(700, () => puff.destroy());
   }
 
-  /** Fading after-images strung along the dash path. */
-  private spawnDashTrail(): void {
-    for (let i = 0; i < DASH.afterimages; i++) {
-      this.scene.time.delayedCall((DASH.durationMs / DASH.afterimages) * i, () => {
-        if (!this.active) return;
-        const ghost = this.scene.add
-          .sprite(this.x, this.y, this.texture.key, this.frame.name)
-          .setScale(this.scaleX, this.scaleY)
-          .setFlipX(this.flipX)
-          .setDepth(DEPTHS.player - 1)
-          .setTint(0x9d6bff)
-          .setAlpha(0.5);
-        this.scene.tweens.add({
-          targets: ghost,
-          alpha: 0,
-          scale: this.scaleX * 0.8,
-          duration: 260,
-          onComplete: () => ghost.destroy(),
-        });
-      });
-    }
+  /** Pooled bat-frame afterimages and the other cosmetic dash layers. */
+  private spawnDashTrail(dirX: number, dirY: number): void {
+    this.dashFx.start(dirX, dirY);
   }
 
   /**
@@ -373,6 +362,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * and the run sat there forever with the music still going.
    */
   private stopForDeath(): void {
+    this.dashFx.cancel();
     this.dashRestore?.remove();
     this.dashRestore = undefined;
     this.dashUntil = 0;
@@ -421,6 +411,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
    * healing overnight is a real cost, not an unconditional reset to full.
    */
   resetForNewRound(health: number = PLAYER.maxHealth): void {
+    this.dashFx.cancel();
     this.health = Phaser.Math.Clamp(health, 0, PLAYER.maxHealth);
     this.invulnUntil = 0;
     this.dashUntil = 0;
